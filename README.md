@@ -48,6 +48,17 @@ cp config/example.yaml config/local.yaml
 pcornet-omop-profile --config config/local.yaml
 ```
 
+## Run the transformation trace
+
+After the initial profile, run the targeted ETL trace. It checks whether expected PCORnet source domains are present, attributes OMOP drug records to dispensing/medication-administration/prescribing ETL paths, profiles OMOP type concepts, counts the ETL sentinel date `1900-01-01`, and measures visit linkage.
+
+```bash
+python scripts/02_transform_trace.py \
+  --pcornet /usr/local/datasets/OMOP/PCORnet_parquet \
+  --omop /usr/local/datasets/OMOP/OMOP_parquet \
+  --output results/transform_trace
+```
+
 The `results/` directory is ignored by Git. Zip it after the run and return that ZIP for review.
 
 ```bash
@@ -65,6 +76,11 @@ zip -r pcornet_omop_profile_results.zip results/
 - `omop_source_standard_mapping.csv`: source-concept and standard-concept population.
 - `table_profiles/`: records-per-patient quantiles.
 - `categorical_profiles/`: top categorical values with small-cell suppression.
+- `transform_trace/pcornet_source_file_coverage.csv`: whether PCORnet source domains needed for a source-equivalent comparison are available.
+- `transform_trace/drug_exposure_etl_source_trace.csv`: OMOP drug records stratified by the ETL source type concept IDs.
+- `transform_trace/omop_type_concept_counts.csv`: counts of OMOP `*_type_concept_id` fields.
+- `transform_trace/omop_sentinel_date_counts.csv`: frequency of the ETL default date `1900-01-01`.
+- `transform_trace/omop_visit_linkage.csv`: visit linkage rates for OMOP clinical domains.
 - `run_metadata.json`: software and run provenance.
 
 ## Planned validation stages
