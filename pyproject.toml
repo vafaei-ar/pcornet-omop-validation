@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcornet-omop-validation"
+version = "0.1.0"
+description = "Reproducible profiling and validation of PCORnet-to-OMOP transformations"
+requires-python = ">=3.10"
+dependencies = [
+  "duckdb>=1.0",
+  "pandas>=2.0",
+  "pyarrow>=14.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pcornet-omop-profile = "pcornet_omop_validation.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
