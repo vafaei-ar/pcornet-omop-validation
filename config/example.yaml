@@ -1,0 +1,6 @@
+pcornet_dir: /usr/local/datasets/OMOP/PCORnet_parquet
+omop_dir: /usr/local/datasets/OMOP/OMOP_parquet
+output_dir: results
+minimum_cell_size: 11
+top_n_categories: 25
+sample_rows: 0
