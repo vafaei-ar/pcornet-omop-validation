@@ -54,7 +54,9 @@ def connect(config: EtlConfig, database: str | None = None) -> Iterator[Connecti
 def check_connection(config: EtlConfig) -> DatabaseStatus:
     sql = config.raw["sqlserver"]
     with connect(config) as connection:
-        version = connection.execute(text("SELECT CAST(SERVERPROPERTY('ProductVersion') AS varchar(128))")).scalar_one()
+        version = connection.execute(
+            text("SELECT CAST(SERVERPROPERTY('ProductVersion') AS varchar(128))")
+        ).scalar_one()
     return DatabaseStatus(
         server=str(sql["server"]),
         database=str(sql["database"]),
@@ -64,18 +66,24 @@ def check_connection(config: EtlConfig) -> DatabaseStatus:
 
 
 def database_exists(config: EtlConfig, database: str) -> bool:
-    with connect(config, database="master") as connection:
-        result = connection.execute(
-            text("SELECT 1 FROM sys.databases WHERE name = :database"),
-            {"database": database},
-        ).scalar()
-    return result == 1
+    engine = make_engine(config, database="master")
+    try:
+        with engine.connect() as connection:
+            result = connection.execute(
+                text("SELECT 1 FROM sys.databases WHERE name = :database"),
+                {"database": database},
+            ).scalar()
+        return result == 1
+    finally:
+        engine.dispose()
 
 
 def ensure_database(config: EtlConfig) -> bool:
     """Create the configured target database if absent.
 
     Returns True when a new database was created, False when it already existed.
+    SQL Server requires CREATE DATABASE outside a user transaction, so this uses
+    AUTOCOMMIT explicitly.
     """
     database = str(config.raw["sqlserver"]["database"])
     if database_exists(config, database):
@@ -84,8 +92,12 @@ def ensure_database(config: EtlConfig) -> bool:
     if not re.fullmatch(r"[A-Za-z0-9_]+", database):
         raise ValueError("Database name may contain only letters, numbers, and underscores")
 
-    with connect(config, database="master") as connection:
-        connection.execute(text(f"CREATE DATABASE [{database}]"))
+    engine = make_engine(config, database="master")
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.exec_driver_sql(f"CREATE DATABASE [{database}]")
+    finally:
+        engine.dispose()
     return True
 
 
