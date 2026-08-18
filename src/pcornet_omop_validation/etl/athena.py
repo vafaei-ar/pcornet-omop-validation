@@ -200,13 +200,27 @@ def _valid_download_archives(config: EtlConfig, download_dir: Path) -> list[Path
 def _resolve_target_directory(config: EtlConfig) -> Path:
     vocab = config.raw.setdefault("vocabulary", {})
     configured = str(vocab.get("directory") or "").strip()
-    if configured not in {"", "/path/to/athena"}:
-        return Path(configured).expanduser()
 
+    # Honor an explicitly configured installation only when it actually contains
+    # the Athena vocabulary. A prior failed acquisition may have rewritten the
+    # placeholder to DEFAULT_ATHENA_DIR even though no files were installed there.
+    if configured not in {"", "/path/to/athena"}:
+        configured_path = Path(configured).expanduser()
+        if (configured_path / "CONCEPT.csv").exists():
+            return configured_path
+
+    # If the configured location is absent/incomplete, search known local roots
+    # before falling back to Athena download. This handles installations copied
+    # under names such as /usr/local/datasets/OMOP/vocabulary.
     discovered = _discover_existing_vocabulary(config)
     if discovered is not None:
         _record_existing_vocabulary(config, discovered)
         return discovered
+
+    # Preserve a genuinely explicit non-placeholder target as the eventual install
+    # destination. Otherwise use the standard default target directory.
+    if configured not in {"", "/path/to/athena"}:
+        return Path(configured).expanduser()
 
     vocab["directory"] = str(DEFAULT_ATHENA_DIR)
     save_etl_config(config)
