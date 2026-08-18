@@ -12,7 +12,9 @@ source:
 
 sqlserver:
   server: "localhost"
-  database: "OMOP"
+  # Use a new database so the prior OMOP build remains untouched for comparison.
+  database: "OMOP_VALIDATED"
+  create_database_if_missing: true
   user: "SA"
   password_env: "OMOP_SQL_PASSWORD"
   driver: "ODBC Driver 18 for SQL Server"
@@ -63,7 +65,7 @@ output:
   parquet_dir: "/usr/local/datasets/OMOP/OMOP_validated_parquet"
   audit_dir: "results/etl_audit"
   decision_log: "results/etl_audit/decisions.yaml"
-  run_manifest: "results/etl_audit/run_manifest.yaml"
+  run_manifest: "results/etl_audit/run_manifest.json"
 
 stages:
   - preflight
