@@ -69,6 +69,14 @@ def _count_rows_and_hash(path: Path) -> tuple[int, str]:
 
 
 def _bulk_insert_sql(schema: str, table: str, path: Path) -> str:
+    """Build a SQL Server BULK INSERT statement compatible with SQL Server on Linux.
+
+    Athena vocabulary files are tab-delimited text files even though they use a .csv
+    suffix. SQL Server on Linux rejects CODEPAGE in this execution path, so encoding
+    is intentionally left to the server/column collation rather than requesting
+    CODEPAGE=65001. We reconcile row counts after every table and retain file hashes
+    for reproducibility.
+    """
     safe_schema = _validate_identifier(schema, "schema")
     safe_table = _validate_identifier(table, "table")
     escaped_path = str(path.resolve()).replace("'", "''")
@@ -81,7 +89,6 @@ WITH (
     FIELDQUOTE = '"',
     FIELDTERMINATOR = '0x09',
     ROWTERMINATOR = '0x0a',
-    CODEPAGE = '65001',
     TABLOCK,
     KEEPNULLS
 )
@@ -165,7 +172,8 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                     raise RuntimeError(
                         f"BULK INSERT failed for {path} -> [{schema}].[{table}]. "
                         "Confirm the SQL Server service account can read the vocabulary directory "
-                        f"and that the Athena file matches OMOP CDM 5.4 column order. Original error: {exc}"
+                        "and that the Athena file matches OMOP CDM 5.4 column order. "
+                        f"Original error: {exc}"
                     ) from exc
 
                 results.append(
@@ -191,6 +199,7 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                 "database": database,
                 "schema": schema,
                 "vocabulary_directory": str(vocab_dir),
+                "bulk_load_mode": "sql_server_linux_bulk_insert_no_codepage",
                 "tables": [asdict(item) for item in results],
             },
             indent=2,
