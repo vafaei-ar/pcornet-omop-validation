@@ -24,6 +24,7 @@ class StagingTableResult:
     target_rows: int
     sha256: str
     status: str
+    all_null_columns: list[str]
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,14 @@ def _normalize_arrow_type(data_type: pa.DataType) -> pa.DataType:
 def _sql_type(data_type: pa.DataType) -> str:
     data_type = _normalize_arrow_type(data_type)
 
+    # A Parquet column can have Arrow's null type when every value is null. The
+    # physical file then contains no information from which to recover the intended
+    # source datatype. For the staging layer, store such a column as nullable text.
+    # This preserves the observed data exactly (all NULL) without guessing a semantic
+    # datatype. The column is explicitly recorded in the staging audit so downstream
+    # transforms can apply a domain-specific cast if one is required.
+    if pa.types.is_null(data_type):
+        return "nvarchar(max)"
     if pa.types.is_string(data_type) or pa.types.is_large_string(data_type):
         return "nvarchar(max)"
     if pa.types.is_binary(data_type) or pa.types.is_large_binary(data_type):
@@ -88,6 +97,14 @@ def _sql_type(data_type: pa.DataType) -> str:
         return "time(7)"
 
     raise TypeError(f"Unsupported Parquet/Arrow type for staging: {data_type}")
+
+
+def _all_null_columns(arrow_schema: pa.Schema) -> list[str]:
+    return [
+        field.name
+        for field in arrow_schema
+        if pa.types.is_null(_normalize_arrow_type(field.type))
+    ]
 
 
 def _create_table_sql(schema: str, table: str, arrow_schema: pa.Schema) -> str:
@@ -133,6 +150,7 @@ def _load_one_table(
     source_rows = int(parquet.metadata.num_rows)
     file_hash = _sha256(path)
     arrow_schema = parquet.schema_arrow
+    all_null_columns = _all_null_columns(arrow_schema)
 
     engine = make_engine(config)
     try:
@@ -147,6 +165,7 @@ def _load_one_table(
                         target_rows=existing,
                         sha256=file_hash,
                         status="already_loaded_matched",
+                        all_null_columns=all_null_columns,
                     )
                 if existing:
                     raise RuntimeError(
@@ -211,6 +230,7 @@ def _load_one_table(
         target_rows=target_rows,
         sha256=file_hash,
         status="matched",
+        all_null_columns=all_null_columns,
     )
 
 
@@ -241,7 +261,14 @@ def load_pcornet_staging(config: EtlConfig) -> StagingLoadResult:
     for path in input_files:
         parquet = pq.ParquetFile(path)
         source_rows = int(parquet.metadata.num_rows)
+        null_columns = _all_null_columns(parquet.schema_arrow)
         print(f"Staging {path.name} ({source_rows:,} rows)...", flush=True)
+        if null_columns:
+            print(
+                "  all-null source column(s) stored as nullable nvarchar(max): "
+                + ", ".join(null_columns),
+                flush=True,
+            )
         result = _load_one_table(config, path, schema, batch_size)
         results.append(result)
         if result.status == "already_loaded_matched":
@@ -260,6 +287,7 @@ def load_pcornet_staging(config: EtlConfig) -> StagingLoadResult:
                 "source_directory": str(source_dir),
                 "loader": "pyarrow_record_batches_pyodbc_fast_executemany",
                 "batch_size": batch_size,
+                "all_null_column_policy": "nullable_nvarchar_max_no_semantic_type_inference",
                 "missing_optional": missing_optional,
                 "tables": [asdict(item) for item in results],
             },
