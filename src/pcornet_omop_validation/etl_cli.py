@@ -5,7 +5,12 @@ import json
 import sys
 from pathlib import Path
 
-from pcornet_omop_validation.etl import load_etl_config, run_preflight
+from pcornet_omop_validation.etl import (
+    apply_omop_schema,
+    load_etl_config,
+    run_preflight,
+    write_run_manifest,
+)
 from pcornet_omop_validation.etl.config import save_etl_config
 from pcornet_omop_validation.etl.decisions import (
     prompt_for_decisions,
@@ -43,6 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     configure.add_argument("--config", required=True)
 
+    manifest = subparsers.add_parser(
+        "manifest", help="Write the current ETL configuration/provenance manifest"
+    )
+    manifest.add_argument("--config", required=True)
+
+    schema = subparsers.add_parser(
+        "schema",
+        help="Create the isolated target database if needed and apply pinned OHDSI OMOP DDL",
+    )
+    schema.add_argument("--config", required=True)
+
     return parser
 
 
@@ -58,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         print(f"OMOP CDM version: {config.raw['etl']['cdm_version']}")
         print(f"Backend: {config.raw['etl']['backend']}")
+        print(f"Target database: {config.raw['sqlserver']['database']}")
         print("Stages:")
         for index, stage in enumerate(config.stages, start=1):
             print(f"  {index:02d}. {stage}")
@@ -104,6 +121,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Recorded decisions in {_decision_log_path(config)}")
         return 0
 
+    if args.command == "manifest":
+        path = write_run_manifest(config)
+        print(f"Run manifest: {path}")
+        return 0
+
+    if args.command == "schema":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = apply_omop_schema(config)
+        except Exception as exc:
+            print(f"ERROR: schema stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="schema_ready")
+        print(f"Target database: {config.raw['sqlserver']['database']}")
+        print(f"Database created: {'yes' if result.database_created else 'no'}")
+        print(f"DDL: {result.ddl_path}")
+        if result.already_present:
+            print("OMOP schema already present; no DDL was re-applied.")
+        else:
+            print(f"Applied {result.batches_executed} SQL batch(es).")
+        return 0
+
     if args.command == "preflight":
         decision_errors = validate_decisions(config.raw)
         pending = unresolved_decisions(config.raw)
@@ -112,7 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         warnings = list(result.warnings)
         if pending:
             warnings.append(
-                f"{len(pending)} ETL policy decision(s) remain unresolved; run 'pcornet-omop-etl configure --config {config.path}'."
+                f"{len(pending)} ETL policy decision(s) remain unresolved; run "
+                f"'pcornet-omop-etl configure --config {config.path}'."
             )
 
         ok = result.ok and not decision_errors
