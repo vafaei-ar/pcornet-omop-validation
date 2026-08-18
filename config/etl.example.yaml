@@ -1,0 +1,53 @@
+etl:
+  cdm_version: "5.4"
+  backend: "sqlserver"
+  reset_target: false
+  fail_on_missing_required_table: true
+  fail_on_existing_target_rows: true
+
+source:
+  parquet_dir: "/usr/local/datasets/OMOP/PCORnet_parquet"
+  table_prefix: "PCORnet_"
+
+sqlserver:
+  server: "localhost"
+  database: "OMOP"
+  user: "SA"
+  password_env: "OMOP_SQL_PASSWORD"
+  driver: "ODBC Driver 18 for SQL Server"
+  trust_server_certificate: true
+  source_schema: "dbo"
+  target_schema: "dbo"
+
+vocabulary:
+  # Directory containing the Athena vocabulary files already downloaded by the user.
+  directory: "/path/to/athena"
+  require_files:
+    - CONCEPT.csv
+    - CONCEPT_RELATIONSHIP.csv
+    - VOCABULARY.csv
+    - DOMAIN.csv
+    - CONCEPT_CLASS.csv
+    - RELATIONSHIP.csv
+
+output:
+  parquet_dir: "/usr/local/datasets/OMOP/OMOP_validated_parquet"
+  audit_dir: "results/etl_audit"
+
+stages:
+  - preflight
+  - schema
+  - vocabulary
+  - staging
+  - person
+  - observation_period
+  - visit_occurrence
+  - condition_occurrence
+  - procedure_occurrence
+  - drug_exposure
+  - measurement
+  - observation
+  - death
+  - location
+  - export
+  - reconcile
