@@ -8,6 +8,7 @@ from pathlib import Path
 from pcornet_omop_validation.etl import (
     apply_omop_schema,
     load_etl_config,
+    load_vocabulary,
     run_preflight,
     write_run_manifest,
 )
@@ -60,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create the isolated target database if needed and apply pinned OHDSI OMOP DDL",
     )
     schema.add_argument("--config", required=True)
+
+    vocabulary = subparsers.add_parser(
+        "vocabulary",
+        help="Bulk-load and reconcile Athena vocabulary tables into the OMOP target",
+    )
+    vocabulary.add_argument("--config", required=True)
 
     return parser
 
@@ -157,6 +164,22 @@ def main(argv: list[str] | None = None) -> int:
             print("OMOP schema already present; no DDL was re-applied.")
         else:
             print(f"Applied {result.batches_executed} SQL batch(es).")
+        return 0
+
+    if args.command == "vocabulary":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = load_vocabulary(config)
+        except Exception as exc:
+            print(f"ERROR: vocabulary stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="vocabulary_ready")
+        print(f"Vocabulary load complete: {len(result.tables)} table(s)")
+        print(f"Target: {result.database}.{result.schema}")
+        print(f"Audit: {result.audit_path}")
         return 0
 
     if args.command == "preflight":
