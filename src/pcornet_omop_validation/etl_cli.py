@@ -11,6 +11,7 @@ from pcornet_omop_validation.etl import (
     run_preflight,
     write_run_manifest,
 )
+from pcornet_omop_validation.etl.athena import acquire_athena_vocabulary
 from pcornet_omop_validation.etl.config import save_etl_config
 from pcornet_omop_validation.etl.decisions import (
     prompt_for_decisions,
@@ -38,7 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--json", action="store_true", dest="as_json")
 
     acquire = subparsers.add_parser(
-        "acquire", help="Download pinned public OHDSI dependencies and record checksums"
+        "acquire",
+        help="Acquire pinned OHDSI assets and an authorized Athena vocabulary bundle",
     )
     acquire.add_argument("--config", required=True)
 
@@ -85,16 +87,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "acquire":
-        assets = acquire_public_dependencies(config)
-        if not assets:
-            print("Automatic public dependency download is disabled.")
+        try:
+            assets = acquire_public_dependencies(config)
+            for asset in assets:
+                print(f"Acquired {asset.name} {asset.version}")
+                print(f"  archive: {asset.archive}")
+                print(f"  sha256:  {asset.sha256}")
+            if assets:
+                print(f"Dependency manifest: {config.audit_dir / 'dependencies.json'}")
+
+            athena = acquire_athena_vocabulary(config)
+            if athena is None:
+                print(f"Athena vocabulary already available: {config.vocabulary_dir}")
+            else:
+                print("Acquired and validated Athena vocabulary bundle")
+                print(f"  directory: {athena.directory}")
+                print(f"  sha256:    {athena.sha256}")
+                print(f"  manifest:  {config.audit_dir / 'athena_vocabulary.json'}")
             return 0
-        for asset in assets:
-            print(f"Acquired {asset.name} {asset.version}")
-            print(f"  archive: {asset.archive}")
-            print(f"  sha256:  {asset.sha256}")
-        print(f"Dependency manifest: {config.audit_dir / 'dependencies.json'}")
-        return 0
+        except Exception as exc:
+            print(f"ERROR: dependency acquisition failed: {exc}")
+            return 2
 
     if args.command == "configure":
         errors = validate_decisions(config.raw)
