@@ -5,6 +5,7 @@ from .database import DatabaseStatus, check_connection
 from .manifest import write_run_manifest
 from .preflight import PreflightResult, run_preflight
 from .schema import SchemaResult, apply_omop_schema
+from .staging import StagingLoadResult, load_pcornet_staging
 from .vocabulary import VocabularyLoadResult, load_vocabulary
 
 __all__ = [
@@ -12,10 +13,12 @@ __all__ = [
     "EtlConfig",
     "PreflightResult",
     "SchemaResult",
+    "StagingLoadResult",
     "VocabularyLoadResult",
     "apply_omop_schema",
     "check_connection",
     "load_etl_config",
+    "load_pcornet_staging",
     "load_vocabulary",
     "run_preflight",
     "write_run_manifest",
