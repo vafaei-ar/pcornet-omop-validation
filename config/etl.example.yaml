@@ -34,9 +34,16 @@ downloads:
     source: "OHDSI/DataQualityDashboard"
 
 vocabulary:
-  # Athena vocabulary packages are user-provided because vocabulary selection,
-  # authentication, and licensing may require user action. The ETL verifies them.
-  directory: "/path/to/athena"
+  # If this directory does not contain an Athena bundle, `pcornet-omop-etl acquire`
+  # starts the Athena acquisition workflow. Athena authentication/licensing still
+  # requires the authorized user; after download the ETL validates, extracts,
+  # fingerprints, versions, and configures the bundle automatically.
+  directory: "/usr/local/datasets/OMOP/Athena"
+  acquisition:
+    download_dir: "~/Downloads"
+    # Optional for institutions/workflows that can provide an authorized bundle URL.
+    # The URL is read from the environment and is never stored in the config/report.
+    bundle_url_env: "ATHENA_BUNDLE_URL"
   require_files:
     - CONCEPT.csv
     - CONCEPT_RELATIONSHIP.csv
@@ -70,6 +77,7 @@ output:
 stages:
   - preflight
   - acquire_public_dependencies
+  - acquire_vocabulary
   - resolve_decisions
   - schema
   - vocabulary
