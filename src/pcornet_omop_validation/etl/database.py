@@ -51,15 +51,16 @@ def connect(config: EtlConfig, database: str | None = None) -> Iterator[Connecti
         engine.dispose()
 
 
-def check_connection(config: EtlConfig) -> DatabaseStatus:
+def check_connection(config: EtlConfig, database: str = "master") -> DatabaseStatus:
+    """Verify SQL Server authentication without requiring the target DB to exist."""
     sql = config.raw["sqlserver"]
-    with connect(config) as connection:
+    with connect(config, database=database) as connection:
         version = connection.execute(
             text("SELECT CAST(SERVERPROPERTY('ProductVersion') AS varchar(128))")
         ).scalar_one()
     return DatabaseStatus(
         server=str(sql["server"]),
-        database=str(sql["database"]),
+        database=database,
         connected=True,
         server_version=str(version),
     )
