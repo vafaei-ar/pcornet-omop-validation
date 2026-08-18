@@ -11,6 +11,7 @@ from pcornet_omop_validation.etl import (
     load_pcornet_staging,
     load_vocabulary,
     run_preflight,
+    transform_person,
     write_run_manifest,
 )
 from pcornet_omop_validation.etl.athena import acquire_athena_vocabulary
@@ -74,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Load PCORnet parquet files into audited SQL Server staging tables",
     )
     staging.add_argument("--config", required=True)
+
+    person = subparsers.add_parser(
+        "person",
+        help="Transform PCORnet DEMOGRAPHIC into audited OMOP person records",
+    )
+    person.add_argument("--config", required=True)
 
     return parser
 
@@ -204,6 +211,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Target: {result.database}.{result.schema}")
         if result.missing_optional:
             print("Optional source tables absent: " + ", ".join(result.missing_optional))
+        print(f"Audit: {result.audit_path}")
+        return 0
+
+    if args.command == "person":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = transform_person(config)
+        except Exception as exc:
+            print(f"ERROR: person stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="person_ready")
+        print(f"Person source rows: {result.source_rows:,}")
+        print(f"Eligible rows: {result.eligible_rows:,}")
+        print(f"Excluded rows: {result.excluded_rows:,}")
+        print(f"  missing PATID: {result.excluded_missing_patid:,}")
+        print(f"  missing BIRTH_DATE: {result.excluded_missing_birth_date:,}")
+        print(f"Target person rows: {result.target_rows:,} [{result.status}]")
+        print(
+            "Concept_id 0: "
+            f"gender={result.gender_concept_zero:,}, "
+            f"race={result.race_concept_zero:,}, "
+            f"ethnicity={result.ethnicity_concept_zero:,}"
+        )
         print(f"Audit: {result.audit_path}")
         return 0
 
