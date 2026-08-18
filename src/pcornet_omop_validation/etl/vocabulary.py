@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from .config import EtlConfig
-from .database import connect, table_exists
+from .database import make_engine, table_exists
 
 
 # Athena files that map directly to OMOP CDM vocabulary tables. The order is
@@ -68,17 +68,10 @@ def _count_rows_and_hash(path: Path) -> tuple[int, str]:
     return max(physical_rows - 1, 0), digest.hexdigest()
 
 
-def _row_terminator(path: Path) -> str:
-    with path.open("rb") as handle:
-        sample = handle.read(1024 * 1024)
-    return "0x0a" if b"\n" in sample else "0x0a"
-
-
 def _bulk_insert_sql(schema: str, table: str, path: Path) -> str:
     safe_schema = _validate_identifier(schema, "schema")
     safe_table = _validate_identifier(table, "table")
     escaped_path = str(path.resolve()).replace("'", "''")
-    row_term = _row_terminator(path)
     return f"""
 BULK INSERT [{safe_schema}].[{safe_table}]
 FROM '{escaped_path}'
@@ -87,7 +80,7 @@ WITH (
     FIRSTROW = 2,
     FIELDQUOTE = '"',
     FIELDTERMINATOR = '0x09',
-    ROWTERMINATOR = '{row_term}',
+    ROWTERMINATOR = '0x0a',
     CODEPAGE = '65001',
     TABLOCK,
     KEEPNULLS
@@ -99,8 +92,9 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
     """Load local Athena vocabulary files into the isolated OMOP target.
 
     The loader is deliberately non-destructive. Any non-empty target vocabulary
-    table causes a failure when fail_on_existing_target_rows=true. Each loaded file
-    is reconciled by source and target row count and recorded with SHA-256.
+    table causes a failure when fail_on_existing_target_rows=true. Each table is
+    committed independently after source/target row-count reconciliation so a
+    multi-gigabyte vocabulary load is not held in one transaction.
     """
     vocab_dir = config.vocabulary_dir
     if not vocab_dir.is_dir():
@@ -111,66 +105,82 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
     database = str(sql_cfg["database"])
     fail_existing = bool(config.raw["etl"].get("fail_on_existing_target_rows", True))
 
-    available = [(filename, table) for filename, table in VOCABULARY_TABLES if (vocab_dir / filename).exists()]
+    available = [
+        (filename, table)
+        for filename, table in VOCABULARY_TABLES
+        if (vocab_dir / filename).exists()
+    ]
     if not available:
         raise ValueError(f"No recognized Athena vocabulary files found in {vocab_dir}")
 
     results: list[VocabularyTableResult] = []
-    with connect(config) as connection:
-        for filename, table in available:
-            path = vocab_dir / filename
-            if not table_exists(connection, schema, table):
-                raise RuntimeError(
-                    f"Target table [{schema}].[{table}] does not exist. Run the schema stage first."
-                )
-
-            existing = int(
-                connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
-                .scalar_one()
-            )
-            if existing:
-                if fail_existing:
+    engine = make_engine(config)
+    try:
+        with engine.connect() as connection:
+            for filename, table in available:
+                path = vocab_dir / filename
+                if not table_exists(connection, schema, table):
                     raise RuntimeError(
-                        f"Target vocabulary table [{schema}].[{table}] already contains {existing:,} rows; "
-                        "refusing to append."
+                        f"Target table [{schema}].[{table}] does not exist. Run the schema stage first."
                     )
-                raise RuntimeError(
-                    f"Target vocabulary table [{schema}].[{table}] is non-empty. "
-                    "Automatic destructive replacement is not implemented."
-                )
 
-            source_rows, sha256 = _count_rows_and_hash(path)
-            print(f"Loading {filename} -> {schema}.{table} ({source_rows:,} source rows)...", flush=True)
-            try:
-                connection.exec_driver_sql(_bulk_insert_sql(schema, table, path))
-            except Exception as exc:
-                raise RuntimeError(
-                    f"BULK INSERT failed for {path} -> [{schema}].[{table}]. "
-                    "Confirm the SQL Server service account can read the vocabulary directory "
-                    f"and that the Athena file matches OMOP CDM 5.4 column order. Original error: {exc}"
-                ) from exc
+                existing = int(
+                    connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
+                    .scalar_one()
+                )
+                if existing:
+                    if fail_existing:
+                        raise RuntimeError(
+                            f"Target vocabulary table [{schema}].[{table}] already contains {existing:,} rows; "
+                            "refusing to append."
+                        )
+                    raise RuntimeError(
+                        f"Target vocabulary table [{schema}].[{table}] is non-empty. "
+                        "Automatic destructive replacement is not implemented."
+                    )
 
-            target_rows = int(
-                connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
-                .scalar_one()
-            )
-            status = "matched" if target_rows == source_rows else "row_count_mismatch"
-            results.append(
-                VocabularyTableResult(
-                    file=str(path),
-                    table=f"{schema}.{table}",
-                    source_rows=source_rows,
-                    target_rows=target_rows,
-                    sha256=sha256,
-                    status=status,
+                source_rows, sha256 = _count_rows_and_hash(path)
+                print(
+                    f"Loading {filename} -> {schema}.{table} ({source_rows:,} source rows)...",
+                    flush=True,
                 )
-            )
-            print(f"  target rows: {target_rows:,} [{status}]", flush=True)
-            if target_rows != source_rows:
-                raise RuntimeError(
-                    f"Vocabulary reconciliation failed for {filename}: "
-                    f"source={source_rows:,}, target={target_rows:,}"
+                try:
+                    connection.exec_driver_sql(_bulk_insert_sql(schema, table, path))
+                    target_rows = int(
+                        connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
+                        .scalar_one()
+                    )
+                    status = "matched" if target_rows == source_rows else "row_count_mismatch"
+                    if target_rows != source_rows:
+                        connection.rollback()
+                        raise RuntimeError(
+                            f"Vocabulary reconciliation failed for {filename}: "
+                            f"source={source_rows:,}, target={target_rows:,}"
+                        )
+                    connection.commit()
+                except Exception as exc:
+                    connection.rollback()
+                    if isinstance(exc, RuntimeError) and str(exc).startswith("Vocabulary reconciliation failed"):
+                        raise
+                    raise RuntimeError(
+                        f"BULK INSERT failed for {path} -> [{schema}].[{table}]. "
+                        "Confirm the SQL Server service account can read the vocabulary directory "
+                        f"and that the Athena file matches OMOP CDM 5.4 column order. Original error: {exc}"
+                    ) from exc
+
+                results.append(
+                    VocabularyTableResult(
+                        file=str(path),
+                        table=f"{schema}.{table}",
+                        source_rows=source_rows,
+                        target_rows=target_rows,
+                        sha256=sha256,
+                        status=status,
+                    )
                 )
+                print(f"  target rows: {target_rows:,} [{status}]", flush=True)
+    finally:
+        engine.dispose()
 
     audit_path = config.audit_dir / "vocabulary_load.json"
     audit_path.parent.mkdir(parents=True, exist_ok=True)
