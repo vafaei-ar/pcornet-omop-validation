@@ -13,6 +13,7 @@ from pcornet_omop_validation.etl.decisions import (
     validate_decisions,
     write_decision_log,
 )
+from pcornet_omop_validation.etl.dependencies import acquire_public_dependencies
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     preflight.add_argument("--config", required=True)
     preflight.add_argument("--json", action="store_true", dest="as_json")
+
+    acquire = subparsers.add_parser(
+        "acquire", help="Download pinned public OHDSI dependencies and record checksums"
+    )
+    acquire.add_argument("--config", required=True)
 
     configure = subparsers.add_parser(
         "configure",
@@ -59,6 +65,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Unresolved policy decisions: {len(pending)}")
         for spec in pending:
             print(f"  - {spec.key}: {spec.title}")
+        return 0
+
+    if args.command == "acquire":
+        assets = acquire_public_dependencies(config)
+        if not assets:
+            print("Automatic public dependency download is disabled.")
+            return 0
+        for asset in assets:
+            print(f"Acquired {asset.name} {asset.version}")
+            print(f"  archive: {asset.archive}")
+            print(f"  sha256:  {asset.sha256}")
+        print(f"Dependency manifest: {config.audit_dir / 'dependencies.json'}")
         return 0
 
     if args.command == "configure":
