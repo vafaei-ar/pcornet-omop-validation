@@ -16,6 +16,7 @@ from .config import EtlConfig, save_etl_config
 
 ATHENA_URL = "https://athena.ohdsi.org"
 DEFAULT_ATHENA_DIR = Path("/usr/local/datasets/OMOP/Athena")
+DEFAULT_DISCOVERY_ROOTS = (Path("/usr/local/datasets/OMOP"),)
 
 
 @dataclass(frozen=True)
@@ -96,32 +97,93 @@ def _download_bundle(url: str, destination: Path) -> Path:
     return destination
 
 
+def _record_existing_vocabulary(config: EtlConfig, directory: Path) -> None:
+    versions = _read_vocabulary_versions(directory)
+    _validate_required_files(config, directory)
+    _validate_required_vocabularies(config, versions)
+    config.raw.setdefault("vocabulary", {})["directory"] = str(directory)
+    save_etl_config(config)
+
+    manifest = config.audit_dir / "athena_vocabulary.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+                "source": "existing_local_installation",
+                "directory": str(directory),
+                "required_vocabularies": config.raw.get("vocabulary", {}).get(
+                    "require_vocabularies", []
+                ),
+                "vocabulary_versions": versions,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _discover_existing_vocabulary(config: EtlConfig) -> Path | None:
+    vocab = config.raw.setdefault("vocabulary", {})
+    configured_roots = vocab.get("discovery_roots") or [str(p) for p in DEFAULT_DISCOVERY_ROOTS]
+    candidates: list[Path] = []
+
+    for root_value in configured_roots:
+        root = Path(root_value).expanduser()
+        if not root.is_dir():
+            continue
+        for concept_file in root.rglob("CONCEPT.csv"):
+            candidate = concept_file.parent
+            try:
+                _validate_required_files(config, candidate)
+                versions = _read_vocabulary_versions(candidate)
+                _validate_required_vocabularies(config, versions)
+            except ValueError:
+                continue
+            candidates.append(candidate)
+
+    unique = sorted({candidate.resolve() for candidate in candidates})
+    if not unique:
+        return None
+    if len(unique) > 1:
+        joined = "\n  - ".join(str(path) for path in unique)
+        raise ValueError(
+            "Multiple valid Athena vocabulary directories were found. "
+            "Set vocabulary.directory explicitly to one of:\n  - " + joined
+        )
+    return unique[0]
+
+
 def _resolve_target_directory(config: EtlConfig) -> Path:
     vocab = config.raw.setdefault("vocabulary", {})
     configured = str(vocab.get("directory") or "").strip()
-    if configured in {"", "/path/to/athena"}:
-        vocab["directory"] = str(DEFAULT_ATHENA_DIR)
-        save_etl_config(config)
-        return DEFAULT_ATHENA_DIR
-    return Path(configured).expanduser()
+    if configured not in {"", "/path/to/athena"}:
+        return Path(configured).expanduser()
+
+    discovered = _discover_existing_vocabulary(config)
+    if discovered is not None:
+        _record_existing_vocabulary(config, discovered)
+        return discovered
+
+    vocab["directory"] = str(DEFAULT_ATHENA_DIR)
+    save_etl_config(config)
+    return DEFAULT_ATHENA_DIR
 
 
 def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
-    """Acquire and validate an Athena vocabulary bundle when none is installed.
+    """Acquire or discover and validate an Athena vocabulary bundle.
 
-    Athena requires user authentication and some vocabularies require licenses. The
-    runner therefore supports a direct authenticated bundle URL when supplied via an
-    environment variable, otherwise it opens Athena and asks the user for the ZIP
-    path after the authorized download is complete. It never stores Athena passwords.
+    The runner first searches configured local discovery roots for a complete vocabulary
+    installation. Only if none is found does it fall back to an authorized direct bundle
+    URL or the interactive Athena download workflow. Athena credentials are never stored.
     """
     vocab = config.raw.setdefault("vocabulary", {})
     target = _resolve_target_directory(config)
 
     if (target / "CONCEPT.csv").exists():
         root = _find_vocab_root(target)
-        _validate_required_files(config, root)
-        versions = _read_vocabulary_versions(root)
-        _validate_required_vocabularies(config, versions)
+        _record_existing_vocabulary(config, root)
         return None
 
     acquisition = vocab.setdefault("acquisition", {})
@@ -141,7 +203,7 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
             )
 
         required = vocab.get("require_vocabularies", [])
-        print("Athena vocabulary package is required and was not found.")
+        print("Athena vocabulary package is required and was not found locally.")
         print("Required vocabularies: " + ", ".join(required))
         print("Athena authentication/licensing cannot be bypassed by the ETL.")
         print("A browser will be opened. Sign in, select/download the required vocabulary bundle,")
@@ -191,6 +253,7 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
         json.dumps(
             {
                 "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+                "source": "downloaded_bundle",
                 "athena_url": ATHENA_URL,
                 "archive": str(archive),
                 "archive_sha256": archive_hash,
