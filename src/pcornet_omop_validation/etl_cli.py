@@ -3,8 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from pcornet_omop_validation.etl import load_etl_config, run_preflight
+from pcornet_omop_validation.etl.config import save_etl_config
+from pcornet_omop_validation.etl.decisions import (
+    prompt_for_decisions,
+    unresolved_decisions,
+    validate_decisions,
+    write_decision_log,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,7 +31,18 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--config", required=True)
     preflight.add_argument("--json", action="store_true", dest="as_json")
 
+    configure = subparsers.add_parser(
+        "configure",
+        help="Interactively resolve scientific/ETL policy decisions and record them",
+    )
+    configure.add_argument("--config", required=True)
+
     return parser
+
+
+def _decision_log_path(config) -> Path:
+    configured = config.raw.get("output", {}).get("decision_log")
+    return Path(configured) if configured else config.audit_dir / "decisions.yaml"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,29 +55,69 @@ def main(argv: list[str] | None = None) -> int:
         print("Stages:")
         for index, stage in enumerate(config.stages, start=1):
             print(f"  {index:02d}. {stage}")
+        pending = unresolved_decisions(config.raw)
+        print(f"Unresolved policy decisions: {len(pending)}")
+        for spec in pending:
+            print(f"  - {spec.key}: {spec.title}")
+        return 0
+
+    if args.command == "configure":
+        errors = validate_decisions(config.raw)
+        if errors:
+            for error in errors:
+                print(f"ERROR: {error}")
+            return 2
+
+        selected = prompt_for_decisions(config.raw)
+        if not selected:
+            print("All configured ETL policy decisions are already resolved.")
+            return 0
+
+        policies = config.raw.setdefault("policies", {})
+        policies.update(selected)
+        save_etl_config(config)
+        write_decision_log(
+            _decision_log_path(config),
+            config_path=config.path,
+            decisions=selected,
+            source="interactive",
+        )
+        print(f"Updated {config.path}")
+        print(f"Recorded decisions in {_decision_log_path(config)}")
         return 0
 
     if args.command == "preflight":
+        decision_errors = validate_decisions(config.raw)
+        pending = unresolved_decisions(config.raw)
         result = run_preflight(config)
+        errors = list(result.errors) + decision_errors
+        warnings = list(result.warnings)
+        if pending:
+            warnings.append(
+                f"{len(pending)} ETL policy decision(s) remain unresolved; run 'pcornet-omop-etl configure --config {config.path}'."
+            )
+
+        ok = result.ok and not decision_errors
         if args.as_json:
             print(
                 json.dumps(
                     {
-                        "ok": result.ok,
-                        "errors": result.errors,
-                        "warnings": result.warnings,
+                        "ok": ok,
+                        "errors": errors,
+                        "warnings": warnings,
                         "found_tables": result.found_tables,
+                        "unresolved_decisions": [spec.key for spec in pending],
                     },
                     indent=2,
                 )
             )
         else:
-            print("Preflight: " + ("PASS" if result.ok else "FAIL"))
-            for warning in result.warnings:
+            print("Preflight: " + ("PASS" if ok else "FAIL"))
+            for warning in warnings:
                 print(f"WARNING: {warning}")
-            for error in result.errors:
+            for error in errors:
                 print(f"ERROR: {error}")
-        return 0 if result.ok else 2
+        return 0 if ok else 2
 
     return 1
 
