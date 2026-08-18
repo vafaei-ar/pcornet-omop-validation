@@ -124,13 +124,16 @@ def _record_existing_vocabulary(config: EtlConfig, directory: Path) -> None:
     )
 
 
-def _discover_existing_vocabulary(config: EtlConfig) -> Path | None:
-    vocab = config.raw.setdefault("vocabulary", {})
-    configured_roots = vocab.get("discovery_roots") or [str(p) for p in DEFAULT_DISCOVERY_ROOTS]
-    candidates: list[Path] = []
+def _discovery_roots(config: EtlConfig) -> list[Path]:
+    values = config.raw.setdefault("vocabulary", {}).get("discovery_roots")
+    if not values:
+        values = [str(path) for path in DEFAULT_DISCOVERY_ROOTS]
+    return [Path(value).expanduser() for value in values]
 
-    for root_value in configured_roots:
-        root = Path(root_value).expanduser()
+
+def _discover_existing_vocabulary(config: EtlConfig) -> Path | None:
+    candidates: list[Path] = []
+    for root in _discovery_roots(config):
         if not root.is_dir():
             continue
         for concept_file in root.rglob("CONCEPT.csv"):
@@ -155,6 +158,45 @@ def _discover_existing_vocabulary(config: EtlConfig) -> Path | None:
     return unique[0]
 
 
+def _zip_has_required_files(config: EtlConfig, archive: Path) -> bool:
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            basenames = {Path(name).name for name in zf.namelist() if not name.endswith("/")}
+    except (OSError, zipfile.BadZipFile):
+        return False
+    required = set(config.raw.get("vocabulary", {}).get("require_files", []))
+    return bool(required) and required.issubset(basenames)
+
+
+def _discover_existing_archive(config: EtlConfig) -> Path | None:
+    candidates: list[Path] = []
+    for root in _discovery_roots(config):
+        if not root.is_dir():
+            continue
+        for archive in root.rglob("*.zip"):
+            if _zip_has_required_files(config, archive):
+                candidates.append(archive.resolve())
+
+    unique = sorted(set(candidates))
+    if not unique:
+        return None
+    if len(unique) > 1:
+        joined = "\n  - ".join(str(path) for path in unique)
+        raise ValueError(
+            "Multiple possible Athena vocabulary ZIP archives were found. "
+            "Set vocabulary.directory to an extracted bundle or provide the desired ZIP explicitly:\n  - "
+            + joined
+        )
+    return unique[0]
+
+
+def _valid_download_archives(config: EtlConfig, download_dir: Path) -> list[Path]:
+    if not download_dir.is_dir():
+        return []
+    archives = [path for path in download_dir.glob("*.zip") if _zip_has_required_files(config, path)]
+    return sorted(archives, key=lambda path: path.stat().st_mtime, reverse=True)
+
+
 def _resolve_target_directory(config: EtlConfig) -> Path:
     vocab = config.raw.setdefault("vocabulary", {})
     configured = str(vocab.get("directory") or "").strip()
@@ -171,57 +213,11 @@ def _resolve_target_directory(config: EtlConfig) -> Path:
     return DEFAULT_ATHENA_DIR
 
 
-def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
-    """Acquire or discover and validate an Athena vocabulary bundle.
-
-    The runner first searches configured local discovery roots for a complete vocabulary
-    installation. Only if none is found does it fall back to an authorized direct bundle
-    URL or the interactive Athena download workflow. Athena credentials are never stored.
-    """
-    vocab = config.raw.setdefault("vocabulary", {})
-    target = _resolve_target_directory(config)
-
-    if (target / "CONCEPT.csv").exists():
-        root = _find_vocab_root(target)
-        _record_existing_vocabulary(config, root)
-        return None
-
-    acquisition = vocab.setdefault("acquisition", {})
-    bundle_url_env = str(acquisition.get("bundle_url_env", "ATHENA_BUNDLE_URL"))
-    bundle_url = os.environ.get(bundle_url_env)
-    download_dir = Path(acquisition.get("download_dir", "~/Downloads")).expanduser()
-    cache_dir = Path(config.raw.get("downloads", {}).get("cache_dir", ".cache/pcornet-omop-etl"))
-    cached_zip = cache_dir / "Athena" / "athena-vocabulary.zip"
-
-    if bundle_url:
-        archive = _download_bundle(bundle_url, cached_zip)
-    else:
-        if not config.interactive:
-            raise ValueError(
-                "Athena vocabulary is absent and no authenticated bundle URL is configured. "
-                f"Set {bundle_url_env} to an authorized Athena bundle URL or run interactively."
-            )
-
-        required = vocab.get("require_vocabularies", [])
-        print("Athena vocabulary package is required and was not found locally.")
-        print("Required vocabularies: " + ", ".join(required))
-        print("Athena authentication/licensing cannot be bypassed by the ETL.")
-        print("A browser will be opened. Sign in, select/download the required vocabulary bundle,")
-        print("then return here and provide the downloaded ZIP path.")
-        webbrowser.open(ATHENA_URL)
-        default_hint = download_dir / "athena*.zip"
-        entered = input(f"Path to downloaded Athena ZIP [{default_hint}]: ").strip()
-        if entered:
-            archive = Path(entered).expanduser()
-        else:
-            candidates = sorted(download_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if not candidates:
-                raise ValueError(f"No ZIP files found in {download_dir}")
-            archive = candidates[0]
-            print(f"Using most recently downloaded ZIP: {archive}")
-
+def _install_archive(config: EtlConfig, archive: Path, target: Path, cache_dir: Path) -> AthenaBundle:
     if not archive.exists():
         raise ValueError(f"Athena ZIP does not exist: {archive}")
+    if not _zip_has_required_files(config, archive):
+        raise ValueError(f"ZIP is not a valid Athena vocabulary bundle: {archive}")
 
     archive_hash = _sha256(archive)
     temp_extract = cache_dir / "Athena" / f"extract-{archive_hash[:12]}"
@@ -244,7 +240,7 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
         else:
             shutil.copy2(item, destination)
 
-    vocab["directory"] = str(target)
+    config.raw.setdefault("vocabulary", {})["directory"] = str(target)
     save_etl_config(config)
 
     manifest = config.audit_dir / "athena_vocabulary.json"
@@ -253,12 +249,13 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
         json.dumps(
             {
                 "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
-                "source": "downloaded_bundle",
-                "athena_url": ATHENA_URL,
+                "source": "local_or_downloaded_bundle",
                 "archive": str(archive),
                 "archive_sha256": archive_hash,
                 "directory": str(target),
-                "required_vocabularies": vocab.get("require_vocabularies", []),
+                "required_vocabularies": config.raw.get("vocabulary", {}).get(
+                    "require_vocabularies", []
+                ),
                 "vocabulary_versions": versions,
             },
             indent=2,
@@ -273,3 +270,68 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
         sha256=archive_hash,
         vocabulary_versions=versions,
     )
+
+
+def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
+    """Acquire or discover and validate an Athena vocabulary bundle.
+
+    Search order: extracted local vocabulary, local Athena ZIP, authorized bundle URL,
+    then interactive Athena download. Arbitrary ZIP files are never auto-selected.
+    """
+    vocab = config.raw.setdefault("vocabulary", {})
+    target = _resolve_target_directory(config)
+
+    if (target / "CONCEPT.csv").exists():
+        root = _find_vocab_root(target)
+        _record_existing_vocabulary(config, root)
+        return None
+
+    cache_dir = Path(config.raw.get("downloads", {}).get("cache_dir", ".cache/pcornet-omop-etl"))
+
+    local_archive = _discover_existing_archive(config)
+    if local_archive is not None:
+        print(f"Found local Athena vocabulary ZIP: {local_archive}")
+        return _install_archive(config, local_archive, target, cache_dir)
+
+    acquisition = vocab.setdefault("acquisition", {})
+    bundle_url_env = str(acquisition.get("bundle_url_env", "ATHENA_BUNDLE_URL"))
+    bundle_url = os.environ.get(bundle_url_env)
+    download_dir = Path(acquisition.get("download_dir", "~/Downloads")).expanduser()
+    cached_zip = cache_dir / "Athena" / "athena-vocabulary.zip"
+
+    if bundle_url:
+        archive = _download_bundle(bundle_url, cached_zip)
+        return _install_archive(config, archive, target, cache_dir)
+
+    valid_downloads = _valid_download_archives(config, download_dir)
+    if len(valid_downloads) == 1:
+        archive = valid_downloads[0]
+        print(f"Found Athena vocabulary ZIP in Downloads: {archive}")
+        return _install_archive(config, archive, target, cache_dir)
+    if len(valid_downloads) > 1:
+        joined = "\n  - ".join(str(path) for path in valid_downloads)
+        raise ValueError(
+            "Multiple valid Athena vocabulary ZIP files were found in Downloads. "
+            "Provide the desired ZIP path explicitly:\n  - " + joined
+        )
+
+    if not config.interactive:
+        raise ValueError(
+            "Athena vocabulary is absent and no authorized local/download bundle was found. "
+            f"Set {bundle_url_env} to an authorized Athena bundle URL or run interactively."
+        )
+
+    required = vocab.get("require_vocabularies", [])
+    print("Athena vocabulary package is required and was not found locally.")
+    print("Required vocabularies: " + ", ".join(required))
+    print("Athena authentication/licensing cannot be bypassed by the ETL.")
+    print("A browser will be opened. Sign in, select/download the required vocabulary bundle,")
+    print("then return here and provide the downloaded ZIP path.")
+    webbrowser.open(ATHENA_URL)
+    entered = input("Path to downloaded Athena ZIP: ").strip()
+    if not entered:
+        raise ValueError(
+            "No Athena ZIP path was provided. The runner will not guess from unrelated ZIP files."
+        )
+    archive = Path(entered).expanduser()
+    return _install_archive(config, archive, target, cache_dir)
