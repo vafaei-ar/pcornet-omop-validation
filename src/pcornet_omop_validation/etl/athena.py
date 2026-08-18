@@ -15,6 +15,7 @@ from pathlib import Path
 from .config import EtlConfig, save_etl_config
 
 ATHENA_URL = "https://athena.ohdsi.org"
+DEFAULT_ATHENA_DIR = Path("/usr/local/datasets/OMOP/Athena")
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,16 @@ def _download_bundle(url: str, destination: Path) -> Path:
     return destination
 
 
+def _resolve_target_directory(config: EtlConfig) -> Path:
+    vocab = config.raw.setdefault("vocabulary", {})
+    configured = str(vocab.get("directory") or "").strip()
+    if configured in {"", "/path/to/athena"}:
+        vocab["directory"] = str(DEFAULT_ATHENA_DIR)
+        save_etl_config(config)
+        return DEFAULT_ATHENA_DIR
+    return Path(configured).expanduser()
+
+
 def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
     """Acquire and validate an Athena vocabulary bundle when none is installed.
 
@@ -104,7 +115,7 @@ def acquire_athena_vocabulary(config: EtlConfig) -> AthenaBundle | None:
     path after the authorized download is complete. It never stores Athena passwords.
     """
     vocab = config.raw.setdefault("vocabulary", {})
-    target = Path(vocab.get("directory", "/usr/local/datasets/OMOP/Athena")).expanduser()
+    target = _resolve_target_directory(config)
 
     if (target / "CONCEPT.csv").exists():
         root = _find_vocab_root(target)
