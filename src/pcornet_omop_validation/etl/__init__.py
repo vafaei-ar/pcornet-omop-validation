@@ -3,6 +3,7 @@
 from .config import EtlConfig, load_etl_config
 from .database import DatabaseStatus, check_connection
 from .manifest import write_run_manifest
+from .person import PersonTransformResult, transform_person
 from .preflight import PreflightResult, run_preflight
 from .schema import SchemaResult, apply_omop_schema
 from .staging import StagingLoadResult, load_pcornet_staging
@@ -11,6 +12,7 @@ from .vocabulary import VocabularyLoadResult, load_vocabulary
 __all__ = [
     "DatabaseStatus",
     "EtlConfig",
+    "PersonTransformResult",
     "PreflightResult",
     "SchemaResult",
     "StagingLoadResult",
@@ -21,5 +23,6 @@ __all__ = [
     "load_pcornet_staging",
     "load_vocabulary",
     "run_preflight",
+    "transform_person",
     "write_run_manifest",
 ]
