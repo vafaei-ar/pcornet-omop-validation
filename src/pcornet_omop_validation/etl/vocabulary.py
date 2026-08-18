@@ -69,13 +69,12 @@ def _count_rows_and_hash(path: Path) -> tuple[int, str]:
 
 
 def _bulk_insert_sql(schema: str, table: str, path: Path) -> str:
-    """Build a SQL Server BULK INSERT statement compatible with SQL Server on Linux.
+    """Build a Linux-compatible BULK INSERT for Athena tab-delimited files.
 
-    Athena vocabulary files are tab-delimited text files even though they use a .csv
-    suffix. SQL Server on Linux rejects CODEPAGE in this execution path, so encoding
-    is intentionally left to the server/column collation rather than requesting
-    CODEPAGE=65001. We reconcile row counts after every table and retain file hashes
-    for reproducibility.
+    Athena vocabulary downloads use a .csv suffix but are tab-delimited text files.
+    They are not RFC CSV files and concept names may legitimately contain quotation
+    marks, so FORMAT='CSV'/FIELDQUOTE must not be used. SQL Server on Linux rejects
+    CODEPAGE in this execution path, so the server handles character conversion.
     """
     safe_schema = _validate_identifier(schema, "schema")
     safe_table = _validate_identifier(table, "table")
@@ -84,9 +83,8 @@ def _bulk_insert_sql(schema: str, table: str, path: Path) -> str:
 BULK INSERT [{safe_schema}].[{safe_table}]
 FROM '{escaped_path}'
 WITH (
-    FORMAT = 'CSV',
     FIRSTROW = 2,
-    FIELDQUOTE = '"',
+    DATAFILETYPE = 'char',
     FIELDTERMINATOR = '0x09',
     ROWTERMINATOR = '0x0a',
     TABLOCK,
@@ -98,10 +96,10 @@ WITH (
 def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
     """Load local Athena vocabulary files into the isolated OMOP target.
 
-    The loader is deliberately non-destructive. Any non-empty target vocabulary
-    table causes a failure when fail_on_existing_target_rows=true. Each table is
-    committed independently after source/target row-count reconciliation so a
-    multi-gigabyte vocabulary load is not held in one transaction.
+    The loader is non-destructive and resumable. Each table is committed only after
+    source/target row-count reconciliation. On a later rerun, an already populated
+    table is skipped only when its target row count exactly matches the source file;
+    any other non-empty state fails rather than appending or replacing data.
     """
     vocab_dir = config.vocabulary_dir
     if not vocab_dir.is_dir():
@@ -110,7 +108,6 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
     sql_cfg = config.raw["sqlserver"]
     schema = _validate_identifier(str(sql_cfg.get("target_schema", "dbo")), "schema")
     database = str(sql_cfg["database"])
-    fail_existing = bool(config.raw["etl"].get("fail_on_existing_target_rows", True))
 
     available = [
         (filename, table)
@@ -131,22 +128,34 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                         f"Target table [{schema}].[{table}] does not exist. Run the schema stage first."
                     )
 
+                source_rows, sha256 = _count_rows_and_hash(path)
                 existing = int(
                     connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
                     .scalar_one()
                 )
+
                 if existing:
-                    if fail_existing:
-                        raise RuntimeError(
-                            f"Target vocabulary table [{schema}].[{table}] already contains {existing:,} rows; "
-                            "refusing to append."
+                    if existing == source_rows:
+                        result = VocabularyTableResult(
+                            file=str(path),
+                            table=f"{schema}.{table}",
+                            source_rows=source_rows,
+                            target_rows=existing,
+                            sha256=sha256,
+                            status="already_loaded_matched",
                         )
+                        results.append(result)
+                        print(
+                            f"Skipping {filename} -> {schema}.{table}: "
+                            f"already loaded with {existing:,} rows [matched]",
+                            flush=True,
+                        )
+                        continue
                     raise RuntimeError(
-                        f"Target vocabulary table [{schema}].[{table}] is non-empty. "
-                        "Automatic destructive replacement is not implemented."
+                        f"Target vocabulary table [{schema}].[{table}] already contains "
+                        f"{existing:,} rows but source has {source_rows:,}; refusing to append or replace."
                     )
 
-                source_rows, sha256 = _count_rows_and_hash(path)
                 print(
                     f"Loading {filename} -> {schema}.{table} ({source_rows:,} source rows)...",
                     flush=True,
@@ -167,7 +176,9 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                     connection.commit()
                 except Exception as exc:
                     connection.rollback()
-                    if isinstance(exc, RuntimeError) and str(exc).startswith("Vocabulary reconciliation failed"):
+                    if isinstance(exc, RuntimeError) and str(exc).startswith(
+                        "Vocabulary reconciliation failed"
+                    ):
                         raise
                     raise RuntimeError(
                         f"BULK INSERT failed for {path} -> [{schema}].[{table}]. "
@@ -199,7 +210,7 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                 "database": database,
                 "schema": schema,
                 "vocabulary_directory": str(vocab_dir),
-                "bulk_load_mode": "sql_server_linux_bulk_insert_no_codepage",
+                "bulk_load_mode": "sql_server_linux_tab_delimited_no_codepage",
                 "tables": [asdict(item) for item in results],
             },
             indent=2,
