@@ -1,9 +1,10 @@
 etl:
-  cdm_version: "5.4"
+  cdm_version: "5.4.2"
   backend: "sqlserver"
   reset_target: false
   fail_on_missing_required_table: true
   fail_on_existing_target_rows: true
+  interactive: true
 
 source:
   parquet_dir: "/usr/local/datasets/OMOP/PCORnet_parquet"
@@ -19,23 +20,55 @@ sqlserver:
   source_schema: "dbo"
   target_schema: "dbo"
 
+downloads:
+  # Public dependencies may be downloaded and checksum/version recorded automatically.
+  auto_download_public_assets: true
+  cache_dir: ".cache/pcornet-omop-etl"
+  common_data_model:
+    source: "OHDSI/CommonDataModel"
+    release: "v5.4.2"
+  data_quality_dashboard:
+    enabled: false
+    source: "OHDSI/DataQualityDashboard"
+
 vocabulary:
-  # Directory containing the Athena vocabulary files already downloaded by the user.
+  # Athena vocabulary packages are user-provided because vocabulary selection,
+  # authentication, and licensing may require user action. The ETL verifies them.
   directory: "/path/to/athena"
   require_files:
     - CONCEPT.csv
     - CONCEPT_RELATIONSHIP.csv
+    - CONCEPT_ANCESTOR.csv
     - VOCABULARY.csv
     - DOMAIN.csv
     - CONCEPT_CLASS.csv
     - RELATIONSHIP.csv
+  require_vocabularies:
+    - SNOMED
+    - ICD10CM
+    - ICD9CM
+    - RxNorm
+    - LOINC
+    - CPT4
+
+policies:
+  # "ask" means interactive runs prompt the user. Non-interactive runs fail until
+  # the decision is explicitly configured.
+  missing_required_date: "ask"
+  unmapped_standard_concept: "ask"
+  heterogeneous_observation_domain: "ask"
+  condition_sources: "ask"
 
 output:
   parquet_dir: "/usr/local/datasets/OMOP/OMOP_validated_parquet"
   audit_dir: "results/etl_audit"
+  decision_log: "results/etl_audit/decisions.yaml"
+  run_manifest: "results/etl_audit/run_manifest.yaml"
 
 stages:
   - preflight
+  - acquire_public_dependencies
+  - resolve_decisions
   - schema
   - vocabulary
   - staging
