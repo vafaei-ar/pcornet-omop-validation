@@ -8,6 +8,7 @@ from pathlib import Path
 from pcornet_omop_validation.etl import (
     apply_omop_schema,
     load_etl_config,
+    load_pcornet_staging,
     load_vocabulary,
     run_preflight,
     write_run_manifest,
@@ -67,6 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bulk-load and reconcile Athena vocabulary tables into the OMOP target",
     )
     vocabulary.add_argument("--config", required=True)
+
+    staging = subparsers.add_parser(
+        "staging",
+        help="Load PCORnet parquet files into audited SQL Server staging tables",
+    )
+    staging.add_argument("--config", required=True)
 
     return parser
 
@@ -179,6 +186,24 @@ def main(argv: list[str] | None = None) -> int:
         write_run_manifest(config, status="vocabulary_ready")
         print(f"Vocabulary load complete: {len(result.tables)} table(s)")
         print(f"Target: {result.database}.{result.schema}")
+        print(f"Audit: {result.audit_path}")
+        return 0
+
+    if args.command == "staging":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = load_pcornet_staging(config)
+        except Exception as exc:
+            print(f"ERROR: staging stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="staging_ready")
+        print(f"Staging load complete: {len(result.tables)} table(s)")
+        print(f"Target: {result.database}.{result.schema}")
+        if result.missing_optional:
+            print("Optional source tables absent: " + ", ".join(result.missing_optional))
         print(f"Audit: {result.audit_path}")
         return 0
 
