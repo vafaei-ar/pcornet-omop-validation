@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import EtlConfig
+from .database import check_connection
 
 
 REQUIRED_SOURCE_TABLES = {
@@ -80,6 +81,14 @@ def run_preflight(config: EtlConfig) -> PreflightResult:
     if not config.sql_password:
         env_name = config.raw["sqlserver"].get("password_env", "<unset>")
         errors.append(f"SQL Server password environment variable is not set: {env_name}")
+    else:
+        try:
+            status = check_connection(config, database="master")
+            warnings.append(
+                f"SQL Server connection verified: {status.server}; version {status.server_version}"
+            )
+        except Exception as exc:
+            errors.append(f"SQL Server connectivity/authentication check failed: {exc}")
 
     if config.raw["etl"].get("reset_target") and config.raw["etl"].get(
         "fail_on_existing_target_rows", True
