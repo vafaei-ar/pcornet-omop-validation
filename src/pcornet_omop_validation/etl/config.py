@@ -26,8 +26,16 @@ class EtlConfig:
         return Path(self.raw["output"]["parquet_dir"])
 
     @property
+    def audit_dir(self) -> Path:
+        return Path(self.raw["output"].get("audit_dir", "results/etl_audit"))
+
+    @property
     def stages(self) -> list[str]:
         return list(self.raw.get("stages", []))
+
+    @property
+    def interactive(self) -> bool:
+        return bool(self.raw.get("etl", {}).get("interactive", True))
 
     @property
     def sql_password(self) -> str | None:
@@ -48,7 +56,13 @@ def load_etl_config(path: str | Path) -> EtlConfig:
     if raw["etl"].get("backend") != "sqlserver":
         raise ValueError("ETL v1 currently supports backend='sqlserver' only")
 
-    if str(raw["etl"].get("cdm_version")) != "5.4":
-        raise ValueError("ETL v1 is pinned to OMOP CDM 5.4")
+    cdm_version = str(raw["etl"].get("cdm_version", ""))
+    if not cdm_version.startswith("5.4"):
+        raise ValueError("ETL v1 is pinned to the OMOP CDM 5.4 series")
 
     return EtlConfig(raw=raw, path=path)
+
+
+def save_etl_config(config: EtlConfig) -> None:
+    with config.path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config.raw, handle, sort_keys=False)
