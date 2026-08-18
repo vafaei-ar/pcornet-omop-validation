@@ -85,9 +85,15 @@ def ensure_database(config: EtlConfig) -> bool:
     SQL Server requires CREATE DATABASE outside a user transaction, so this uses
     AUTOCOMMIT explicitly.
     """
-    database = str(config.raw["sqlserver"]["database"])
+    sql = config.raw["sqlserver"]
+    database = str(sql["database"])
     if database_exists(config, database):
         return False
+
+    if not sql.get("create_database_if_missing", True):
+        raise RuntimeError(
+            f"Target database {database!r} does not exist and create_database_if_missing=false"
+        )
 
     if not re.fullmatch(r"[A-Za-z0-9_]+", database):
         raise ValueError("Database name may contain only letters, numbers, and underscores")
