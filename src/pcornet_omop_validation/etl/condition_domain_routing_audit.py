@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import text
 
-from .config import EtlConfig
+from .config import EtlConfig, load_etl_config
 from .database import make_engine, table_exists
 
 
@@ -250,3 +252,36 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
         ambiguous_rows=int(totals["ambiguous_rows"] or 0),
         audit_path=audit_path,
     )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="condition-domain-routing-audit",
+        description="Read-only audit of OMOP destination domains implied by condition source mappings.",
+    )
+    parser.add_argument("--config", required=True)
+    args = parser.parse_args(argv)
+
+    config = load_etl_config(args.config)
+    if not config.sql_password:
+        env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+        print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+        return 2
+
+    try:
+        result = audit_condition_domain_routing(config)
+    except Exception as exc:
+        print(f"ERROR: condition-domain-routing-audit failed: {exc}")
+        return 2
+
+    print(f"Condition-derived rows audited: {result.audited_rows:,}")
+    print(f"Proposed Condition-domain rows: {result.proposed_condition_rows:,}")
+    print(f"Proposed cross-domain rows: {result.cross_domain_rows:,}")
+    print(f"Unresolved rows: {result.unresolved_rows:,}")
+    print(f"Ambiguous multi-domain rows: {result.ambiguous_rows:,}")
+    print(f"Audit: {result.audit_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
