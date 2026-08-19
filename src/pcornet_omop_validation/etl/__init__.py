@@ -8,6 +8,7 @@ from .person import PersonTransformResult, transform_person
 from .preflight import PreflightResult, run_preflight
 from .schema import SchemaResult, apply_omop_schema
 from .staging import StagingLoadResult, load_pcornet_staging
+from .visit_occurrence import VisitOccurrenceTransformResult, transform_visit_occurrence
 from .vocabulary import VocabularyLoadResult, load_vocabulary
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "PreflightResult",
     "SchemaResult",
     "StagingLoadResult",
+    "VisitOccurrenceTransformResult",
     "VocabularyLoadResult",
     "apply_omop_schema",
     "check_connection",
@@ -27,5 +29,6 @@ __all__ = [
     "run_preflight",
     "transform_observation_period",
     "transform_person",
+    "transform_visit_occurrence",
     "write_run_manifest",
 ]
