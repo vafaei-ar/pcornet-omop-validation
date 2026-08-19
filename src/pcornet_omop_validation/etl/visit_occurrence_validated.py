@@ -76,6 +76,30 @@ def _validate_nonzero_visit_concepts(connection, schema: str) -> None:
         )
 
 
+def _safe_datetime_sql(date_column: str, time_column: str) -> str:
+    """Combine date/time without directly casting numeric staging values to time.
+
+    Some PCORnet parquet exports materialize time columns as floating-point values.
+    SQL Server rejects TRY_CAST(float AS time), so first convert the source value to
+    text and then attempt a time parse. If the value cannot be interpreted as a SQL
+    Server time literal, retain the valid source date at midnight rather than invent
+    a time-of-day representation.
+    """
+    time_text = f"NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(64), {time_column}))), '')"
+    parsed_time = f"TRY_CONVERT(time(7), {time_text})"
+    return f"""
+    CASE
+      WHEN {date_column} IS NULL THEN NULL
+      WHEN {parsed_time} IS NULL THEN CAST({date_column} AS datetime2(7))
+      ELSE DATEADD(
+        NANOSECOND,
+        DATEDIFF_BIG(NANOSECOND, CAST('00:00:00' AS time(7)), {parsed_time}),
+        CAST(CAST({date_column} AS date) AS datetime2(7))
+      )
+    END
+    """.strip()
+
+
 VisitOccurrenceTransformResult = _legacy.VisitOccurrenceTransformResult
 
 
@@ -85,6 +109,7 @@ def transform_visit_occurrence(config):
     _legacy.VISIT_CONCEPT_MAP = dict(VALIDATED_VISIT_CONCEPT_MAP)
     _legacy.VISIT_SOURCE_CONCEPT_MAP = dict(VALIDATED_VISIT_SOURCE_CONCEPT_MAP)
     _legacy._validate_visit_concepts = _validate_nonzero_visit_concepts
+    _legacy._datetime_sql = _safe_datetime_sql
 
     result = _legacy.transform_visit_occurrence(config)
 
@@ -98,6 +123,10 @@ def transform_visit_occurrence(config):
         )
         strategy["visit_source_concept"] = (
             "0 for PCORnet ENC_TYPE categories; raw ENC_TYPE is preserved in visit_source_value"
+        )
+        strategy["encounter_time_handling"] = (
+            "Time values are converted to text before TRY_CONVERT(time); values that cannot be parsed "
+            "fall back to the source date at midnight rather than causing an ETL failure or inventing a time"
         )
         strategy["historical_mapping_validation_failure"] = {
             "44814710": "absent from loaded vocabulary",
