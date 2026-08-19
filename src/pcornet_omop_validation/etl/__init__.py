@@ -1,5 +1,6 @@
 """Audited PCORnet-to-OMOP ETL orchestration."""
 
+from .condition_mapping_audit import ConditionMappingAuditResult, audit_condition_mapping
 from .condition_occurrence import ConditionOccurrenceTransformResult, transform_condition_occurrence
 from .config import EtlConfig, load_etl_config
 from .database import DatabaseStatus, check_connection
@@ -13,6 +14,7 @@ from .visit_occurrence_validated import VisitOccurrenceTransformResult, transfor
 from .vocabulary import VocabularyLoadResult, load_vocabulary
 
 __all__ = [
+    "ConditionMappingAuditResult",
     "ConditionOccurrenceTransformResult",
     "DatabaseStatus",
     "EtlConfig",
@@ -24,6 +26,7 @@ __all__ = [
     "VisitOccurrenceTransformResult",
     "VocabularyLoadResult",
     "apply_omop_schema",
+    "audit_condition_mapping",
     "check_connection",
     "load_etl_config",
     "load_pcornet_staging",
