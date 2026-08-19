@@ -267,10 +267,10 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
                     care_site_id,
                     visit_source_value,
                     visit_source_concept_id,
-                    admitting_source_concept_id,
-                    admitting_source_value,
-                    discharge_to_concept_id,
-                    discharge_to_source_value
+                    admitted_from_concept_id,
+                    admitted_from_source_value,
+                    discharged_to_concept_id,
+                    discharged_to_source_value
                 )
                 SELECT
                     visit_occurrence_id,
