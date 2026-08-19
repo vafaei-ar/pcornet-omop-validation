@@ -93,6 +93,96 @@ WITH (
 """.strip()
 
 
+def _load_concept_via_staging(connection, schema: str, path: Path) -> None:
+    """Bulk-load CONCEPT through a widened staging column.
+
+    SQL Server 2022 on Linux can reject an Athena concept_name whose physical input
+    length is exactly the OMOP varchar(255) boundary during BULK INSERT, even though
+    the same value is accepted by a normal INSERT into dbo.concept. To keep Athena
+    values unchanged, bulk-load into a schema-compatible transient table with only
+    concept_name widened, then INSERT into the official OMOP table.
+    """
+    safe_schema = _validate_identifier(schema, "schema")
+    stage = "etl_concept_vocabulary_stage"
+
+    connection.exec_driver_sql(
+        f"""
+IF OBJECT_ID('[{safe_schema}].[{stage}]', 'U') IS NOT NULL
+    DROP TABLE [{safe_schema}].[{stage}];
+
+SELECT TOP (0) *
+INTO [{safe_schema}].[{stage}]
+FROM [{safe_schema}].[concept];
+
+ALTER TABLE [{safe_schema}].[{stage}]
+ALTER COLUMN [concept_name] varchar(4000) NOT NULL;
+"""
+    )
+    connection.exec_driver_sql(_bulk_insert_sql(safe_schema, stage, path))
+
+    stage_rows = int(
+        connection.execute(
+            text(f"SELECT COUNT_BIG(*) FROM [{safe_schema}].[{stage}]")
+        ).scalar_one()
+    )
+
+    # Validate the one intentionally widened column before insertion into OMOP.
+    overlength = int(
+        connection.execute(
+            text(
+                f"SELECT COUNT_BIG(*) FROM [{safe_schema}].[{stage}] "
+                "WHERE LEN([concept_name]) > 255"
+            )
+        ).scalar_one()
+    )
+    if overlength:
+        raise RuntimeError(
+            f"CONCEPT staging contains {overlength:,} concept_name value(s) longer than 255 characters"
+        )
+
+    connection.exec_driver_sql(
+        f"""
+INSERT INTO [{safe_schema}].[concept] (
+    concept_id,
+    concept_name,
+    domain_id,
+    vocabulary_id,
+    concept_class_id,
+    standard_concept,
+    concept_code,
+    valid_start_date,
+    valid_end_date,
+    invalid_reason
+)
+SELECT
+    concept_id,
+    concept_name,
+    domain_id,
+    vocabulary_id,
+    concept_class_id,
+    standard_concept,
+    concept_code,
+    valid_start_date,
+    valid_end_date,
+    invalid_reason
+FROM [{safe_schema}].[{stage}];
+"""
+    )
+
+    target_rows = int(
+        connection.execute(
+            text(f"SELECT COUNT_BIG(*) FROM [{safe_schema}].[concept]")
+        ).scalar_one()
+    )
+    if target_rows != stage_rows:
+        raise RuntimeError(
+            "CONCEPT staging-to-target reconciliation failed: "
+            f"stage={stage_rows:,}, target={target_rows:,}"
+        )
+
+    connection.exec_driver_sql(f"DROP TABLE [{safe_schema}].[{stage}]")
+
+
 def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
     """Load local Athena vocabulary files into the isolated OMOP target.
 
@@ -161,7 +251,10 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                     flush=True,
                 )
                 try:
-                    connection.exec_driver_sql(_bulk_insert_sql(schema, table, path))
+                    if table == "concept":
+                        _load_concept_via_staging(connection, schema, path)
+                    else:
+                        connection.exec_driver_sql(_bulk_insert_sql(schema, table, path))
                     target_rows = int(
                         connection.execute(text(f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]"))
                         .scalar_one()
@@ -176,8 +269,9 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                     connection.commit()
                 except Exception as exc:
                     connection.rollback()
-                    if isinstance(exc, RuntimeError) and str(exc).startswith(
-                        "Vocabulary reconciliation failed"
+                    if isinstance(exc, RuntimeError) and (
+                        str(exc).startswith("Vocabulary reconciliation failed")
+                        or str(exc).startswith("CONCEPT staging")
                     ):
                         raise
                     raise RuntimeError(
@@ -210,7 +304,7 @@ def load_vocabulary(config: EtlConfig) -> VocabularyLoadResult:
                 "database": database,
                 "schema": schema,
                 "vocabulary_directory": str(vocab_dir),
-                "bulk_load_mode": "sql_server_linux_tab_delimited_no_codepage",
+                "bulk_load_mode": "sql_server_linux_tab_delimited_concept_staged",
                 "tables": [asdict(item) for item in results],
             },
             indent=2,
