@@ -71,7 +71,7 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
         AND NOT (
           b.source_concept_id <> 0
           AND b.source_invalid_reason IS NULL
-          AND b.source_standard_concept = 'S'
+          AND COALESCE(b.source_standard_concept, '') = 'S'
         )
     ),
     resolved AS (
@@ -106,7 +106,7 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
       WHERE b.condition_concept_id = 0
         AND b.source_concept_id <> 0
         AND b.source_invalid_reason IS NULL
-        AND b.source_standard_concept = 'S'
+        AND COALESCE(b.source_standard_concept, '') = 'S'
 
       UNION ALL
 
@@ -137,7 +137,7 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
         AND NOT (
           b.source_concept_id <> 0
           AND b.source_invalid_reason IS NULL
-          AND b.source_standard_concept = 'S'
+          AND COALESCE(b.source_standard_concept, '') = 'S'
         )
         AND NOT EXISTS (
           SELECT 1
