@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pcornet_omop_validation.etl import (
     apply_omop_schema,
+    audit_condition_mapping,
     load_etl_config,
     load_pcornet_staging,
     load_vocabulary,
@@ -102,6 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Transform PCORnet DIAGNOSIS and CONDITION into audited OMOP condition_occurrence records",
     )
     condition_occurrence.add_argument("--config", required=True)
+
+    condition_mapping_audit = subparsers.add_parser(
+        "condition-mapping-audit",
+        help="Decompose condition concept mapping outcomes without modifying OMOP records",
+    )
+    condition_mapping_audit.add_argument("--config", required=True)
 
     return parser
 
@@ -370,6 +377,24 @@ def main(argv: list[str] | None = None) -> int:
             f"CONDITION={result.condition_visit_linked:,}"
         )
         print(f"Condition lineage rows: {result.lineage_rows:,}")
+        print(f"Audit: {result.audit_path}")
+        return 0
+
+    if args.command == "condition-mapping-audit":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = audit_condition_mapping(config)
+        except Exception as exc:
+            print(f"ERROR: condition-mapping-audit stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="condition_mapping_audited")
+        print(f"Condition rows audited: {result.audited_rows:,}")
+        print(f"condition_concept_id 0: {result.zero_rows:,}")
+        print(f"  DIAGNOSIS: {result.diagnosis_zero_rows:,}")
+        print(f"  CONDITION: {result.condition_zero_rows:,}")
         print(f"Audit: {result.audit_path}")
         return 0
 
