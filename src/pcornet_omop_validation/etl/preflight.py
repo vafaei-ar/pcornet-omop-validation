@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +46,29 @@ def _missing_files(directory: Path, names: set[str]) -> list[str]:
     return sorted(name for name in names if not (directory / name).exists())
 
 
+def _athena_vocabulary_ids(vocabulary_csv: Path) -> set[str]:
+    """Read vocabulary IDs from Athena VOCABULARY.csv without loading large tables."""
+    if not vocabulary_csv.is_file():
+        return set()
+
+    with vocabulary_csv.open("r", encoding="utf-8-sig", newline="") as handle:
+        first_line = handle.readline()
+        handle.seek(0)
+        delimiter = "\t" if "\t" in first_line else ","
+        reader = csv.DictReader(handle, delimiter=delimiter)
+        if not reader.fieldnames:
+            return set()
+        normalized = {str(name).strip().upper(): name for name in reader.fieldnames}
+        id_field = normalized.get("VOCABULARY_ID")
+        if id_field is None:
+            return set()
+        return {
+            str(row.get(id_field, "")).strip()
+            for row in reader
+            if str(row.get(id_field, "")).strip()
+        }
+
+
 def run_preflight(config: EtlConfig) -> PreflightResult:
     errors: list[str] = []
     warnings: list[str] = []
@@ -73,10 +97,29 @@ def run_preflight(config: EtlConfig) -> PreflightResult:
     if not vocabulary_dir.is_dir():
         errors.append(f"Athena vocabulary directory does not exist: {vocabulary_dir}")
     else:
-        required_vocab = set(config.raw["vocabulary"].get("require_files", []))
-        missing_vocab = _missing_files(vocabulary_dir, required_vocab)
-        if missing_vocab:
-            errors.append("Missing Athena vocabulary files: " + ", ".join(missing_vocab))
+        required_files = set(config.raw["vocabulary"].get("require_files", []))
+        missing_files = _missing_files(vocabulary_dir, required_files)
+        if missing_files:
+            errors.append("Missing Athena vocabulary files: " + ", ".join(missing_files))
+
+        required_ids = {
+            str(value).strip()
+            for value in config.raw["vocabulary"].get("require_vocabularies", [])
+            if str(value).strip()
+        }
+        if required_ids and "VOCABULARY.csv" not in missing_files:
+            available_ids = _athena_vocabulary_ids(vocabulary_dir / "VOCABULARY.csv")
+            if not available_ids:
+                errors.append(
+                    "Could not read vocabulary IDs from Athena VOCABULARY.csv; "
+                    "required vocabulary validation cannot be completed."
+                )
+            else:
+                missing_ids = sorted(required_ids - available_ids)
+                if missing_ids:
+                    errors.append(
+                        "Missing required Athena vocabularies: " + ", ".join(missing_ids)
+                    )
 
     if not config.sql_password:
         env_name = config.raw["sqlserver"].get("password_env", "<unset>")
