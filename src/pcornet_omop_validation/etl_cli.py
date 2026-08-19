@@ -11,6 +11,7 @@ from pcornet_omop_validation.etl import (
     load_pcornet_staging,
     load_vocabulary,
     run_preflight,
+    transform_condition_occurrence,
     transform_observation_period,
     transform_person,
     transform_visit_occurrence,
@@ -95,6 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Transform PCORnet ENCOUNTER into audited OMOP visit_occurrence records",
     )
     visit_occurrence.add_argument("--config", required=True)
+
+    condition_occurrence = subparsers.add_parser(
+        "condition-occurrence",
+        help="Transform PCORnet DIAGNOSIS and CONDITION into audited OMOP condition_occurrence records",
+    )
+    condition_occurrence.add_argument("--config", required=True)
 
     return parser
 
@@ -314,6 +321,55 @@ def main(argv: list[str] | None = None) -> int:
         print(f"visit_concept_id 0: {result.visit_concept_zero:,}")
         print(f"visit_source_concept_id 0: {result.visit_source_concept_zero:,}")
         print(f"Visit lineage crosswalk rows: {result.crosswalk_rows:,}")
+        print(f"Audit: {result.audit_path}")
+        return 0
+
+    if args.command == "condition-occurrence":
+        if not config.sql_password:
+            env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
+            print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+            return 2
+        try:
+            result = transform_condition_occurrence(config)
+        except Exception as exc:
+            print(f"ERROR: condition-occurrence stage failed: {exc}")
+            return 2
+        write_run_manifest(config, status="condition_occurrence_ready")
+        print(f"DIAGNOSIS source rows: {result.diagnosis_source_rows:,}")
+        print(f"  eligible: {result.diagnosis_eligible_rows:,}")
+        print(f"  excluded: {result.diagnosis_excluded_rows:,}")
+        print(f"    missing DIAGNOSISID: {result.diagnosis_missing_id:,}")
+        print(f"    missing PATID: {result.diagnosis_missing_patid:,}")
+        print(f"    unlinked person: {result.diagnosis_unlinked_person:,}")
+        print(f"    missing DX_DATE: {result.diagnosis_missing_dx_date:,}")
+        print(f"CONDITION source rows: {result.condition_source_rows:,}")
+        print(f"  eligible: {result.condition_eligible_rows:,}")
+        print(f"  excluded: {result.condition_excluded_rows:,}")
+        print(f"    missing CONDITIONID: {result.condition_missing_id:,}")
+        print(f"    missing PATID: {result.condition_missing_patid:,}")
+        print(f"    unlinked person: {result.condition_unlinked_person:,}")
+        print(f"    missing onset/report date: {result.condition_missing_date:,}")
+        print(f"    invalid interval: {result.condition_invalid_interval:,}")
+        print(f"  REPORT_DATE fallback rows: {result.condition_report_date_fallback:,}")
+        print(f"Target condition_occurrence rows: {result.target_rows:,} [{result.status}]")
+        print(f"  from DIAGNOSIS: {result.diagnosis_target_rows:,}")
+        print(f"  from CONDITION: {result.condition_target_rows:,}")
+        print(
+            "condition_concept_id 0: "
+            f"DIAGNOSIS={result.diagnosis_concept_zero:,}, "
+            f"CONDITION={result.condition_concept_zero:,}"
+        )
+        print(
+            "condition_source_concept_id 0: "
+            f"DIAGNOSIS={result.diagnosis_source_concept_zero:,}, "
+            f"CONDITION={result.condition_source_concept_zero:,}"
+        )
+        print(
+            "visit_occurrence linked: "
+            f"DIAGNOSIS={result.diagnosis_visit_linked:,}, "
+            f"CONDITION={result.condition_visit_linked:,}"
+        )
+        print(f"Condition lineage rows: {result.lineage_rows:,}")
         print(f"Audit: {result.audit_path}")
         return 0
 
