@@ -56,9 +56,13 @@ vocabulary:
     - SNOMED
     - ICD10CM
     - ICD9CM
+    - ICD9Proc
+    - ICD10PCS
     - RxNorm
     - LOINC
     - CPT4
+    - HCPCS
+    - NDC
 
 policies:
   # "ask" means interactive runs prompt the user. Non-interactive runs fail until
