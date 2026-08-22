@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
                 co.condition_occurrence_id,
                 co.condition_source_concept_id
               FROM [{target_schema}].[condition_occurrence] co
-              JOIN [{source_schema}].[etl_condition_occurrence_xwalk] x
+              JOIN [{target_schema}].[etl_condition_occurrence_xwalk] x
                 ON x.condition_occurrence_id = co.condition_occurrence_id
               WHERE co.condition_concept_id = 0
                 AND co.condition_source_concept_id <> 0
