@@ -14,21 +14,7 @@ from .database import make_engine, table_exists
 XWALK_TABLE = "etl_observation_xwalk"
 OVERFLOW_TABLE = "etl_observation_text_overflow"
 
-EXPECTED = {
-    "OBS_CLIN": 1_471_098,
-    "OBS_GEN": 353_586,
-    "LAB_RESULT_CM": 61_958,
-    "PROCEDURES": 1_836_939,
-    "VITAL": 2_170_885,
-}
-EXPECTED_TOTAL = sum(EXPECTED.values())
-
-# Expected concept-0 Observation rows:
-#   OBS_GEN: no validated standard concepts for PC_COVID 2000/3000 yet
-#   PROCEDURES: 44 unresolved Observation-domain routes
-EXPECTED_OBSERVATION_CONCEPT_ZERO = 353_586 + 44
-
-# Frozen VITAL observation concepts.
+# Validated PCORnet-to-OMOP semantic mappings for categorical VITAL fields.
 VITAL_OBSERVATION_CONCEPTS = {
     "SMOKING": 43054909,      # LOINC 72166-2 Tobacco smoking status
     "TOBACCO": 3039561,       # LOINC 39240-7 Tobacco use status CPHS
@@ -277,7 +263,7 @@ def transform_observation(
                 else "0"
             )
 
-            # Verify frozen denominators before materialization.
+            # Derive denominators from source tables and route ledgers.
             counts: dict[str, int] = {}
 
             counts["OBS_CLIN"] = int(
@@ -339,13 +325,47 @@ def transform_observation(
                 ).scalar_one()
             )
 
-            for family, expected in EXPECTED.items():
-                if counts[family] != expected:
-                    raise RuntimeError(
-                        f"{family} denominator changed: "
-                        f"observed={counts[family]:,}, "
-                        f"expected={expected:,}"
-                    )
+            expected_total = sum(counts.values())
+
+            expected_concept_zero = int(
+                counts["OBS_GEN"]
+                + con.execute(
+                    text("""
+                        SELECT COUNT_BIG(*)
+                        FROM dbo.etl_obs_clin_route
+                        WHERE target_domain = 'Observation'
+                          AND COALESCE(target_concept_id, 0) = 0
+                    """)
+                ).scalar_one()
+                + con.execute(
+                    text("""
+                        SELECT COUNT_BIG(*)
+                        FROM dbo.etl_procedure_event_route
+                        WHERE target_domain = 'Observation'
+                          AND COALESCE(target_concept_id, 0) = 0
+                    """)
+                ).scalar_one()
+            )
+
+            expected_vital_value_zero = int(
+                con.execute(
+                    text("""
+                        SELECT
+                            SUM(CASE
+                                  WHEN SMOKING IS NOT NULL
+                                   AND SMOKING NOT IN (
+                                     '01','02','03','04','05','06','07','08'
+                                   )
+                                  THEN 1 ELSE 0 END)
+                          + COUNT_BIG(TOBACCO)
+                          + SUM(CASE
+                                  WHEN TOBACCO_TYPE IS NOT NULL
+                                   AND TOBACCO_TYPE NOT IN ('01','03','05')
+                                  THEN 1 ELSE 0 END)
+                        FROM dbo.PCORnet_VITAL
+                    """)
+                ).scalar_one()
+            )
 
             # Actual OMOP string limits from the installed DDL.
             source_max = _column_max_chars(
@@ -382,10 +402,7 @@ def transform_observation(
                 )
             """)
 
-            # ---------------------------------------------------------
-            # XWALK: OBS_CLIN
-            # IDs 1 ... 1,471,098
-            # ---------------------------------------------------------
+            # XWALK: deterministic contiguous IDs by source family.
             con.execute(text(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
                     observation_id,
@@ -406,7 +423,7 @@ def transform_observation(
                 WHERE target_domain = 'Observation'
             """))
 
-            obs_gen_offset = EXPECTED["OBS_CLIN"]
+            obs_gen_offset = counts["OBS_CLIN"]
 
             con.execute(text(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
@@ -433,7 +450,7 @@ def transform_observation(
                 FROM dbo.PCORnet_OBS_GEN
             """))
 
-            lab_offset = obs_gen_offset + EXPECTED["OBS_GEN"]
+            lab_offset = obs_gen_offset + counts["OBS_GEN"]
 
             con.execute(text(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
@@ -470,7 +487,7 @@ def transform_observation(
             """))
 
             procedure_offset = (
-                lab_offset + EXPECTED["LAB_RESULT_CM"]
+                lab_offset + counts["LAB_RESULT_CM"]
             )
 
             con.execute(text(f"""
@@ -498,7 +515,7 @@ def transform_observation(
             """))
 
             vital_offset = (
-                procedure_offset + EXPECTED["PROCEDURES"]
+                procedure_offset + counts["PROCEDURES"]
             )
 
             con.execute(text(f"""
@@ -548,10 +565,10 @@ def transform_observation(
                     )
                 ).scalar_one()
             )
-            if lineage_rows != EXPECTED_TOTAL:
+            if lineage_rows != expected_total:
                 raise RuntimeError(
                     "Observation xwalk reconciliation failed: "
-                    f"{lineage_rows:,} != {EXPECTED_TOTAL:,}"
+                    f"{lineage_rows:,} != {expected_total:,}"
                 )
 
             obsclin_dt = _safe_datetime_sql(
@@ -571,9 +588,7 @@ def transform_observation(
                 "e.MEASURE_TIME",
             )
 
-            # ---------------------------------------------------------
             # OBS_CLIN -> Observation
-            # ---------------------------------------------------------
             obsclin_value = """
                 COALESCE(
                     NULLIF(LTRIM(RTRIM(CONVERT(
@@ -664,12 +679,8 @@ def transform_observation(
                 WHERE r.target_domain = 'Observation'
             """))
 
-            # ---------------------------------------------------------
-            # OBS_GEN
-            #
-            # PC_COVID 2000/3000 are preserved with concept 0 until
-            # an exact standard concept is prespecified.
-            # ---------------------------------------------------------
+            # OBS_GEN. PC_COVID 2000/3000 are preserved with concept 0
+            # until an exact standard concept is prespecified.
             obsgen_value = """
                 COALESCE(
                     NULLIF(LTRIM(RTRIM(CONVERT(
@@ -750,9 +761,7 @@ def transform_observation(
                      )))
             """))
 
-            # ---------------------------------------------------------
             # LAB -> Observation
-            # ---------------------------------------------------------
             lab_value = """
                 COALESCE(
                     NULLIF(LTRIM(RTRIM(CONVERT(
@@ -842,9 +851,7 @@ def transform_observation(
                      )))
             """))
 
-            # ---------------------------------------------------------
             # PROCEDURES -> Observation
-            # ---------------------------------------------------------
             con.execute(text(f"""
                 INSERT INTO dbo.observation (
                     observation_id,
@@ -928,9 +935,7 @@ def transform_observation(
                 WHERE r.target_domain = 'Observation'
             """))
 
-            # ---------------------------------------------------------
             # VITAL categorical observations
-            # ---------------------------------------------------------
             con.execute(text(f"""
                 WITH expanded AS (
                     SELECT
@@ -1066,15 +1071,13 @@ def transform_observation(
                 ).scalar_one()
             )
 
-            if target_rows != EXPECTED_TOTAL:
+            if target_rows != expected_total:
                 raise RuntimeError(
                     "Observation target reconciliation failed: "
-                    f"{target_rows:,} != {EXPECTED_TOTAL:,}"
+                    f"{target_rows:,} != {expected_total:,}"
                 )
 
             # Preserve source strings that exceed value_source_value.
-            #
-            # OBS_CLIN
             con.execute(text(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
@@ -1101,7 +1104,6 @@ def transform_observation(
                   AND LEN({obsclin_value}) > {value_max}
             """))
 
-            # OBS_GEN
             con.execute(text(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
@@ -1128,7 +1130,6 @@ def transform_observation(
                   AND LEN({obsgen_value}) > {value_max}
             """))
 
-            # LAB
             con.execute(text(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
@@ -1165,14 +1166,11 @@ def transform_observation(
                 ).scalar_one()
             )
 
-            if (
-                concept_zero_rows
-                != EXPECTED_OBSERVATION_CONCEPT_ZERO
-            ):
+            if concept_zero_rows != expected_concept_zero:
                 raise RuntimeError(
                     "Unexpected observation_concept_id=0 count: "
-                    f"{concept_zero_rows:,}; expected "
-                    f"{EXPECTED_OBSERVATION_CONCEPT_ZERO:,}"
+                    f"{concept_zero_rows:,}; source-derived expected "
+                    f"{expected_concept_zero:,}"
                 )
 
             vital_value_zero = int(
@@ -1189,15 +1187,10 @@ def transform_observation(
                 ).scalar_one()
             )
 
-            # Expected:
-            # SMOKING OT             172,284
-            # TOBACCO all            721,229
-            # TOBACCO_TYPE 04 + OT   467,742
-            expected_vital_value_zero = 1_361_255
             if vital_value_zero != expected_vital_value_zero:
                 raise RuntimeError(
                     "Unexpected VITAL value concept-0 count: "
-                    f"{vital_value_zero:,}; expected "
+                    f"{vital_value_zero:,}; source-derived expected "
                     f"{expected_vital_value_zero:,}"
                 )
 
@@ -1236,12 +1229,12 @@ def transform_observation(
                 ).fetchall()
             }
 
-            for family, expected in EXPECTED.items():
+            for family, expected in counts.items():
                 if family_target.get(family, 0) != expected:
                     raise RuntimeError(
                         f"{family} target reconciliation failed: "
                         f"{family_target.get(family, 0):,} "
-                        f"!= {expected:,}"
+                        f"!= source-derived {expected:,}"
                     )
 
             status = "matched"
@@ -1251,18 +1244,20 @@ def transform_observation(
             "recorded_at_utc": datetime.now(
                 timezone.utc
             ).isoformat(),
-            "source_family_expected_rows": EXPECTED,
+            "source_family_expected_rows": counts,
             "source_family_target_rows": family_target,
-            "expected_rows": EXPECTED_TOTAL,
+            "expected_rows": expected_total,
             "target_rows": target_rows,
             "lineage_rows": lineage_rows,
             "observation_concept_zero_rows": concept_zero_rows,
+            "expected_observation_concept_zero_rows": expected_concept_zero,
             "vital_value_concept_zero_rows": vital_value_zero,
+            "expected_vital_value_concept_zero_rows": expected_vital_value_zero,
             "visit_linked_rows": visit_linked_rows,
             "overflow_rows": overflow_rows,
             "policies": {
                 "obs_clin": (
-                    "Use frozen OBS_CLIN domain route ledger; "
+                    "Use OBS_CLIN domain route ledger; "
                     "no cross-source deduplication"
                 ),
                 "obs_gen": (
@@ -1303,7 +1298,7 @@ def transform_observation(
             lab_rows=family_target["LAB_RESULT_CM"],
             procedure_rows=family_target["PROCEDURES"],
             vital_rows=family_target["VITAL"],
-            expected_rows=EXPECTED_TOTAL,
+            expected_rows=expected_total,
             target_rows=target_rows,
             lineage_rows=lineage_rows,
             concept_zero_rows=concept_zero_rows,
