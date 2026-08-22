@@ -13,6 +13,9 @@ from .config import EtlConfig, load_etl_config
 from .database import make_engine, table_exists
 
 
+XWALK_TABLE = "etl_condition_occurrence_xwalk"
+
+
 @dataclass(frozen=True)
 class ConditionDomainRoutingAuditResult:
     audited_rows: int
@@ -23,36 +26,39 @@ class ConditionDomainRoutingAuditResult:
     audit_path: Path
 
 
-def _require_tables(connection, source_schema: str, target_schema: str) -> None:
+def _require_tables(connection, target_schema: str) -> None:
     required = (
-        (source_schema, "etl_condition_occurrence_xwalk"),
-        (target_schema, "condition_occurrence"),
-        (target_schema, "concept"),
-        (target_schema, "concept_relationship"),
+        XWALK_TABLE,
+        "condition_occurrence",
+        "concept",
+        "concept_relationship",
     )
-    for schema, table in required:
-        if not table_exists(connection, schema, table):
-            raise RuntimeError(f"Required table [{schema}].[{table}] does not exist")
+    for table in required:
+        if not table_exists(connection, target_schema, table):
+            raise RuntimeError(
+                f"Required table [{target_schema}].[{table}] does not exist"
+            )
 
 
-def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingAuditResult:
+def audit_condition_domain_routing(
+    config: EtlConfig,
+) -> ConditionDomainRoutingAuditResult:
     """Quantify destination domains implied by current Athena mappings.
 
-    This is read-only. It does not reroute or delete any OMOP records. Existing
-    nonzero condition_concept_id rows are treated as Condition-domain events.
-    For zero rows, a current standard source concept is used directly; otherwise
-    active Maps to relationships are summarized. Only a unique target domain is
-    considered routable. Multi-domain mappings remain ambiguous for review.
+    This is read-only. Existing nonzero condition_concept_id rows are treated
+    as Condition-domain events. For zero rows, an active Standard source concept
+    is used directly; otherwise active Maps to targets are summarized. Only a
+    unique target domain is considered routable. Multi-domain mappings remain
+    ambiguous for review.
     """
     sql_cfg = config.raw["sqlserver"]
-    source_schema = str(sql_cfg.get("source_schema", "dbo"))
     target_schema = str(sql_cfg.get("target_schema", "dbo"))
     audit_path = config.audit_dir / "condition_domain_routing_audit.json"
 
     engine = make_engine(config)
     try:
         with engine.connect() as connection:
-            _require_tables(connection, source_schema, target_schema)
+            _require_tables(connection, target_schema)
 
             base_cte = f"""
             WITH routed AS (
@@ -71,31 +77,39 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                 rel.standard_target_domain_count,
                 rel.single_target_domain,
                 CASE
-                  WHEN co.condition_concept_id <> 0 THEN 'existing_condition_mapping'
-                  WHEN co.condition_source_concept_id = 0 THEN 'unresolved_source_concept'
-                  WHEN src.invalid_reason IS NULL AND src.standard_concept = 'S'
+                  WHEN co.condition_concept_id <> 0
+                    THEN 'existing_condition_mapping'
+                  WHEN co.condition_source_concept_id = 0
+                    THEN 'unresolved_source_concept'
+                  WHEN src.invalid_reason IS NULL
+                   AND src.standard_concept = 'S'
                     THEN 'direct_standard_source_concept'
-                  WHEN rel.standard_target_domain_count = 1 THEN 'unique_mapped_target_domain'
-                  WHEN rel.standard_target_domain_count > 1 THEN 'ambiguous_multiple_target_domains'
+                  WHEN rel.standard_target_domain_count = 1
+                    THEN 'unique_mapped_target_domain'
+                  WHEN rel.standard_target_domain_count > 1
+                    THEN 'ambiguous_multiple_target_domains'
                   ELSE 'no_active_standard_target'
                 END AS routing_status,
                 CASE
                   WHEN co.condition_concept_id <> 0 THEN 'Condition'
                   WHEN co.condition_source_concept_id = 0 THEN NULL
-                  WHEN src.invalid_reason IS NULL AND src.standard_concept = 'S'
+                  WHEN src.invalid_reason IS NULL
+                   AND src.standard_concept = 'S'
                     THEN src.domain_id
-                  WHEN rel.standard_target_domain_count = 1 THEN rel.single_target_domain
+                  WHEN rel.standard_target_domain_count = 1
+                    THEN rel.single_target_domain
                   ELSE NULL
                 END AS proposed_domain
               FROM [{target_schema}].[condition_occurrence] co
-              JOIN [{source_schema}].[etl_condition_occurrence_xwalk] x
+              JOIN [{target_schema}].[{XWALK_TABLE}] x
                 ON x.condition_occurrence_id = co.condition_occurrence_id
               LEFT JOIN [{target_schema}].[concept] src
                 ON src.concept_id = co.condition_source_concept_id
               OUTER APPLY (
                 SELECT
                   COUNT_BIG(*) AS standard_target_count,
-                  COUNT(DISTINCT tgt.domain_id) AS standard_target_domain_count,
+                  COUNT(DISTINCT tgt.domain_id)
+                    AS standard_target_domain_count,
                   MIN(tgt.domain_id) AS single_target_domain
                 FROM [{target_schema}].[concept_relationship] cr
                 JOIN [{target_schema}].[concept] tgt
@@ -114,12 +128,16 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                     base_cte
                     + """
                     SELECT source_domain,
-                           COALESCE(proposed_domain, '(unresolved)') AS proposed_domain,
+                           COALESCE(proposed_domain, '(unresolved)')
+                             AS proposed_domain,
                            routing_status,
                            COUNT_BIG(*) AS n
                     FROM routed
-                    GROUP BY source_domain, COALESCE(proposed_domain, '(unresolved)'), routing_status
-                    ORDER BY source_domain, n DESC, proposed_domain, routing_status
+                    GROUP BY source_domain,
+                             COALESCE(proposed_domain, '(unresolved)'),
+                             routing_status
+                    ORDER BY source_domain, n DESC,
+                             proposed_domain, routing_status
                     """
                 )
             ).fetchall()
@@ -129,9 +147,12 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                     base_cte
                     + """
                     SELECT source_domain,
-                           COALESCE(source_vocabulary_id, '(none)') AS source_vocabulary_id,
-                           COALESCE(source_code_type, '(none)') AS source_code_type,
-                           COALESCE(proposed_domain, '(unresolved)') AS proposed_domain,
+                           COALESCE(source_vocabulary_id, '(none)')
+                             AS source_vocabulary_id,
+                           COALESCE(source_code_type, '(none)')
+                             AS source_code_type,
+                           COALESCE(proposed_domain, '(unresolved)')
+                             AS proposed_domain,
                            routing_status,
                            COUNT_BIG(*) AS n
                     FROM routed
@@ -151,8 +172,10 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                     + """
                     SELECT TOP (200)
                            source_domain,
-                           COALESCE(source_vocabulary_id, '(none)') AS source_vocabulary_id,
-                           COALESCE(source_code_type, '(none)') AS source_code_type,
+                           COALESCE(source_vocabulary_id, '(none)')
+                             AS source_vocabulary_id,
+                           COALESCE(source_code_type, '(none)')
+                             AS source_code_type,
                            condition_source_value,
                            condition_source_concept_id,
                            source_concept_domain,
@@ -160,7 +183,8 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                            source_invalid_reason,
                            standard_target_count,
                            standard_target_domain_count,
-                           COALESCE(proposed_domain, '(unresolved)') AS proposed_domain,
+                           COALESCE(proposed_domain, '(unresolved)')
+                             AS proposed_domain,
                            routing_status,
                            COUNT_BIG(*) AS n
                     FROM routed
@@ -188,10 +212,20 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
                     + """
                     SELECT
                       COUNT_BIG(*) AS audited_rows,
-                      SUM(CASE WHEN proposed_domain = 'Condition' THEN 1 ELSE 0 END) AS proposed_condition_rows,
-                      SUM(CASE WHEN proposed_domain IS NOT NULL AND proposed_domain <> 'Condition' THEN 1 ELSE 0 END) AS cross_domain_rows,
-                      SUM(CASE WHEN proposed_domain IS NULL THEN 1 ELSE 0 END) AS unresolved_rows,
-                      SUM(CASE WHEN routing_status = 'ambiguous_multiple_target_domains' THEN 1 ELSE 0 END) AS ambiguous_rows
+                      SUM(CASE WHEN proposed_domain = 'Condition'
+                               THEN 1 ELSE 0 END)
+                        AS proposed_condition_rows,
+                      SUM(CASE WHEN proposed_domain IS NOT NULL
+                                    AND proposed_domain <> 'Condition'
+                               THEN 1 ELSE 0 END)
+                        AS cross_domain_rows,
+                      SUM(CASE WHEN proposed_domain IS NULL
+                               THEN 1 ELSE 0 END)
+                        AS unresolved_rows,
+                      SUM(CASE WHEN routing_status =
+                                    'ambiguous_multiple_target_domains'
+                               THEN 1 ELSE 0 END)
+                        AS ambiguous_rows
                     FROM routed
                     """
                 )
@@ -224,25 +258,34 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "stage": "condition_domain_routing_audit",
         "read_only": True,
+        "lineage_table": f"{target_schema}.{XWALK_TABLE}",
         "routing_rule": {
             "existing_nonzero_condition_concept": "Condition",
             "current_standard_source_concept": "use source concept domain",
-            "nonstandard_source_with_one_standard_target_domain": "use that target domain",
-            "multiple_standard_target_domains": "ambiguous; do not guess",
-            "no_source_or_no_standard_target": "unresolved; preserve source and review",
+            "nonstandard_source_with_one_standard_target_domain": (
+                "use that target domain"
+            ),
+            "multiple_standard_target_domains": (
+                "ambiguous; do not guess"
+            ),
+            "no_source_or_no_standard_target": (
+                "unresolved; preserve source and review"
+            ),
         },
         "totals": {key: int(value or 0) for key, value in totals.items()},
         "by_source_and_proposed_domain": by_domain,
         "stratified_by_source_vocabulary_code_type_and_domain": stratified,
         "top_200_zero_concept_codes": [dict(row) for row in top_codes],
         "interpretation_note": (
-            "This audit quantifies the domain-routing implications of current Athena semantics. "
-            "It does not modify condition_occurrence. Results should be reviewed before implementing "
-            "cross-domain writes so native PCORnet source domains can later be reconciled without duplication."
+            "This audit quantifies the domain-routing implications of current "
+            "Athena semantics. It does not modify condition_occurrence."
         ),
     }
     audit_path.parent.mkdir(parents=True, exist_ok=True)
-    audit_path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    audit_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
 
     return ConditionDomainRoutingAuditResult(
         audited_rows=int(totals["audited_rows"] or 0),
@@ -257,15 +300,23 @@ def audit_condition_domain_routing(config: EtlConfig) -> ConditionDomainRoutingA
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="condition-domain-routing-audit",
-        description="Read-only audit of OMOP destination domains implied by condition source mappings.",
+        description=(
+            "Read-only audit of OMOP destination domains implied by "
+            "condition source mappings."
+        ),
     )
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
 
     config = load_etl_config(args.config)
     if not config.sql_password:
-        env_name = config.raw["sqlserver"].get("password_env", "OMOP_SQL_PASSWORD")
-        print(f"ERROR: SQL Server password environment variable is not set: {env_name}")
+        env_name = config.raw["sqlserver"].get(
+            "password_env", "OMOP_SQL_PASSWORD"
+        )
+        print(
+            "ERROR: SQL Server password environment variable is not set: "
+            f"{env_name}"
+        )
         return 2
 
     try:
