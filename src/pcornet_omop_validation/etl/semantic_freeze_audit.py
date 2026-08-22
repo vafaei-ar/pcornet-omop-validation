@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import text
@@ -31,6 +32,13 @@ TYPE_CONCEPT_COLUMNS = {
 }
 
 
+def _schema(value: object, label: str) -> str:
+    schema = str(value or "dbo")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema) is None:
+        raise ValueError(f"Unsafe SQL Server {label}: {schema!r}")
+    return schema
+
+
 def _scalar(connection, sql: str, params: dict[str, object] | None = None) -> int:
     return int(connection.execute(text(sql), params or {}).scalar_one())
 
@@ -41,7 +49,7 @@ def _rows(connection, sql: str, params: dict[str, object] | None = None):
 
 def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
     sql_cfg = config.raw["sqlserver"]
-    target_schema = str(sql_cfg.get("target_schema", "dbo"))
+    target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
     audit_path = config.audit_dir / "semantic_freeze_audit.json"
 
     engine = make_engine(config)
@@ -65,10 +73,8 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"""
                     SELECT COUNT_BIG(*)
                     FROM [{target_schema}].[{table}] t
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = t.{column}
-                    WHERE t.{column} <> 0
-                      AND c.concept_id IS NULL
+                    LEFT JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
+                    WHERE t.{column} <> 0 AND c.concept_id IS NULL
                     """,
                 )
                 invalid = _scalar(
@@ -76,10 +82,8 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"""
                     SELECT COUNT_BIG(*)
                     FROM [{target_schema}].[{table}] t
-                    JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = t.{column}
-                    WHERE t.{column} <> 0
-                      AND c.invalid_reason IS NOT NULL
+                    JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
+                    WHERE t.{column} <> 0 AND c.invalid_reason IS NOT NULL
                     """,
                 )
                 nonstandard = _scalar(
@@ -87,10 +91,8 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"""
                     SELECT COUNT_BIG(*)
                     FROM [{target_schema}].[{table}] t
-                    JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = t.{column}
-                    WHERE t.{column} <> 0
-                      AND COALESCE(c.standard_concept, '') <> 'S'
+                    JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
+                    WHERE t.{column} <> 0 AND COALESCE(c.standard_concept, '') <> 'S'
                     """,
                 )
                 wrong_domain = _scalar(
@@ -98,10 +100,8 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"""
                     SELECT COUNT_BIG(*)
                     FROM [{target_schema}].[{table}] t
-                    JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = t.{column}
-                    WHERE t.{column} <> 0
-                      AND c.domain_id <> :expected_domain
+                    JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
+                    WHERE t.{column} <> 0 AND c.domain_id <> :expected_domain
                     """,
                     {"expected_domain": expected_domain},
                 )
@@ -128,8 +128,7 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"""
                     SELECT COUNT_BIG(*)
                     FROM [{target_schema}].[{table}] t
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = t.{column}
+                    LEFT JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
                     WHERE COALESCE(t.{column}, 0) <> 0
                       AND (
                            c.concept_id IS NULL
@@ -152,8 +151,7 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                             c.concept_name,
                             COUNT_BIG(*) AS n
                         FROM [{target_schema}].[{table}] t
-                        LEFT JOIN [{target_schema}].[concept] c
-                          ON c.concept_id = t.{column}
+                        LEFT JOIN [{target_schema}].[concept] c ON c.concept_id = t.{column}
                         GROUP BY COALESCE(t.{column}, 0), c.concept_name
                         ORDER BY n DESC, concept_id
                         """,
@@ -167,71 +165,37 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     "distribution": distribution,
                 }
 
-            measurement_unit_profile = [
-                {
-                    "unit_source_value": row[0],
-                    "unit_concept_id": int(row[1]) if row[1] is not None else 0,
-                    "unit_concept_name": row[2],
-                    "n": int(row[3]),
-                }
-                for row in _rows(
-                    connection,
-                    f"""
-                    SELECT TOP (100)
-                        m.unit_source_value,
-                        COALESCE(m.unit_concept_id, 0) AS unit_concept_id,
-                        c.concept_name,
-                        COUNT_BIG(*) AS n
-                    FROM [{target_schema}].[measurement] m
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = m.unit_concept_id
-                    GROUP BY
-                        m.unit_source_value,
-                        COALESCE(m.unit_concept_id, 0),
-                        c.concept_name
-                    ORDER BY n DESC, m.unit_source_value
-                    """,
-                )
-            ]
-
-            measurement_bad_unit_domain = _scalar(
+            measurement_bad_unit_semantics = _scalar(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
                 FROM [{target_schema}].[measurement] m
-                JOIN [{target_schema}].[concept] c
-                  ON c.concept_id = m.unit_concept_id
+                LEFT JOIN [{target_schema}].[concept] c ON c.concept_id = m.unit_concept_id
                 WHERE COALESCE(m.unit_concept_id, 0) <> 0
-                  AND c.domain_id <> 'Unit'
+                  AND (
+                       c.concept_id IS NULL
+                    OR c.domain_id <> 'Unit'
+                    OR c.standard_concept <> 'S'
+                    OR c.invalid_reason IS NOT NULL
+                  )
                 """,
             )
 
-            drug_route_profile = [
-                {
-                    "route_source_value": row[0],
-                    "route_concept_id": int(row[1]) if row[1] is not None else 0,
-                    "route_concept_name": row[2],
-                    "n": int(row[3]),
-                }
-                for row in _rows(
-                    connection,
-                    f"""
-                    SELECT TOP (100)
-                        d.route_source_value,
-                        COALESCE(d.route_concept_id, 0) AS route_concept_id,
-                        c.concept_name,
-                        COUNT_BIG(*) AS n
-                    FROM [{target_schema}].[drug_exposure] d
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = d.route_concept_id
-                    GROUP BY
-                        d.route_source_value,
-                        COALESCE(d.route_concept_id, 0),
-                        c.concept_name
-                    ORDER BY n DESC, d.route_source_value
-                    """,
-                )
-            ]
+            drug_bad_route_semantics = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[drug_exposure] d
+                LEFT JOIN [{target_schema}].[concept] c ON c.concept_id = d.route_concept_id
+                WHERE COALESCE(d.route_concept_id, 0) <> 0
+                  AND (
+                       c.concept_id IS NULL
+                    OR c.domain_id <> 'Route'
+                    OR c.standard_concept <> 'S'
+                    OR c.invalid_reason IS NOT NULL
+                  )
+                """,
+            )
 
             drug_nonnull_route_source_zero = _scalar(
                 connection,
@@ -243,48 +207,13 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                 """,
             )
 
-            observation_value_profile = [
-                {
-                    "observation_concept_id": int(row[0]),
-                    "observation_name": row[1],
-                    "value_as_string": row[2],
-                    "value_as_concept_id": int(row[3]) if row[3] is not None else 0,
-                    "value_concept_name": row[4],
-                    "n": int(row[5]),
-                }
-                for row in _rows(
-                    connection,
-                    f"""
-                    SELECT TOP (100)
-                        o.observation_concept_id,
-                        oc.concept_name,
-                        o.value_as_string,
-                        COALESCE(o.value_as_concept_id, 0),
-                        vc.concept_name,
-                        COUNT_BIG(*) AS n
-                    FROM [{target_schema}].[observation] o
-                    LEFT JOIN [{target_schema}].[concept] oc
-                      ON oc.concept_id = o.observation_concept_id
-                    LEFT JOIN [{target_schema}].[concept] vc
-                      ON vc.concept_id = o.value_as_concept_id
-                    WHERE NULLIF(LTRIM(RTRIM(o.value_as_string)), '') IS NOT NULL
-                    GROUP BY
-                        o.observation_concept_id,
-                        oc.concept_name,
-                        o.value_as_string,
-                        COALESCE(o.value_as_concept_id, 0),
-                        vc.concept_name
-                    ORDER BY n DESC
-                    """,
-                )
-            ]
-
             death_type_zero = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[death] WHERE COALESCE(death_type_concept_id, 0) = 0",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[death] "
+                "WHERE COALESCE(death_type_concept_id, 0) = 0",
             )
 
-            blockers = []
+            blockers: list[str] = []
             for table, checks in primary_concept_checks.items():
                 for key in (
                     "missing_concept_rows",
@@ -292,14 +221,23 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     "nonstandard_concept_rows",
                     "wrong_domain_rows",
                 ):
-                    if checks[key] != 0:
+                    if checks[key]:
                         blockers.append(f"{table}.{key}={checks[key]}")
-            if measurement_bad_unit_domain:
+            for table, checks in type_concept_checks.items():
+                if checks["invalid_nonzero_rows"]:
+                    blockers.append(
+                        f"{table}.invalid_nonzero_type_rows={checks['invalid_nonzero_rows']}"
+                    )
+            if measurement_bad_unit_semantics:
                 blockers.append(
-                    f"measurement.bad_unit_domain_rows={measurement_bad_unit_domain}"
+                    f"measurement.bad_unit_semantics_rows={measurement_bad_unit_semantics}"
+                )
+            if drug_bad_route_semantics:
+                blockers.append(
+                    f"drug_exposure.bad_route_semantics_rows={drug_bad_route_semantics}"
                 )
 
-            review_flags = []
+            review_flags: list[str] = []
             for table, checks in type_concept_checks.items():
                 if checks["concept_zero_rows"]:
                     review_flags.append(
@@ -314,19 +252,24 @@ def audit_semantic_freeze(config: EtlConfig) -> dict[str, object]:
                     f"death has {death_type_zero:,} rows with death_type_concept_id 0 by explicit provenance policy"
                 )
 
+        if blockers:
+            status = "blocked"
+        elif review_flags:
+            status = "review_required"
+        else:
+            status = "matched"
+
         payload = {
             "stage": "semantic_freeze_audit",
             "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
             "primary_concept_checks": primary_concept_checks,
             "type_concept_checks": type_concept_checks,
-            "measurement_bad_unit_domain_rows": measurement_bad_unit_domain,
-            "measurement_unit_profile_top100": measurement_unit_profile,
+            "measurement_bad_unit_semantics_rows": measurement_bad_unit_semantics,
+            "drug_bad_route_semantics_rows": drug_bad_route_semantics,
             "drug_nonblank_route_source_concept_zero_rows": drug_nonnull_route_source_zero,
-            "drug_route_profile_top100": drug_route_profile,
-            "observation_value_profile_top100": observation_value_profile,
             "hard_blockers": blockers,
             "review_flags": review_flags,
-            "status": "blocked" if blockers else "review_required",
+            "status": status,
         }
 
         audit_path.parent.mkdir(parents=True, exist_ok=True)
