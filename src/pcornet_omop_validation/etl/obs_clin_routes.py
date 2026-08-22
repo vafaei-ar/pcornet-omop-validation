@@ -11,13 +11,6 @@ from .database import make_engine, table_exists
 
 ROUTE_TABLE = "etl_obs_clin_route"
 
-LOCAL_OVERRIDES = {
-    "FEV1-FVC-PRE": ("Measurement", 4233038),
-    "FEV1-FVC-PRE-PRED": ("Measurement", 3024594),
-    "FEV1-FVC-POST-PRED": ("Measurement", 0),
-    "DLCO-POST-PRED": ("Measurement", 0),
-}
-
 
 def materialize_obs_clin_routes(
     config_path: str,
@@ -56,38 +49,6 @@ def materialize_obs_clin_routes(
                 )
                 con.commit()
 
-            # Validate explicit local standard targets.
-            expected = {
-                4233038: ("Measurement", "SNOMED", "407602006"),
-                3024594: ("Measurement", "LOINC", "19925-7"),
-            }
-            rows = con.execute(
-                text(
-                    f"""
-                    SELECT concept_id, domain_id, vocabulary_id,
-                           concept_code, standard_concept, invalid_reason
-                    FROM [{target_schema}].[concept]
-                    WHERE concept_id IN (4233038, 3024594)
-                    """
-                )
-            ).fetchall()
-
-            observed = {int(r[0]): r for r in rows}
-            for cid, (domain, vocab, code) in expected.items():
-                r = observed.get(cid)
-                if (
-                    r is None
-                    or r[1] != domain
-                    or r[2] != vocab
-                    or r[3] != code
-                    or r[4] != "S"
-                    or r[5] is not None
-                ):
-                    raise RuntimeError(
-                        f"Validated local target {cid} no longer "
-                        "matches expected vocabulary semantics"
-                    )
-
             con.exec_driver_sql(
                 f"""
                 CREATE TABLE [{source_schema}].[{ROUTE_TABLE}] (
@@ -113,8 +74,12 @@ def materialize_obs_clin_routes(
             )
             con.commit()
 
-            # LC=LOINC, SM=SNOMED. OT codes use the prespecified local
-            # pulmonary-function overrides.
+            # General rule only:
+            #   LC = LOINC and SM = SNOMED, resolved through the loaded OMOP
+            #   vocabulary and active Maps to relationships. OT has no declared
+            #   standard vocabulary in PCORnet, so it is retained as an
+            #   unresolved Observation rather than interpreted using local
+            #   code knowledge.
             con.exec_driver_sql(
                 f"""
                 WITH native AS (
@@ -194,18 +159,6 @@ def materialize_obs_clin_routes(
                     SELECT
                         sc.*,
                         CASE
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'FEV1-FVC-PRE'
-                                THEN 'Measurement'
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'FEV1-FVC-PRE-PRED'
-                                THEN 'Measurement'
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'FEV1-FVC-POST-PRED'
-                                THEN 'Measurement'
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'DLCO-POST-PRED'
-                                THEN 'Measurement'
                             WHEN sc.invalid_reason IS NULL
                              AND sc.standard_concept = 'S'
                                 THEN sc.source_domain
@@ -216,18 +169,6 @@ def materialize_obs_clin_routes(
                             )
                         END AS target_domain,
                         CASE
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'FEV1-FVC-PRE'
-                                THEN 4233038
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code = 'FEV1-FVC-PRE-PRED'
-                                THEN 3024594
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code IN (
-                                'FEV1-FVC-POST-PRED',
-                                'DLCO-POST-PRED'
-                             )
-                                THEN 0
                             WHEN sc.invalid_reason IS NULL
                              AND sc.standard_concept = 'S'
                                 THEN sc.source_concept_id
@@ -236,18 +177,6 @@ def materialize_obs_clin_routes(
                             ELSE 0
                         END AS target_concept_id,
                         CASE
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code IN (
-                                'FEV1-FVC-PRE',
-                                'FEV1-FVC-PRE-PRED'
-                             )
-                                THEN 'validated_local_override'
-                            WHEN sc.obsclin_type = 'OT'
-                             AND sc.obsclin_code IN (
-                                'FEV1-FVC-POST-PRED',
-                                'DLCO-POST-PRED'
-                             )
-                                THEN 'local_measurement_unresolved'
                             WHEN sc.invalid_reason IS NULL
                              AND sc.standard_concept = 'S'
                                 THEN 'direct_standard'
@@ -391,13 +320,12 @@ def materialize_obs_clin_routes(
         "route_rows": route_rows,
         "domain_summary": domain_summary,
         "route_summary": summary,
-        "local_overrides": {
-            k: {
-                "target_domain": v[0],
-                "target_concept_id": v[1],
-            }
-            for k, v in LOCAL_OVERRIDES.items()
-        },
+        "policy": (
+            "Route LC/SM only through declared vocabularies and active OMOP "
+            "standard mappings. Retain OT as unresolved Observation when no "
+            "standard vocabulary semantics are declared; do not apply "
+            "site-specific code overrides."
+        ),
     }
 
     audit_path.parent.mkdir(parents=True, exist_ok=True)
