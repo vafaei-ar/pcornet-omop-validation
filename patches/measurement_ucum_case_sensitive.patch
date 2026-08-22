@@ -1,7 +1,7 @@
 diff --git a/src/pcornet_omop_validation/etl/measurement.py b/src/pcornet_omop_validation/etl/measurement.py
 --- a/src/pcornet_omop_validation/etl/measurement.py
 +++ b/src/pcornet_omop_validation/etl/measurement.py
-@@
+@@ -396,18 +396,21 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
 -                # LAB unit mapping deliberately avoids arbitrary selection
 -                # when a UCUM code has multiple active standard concepts.
 +                # UCUM codes are case-sensitive. Force binary collation so a
@@ -22,7 +22,7 @@ diff --git a/src/pcornet_omop_validation/etl/measurement.py b/src/pcornet_omop_v
                      ) AS candidate_count
                    FROM [{target_schema}].[concept] c
                    WHERE c.vocabulary_id = 'UCUM'
-@@
+@@ -418,12 +421,8 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
                      concept_code,
                      MAX(
                        CASE
@@ -36,14 +36,18 @@ diff --git a/src/pcornet_omop_validation/etl/measurement.py b/src/pcornet_omop_v
                          ELSE NULL
                        END
                      ) AS unit_concept_id
-@@
+@@ -492,7 +491,7 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
                      LEFT JOIN unit_map um
                        ON um.concept_code =
                           LTRIM(RTRIM(CONVERT(
                             nvarchar(50), l.RESULT_UNIT
 -                         )))
 +                         ))) COLLATE Latin1_General_100_BIN2
-@@
+                     WHERE lm.measurement_concept_id IS NOT NULL
+                     """
+                 )
+@@ -704,9 +703,9 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
+         ),
          "lab_units": (
 -            "Exact active standard UCUM mapping when unambiguous; "
 -            "s resolves to second and h resolves to hour; otherwise "
@@ -52,3 +56,5 @@ diff --git a/src/pcornet_omop_validation/etl/measurement.py b/src/pcornet_omop_v
 +            "there is exactly one matching Unit concept; otherwise "
 +            "unit_concept_id=0 with unit_source_value preserved."
          ),
+         "weight_unit": (
+             "[lb_av] preserved as unit_source_value with "
