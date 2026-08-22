@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import text
@@ -9,35 +10,36 @@ from .config import EtlConfig
 from .database import make_engine, table_exists
 
 
-EXPECTED_TARGET_ROWS = {
-    "person": 27_089,
-    "observation_period": 27_087,
-    "visit_occurrence": 1_510_957,
-    "condition_occurrence": 8_715_298,
-    "procedure_occurrence": 3_996_294,
-    "measurement": 85_558_691,
-    "observation": 5_894_466,
-    "drug_exposure": 48_457_880,
-    "device_exposure": 196_230,
-    "specimen": 47,
-    "death": 6_955,
+TARGET_TABLES = (
+    "person",
+    "observation_period",
+    "visit_occurrence",
+    "condition_occurrence",
+    "procedure_occurrence",
+    "measurement",
+    "observation",
+    "drug_exposure",
+    "device_exposure",
+    "specimen",
+    "death",
+)
+
+LINEAGE_TO_TARGET = {
+    "etl_condition_occurrence_xwalk": "condition_occurrence",
+    "etl_procedure_occurrence_xwalk": "procedure_occurrence",
+    "etl_measurement_xwalk": "measurement",
+    "etl_observation_xwalk": "observation",
+    "etl_drug_exposure_xwalk": "drug_exposure",
+    "etl_device_exposure_xwalk": "device_exposure",
+    "etl_specimen_xwalk": "specimen",
+    "etl_death_xwalk": "death",
 }
 
-EXPECTED_LINEAGE_ROWS = {
-    "etl_condition_occurrence_xwalk": 8_715_298,
-    "etl_procedure_occurrence_xwalk": 3_996_294,
-    "etl_drug_exposure_xwalk": 48_457_880,
-    "etl_device_exposure_xwalk": 196_230,
-    "etl_specimen_xwalk": 47,
-    "etl_death_xwalk": 6_955,
-}
-
-EXPECTED_ROUTE_ROWS = {
-    "etl_procedure_event_route": 11_234_863,
-    "etl_obs_clin_route": 38_850_928,
-    "etl_drug_event_route": 48_457_880,
-}
-
+ROUTE_TABLES = (
+    "etl_procedure_event_route",
+    "etl_obs_clin_route",
+    "etl_drug_event_route",
+)
 
 CORE_REQUIRED_DATES = {
     "observation_period": ("observation_period_start_date", "observation_period_end_date"),
@@ -52,7 +54,6 @@ CORE_REQUIRED_DATES = {
     "death": ("death_date",),
 }
 
-
 INTERVAL_CHECKS = {
     "observation_period": ("observation_period_start_date", "observation_period_end_date"),
     "visit_occurrence": ("visit_start_date", "visit_end_date"),
@@ -61,23 +62,15 @@ INTERVAL_CHECKS = {
     "device_exposure": ("device_exposure_start_date", "device_exposure_end_date"),
 }
 
-
 CONCEPT_COLUMNS = {
-    "person": (
-        "gender_concept_id",
-        "race_concept_id",
-        "ethnicity_concept_id",
-    ),
+    "person": ("gender_concept_id", "race_concept_id", "ethnicity_concept_id"),
     "visit_occurrence": ("visit_concept_id", "visit_type_concept_id"),
     "condition_occurrence": (
         "condition_concept_id",
         "condition_type_concept_id",
         "condition_status_concept_id",
     ),
-    "procedure_occurrence": (
-        "procedure_concept_id",
-        "procedure_type_concept_id",
-    ),
+    "procedure_occurrence": ("procedure_concept_id", "procedure_type_concept_id"),
     "measurement": (
         "measurement_concept_id",
         "measurement_type_concept_id",
@@ -92,16 +85,8 @@ CONCEPT_COLUMNS = {
         "qualifier_concept_id",
         "unit_concept_id",
     ),
-    "drug_exposure": (
-        "drug_concept_id",
-        "drug_type_concept_id",
-        "route_concept_id",
-    ),
-    "device_exposure": (
-        "device_concept_id",
-        "device_type_concept_id",
-        "unit_concept_id",
-    ),
+    "drug_exposure": ("drug_concept_id", "drug_type_concept_id", "route_concept_id"),
+    "device_exposure": ("device_concept_id", "device_type_concept_id", "unit_concept_id"),
     "specimen": (
         "specimen_concept_id",
         "specimen_type_concept_id",
@@ -112,67 +97,102 @@ CONCEPT_COLUMNS = {
     "death": ("death_type_concept_id", "cause_concept_id"),
 }
 
+PRIMARY_KEYS = {
+    "person": "person_id",
+    "observation_period": "observation_period_id",
+    "visit_occurrence": "visit_occurrence_id",
+    "condition_occurrence": "condition_occurrence_id",
+    "procedure_occurrence": "procedure_occurrence_id",
+    "measurement": "measurement_id",
+    "observation": "observation_id",
+    "drug_exposure": "drug_exposure_id",
+    "device_exposure": "device_exposure_id",
+    "specimen": "specimen_id",
+}
+
+VISIT_LINKED_TABLES = (
+    "condition_occurrence",
+    "procedure_occurrence",
+    "measurement",
+    "observation",
+    "drug_exposure",
+    "device_exposure",
+)
+
+
+def _schema(value: object, label: str) -> str:
+    schema = str(value or "dbo")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema) is None:
+        raise ValueError(f"Unsafe SQL Server {label}: {schema!r}")
+    return schema
+
 
 def _scalar(connection, sql: str, params: dict[str, object] | None = None) -> int:
     return int(connection.execute(text(sql), params or {}).scalar_one())
 
 
 def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
+    """Reconcile the materialized validated ETL without dataset-specific counts.
+
+    The audit verifies internal completeness, required dates, interval validity,
+    lineage-to-target equality, route-ledger structure, concept-zero profiles,
+    visit linkage, and duplicate primary identifiers. Row counts are observations
+    of the current run, not transformation rules.
+    """
     sql_cfg = config.raw["sqlserver"]
-    source_schema = str(sql_cfg.get("source_schema", "dbo"))
-    target_schema = str(sql_cfg.get("target_schema", "dbo"))
+    target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
     audit_path = config.audit_dir / "global_reconciliation.json"
 
     engine = make_engine(config)
     try:
         with engine.connect() as connection:
-            for table in EXPECTED_TARGET_ROWS:
+            for table in TARGET_TABLES:
                 if not table_exists(connection, target_schema, table):
-                    raise RuntimeError(f"Required target table [{target_schema}].[{table}] is missing")
+                    raise RuntimeError(
+                        f"Required target table [{target_schema}].[{table}] is missing"
+                    )
 
-            for table in EXPECTED_LINEAGE_ROWS:
-                if not table_exists(connection, source_schema, table):
-                    raise RuntimeError(f"Required lineage table [{source_schema}].[{table}] is missing")
+            for table in (*LINEAGE_TO_TARGET, *ROUTE_TABLES):
+                if not table_exists(connection, target_schema, table):
+                    raise RuntimeError(
+                        f"Required ETL ledger [{target_schema}].[{table}] is missing"
+                    )
 
-            for table in EXPECTED_ROUTE_ROWS:
-                if not table_exists(connection, source_schema, table):
-                    raise RuntimeError(f"Required route table [{source_schema}].[{table}] is missing")
-
-            target_rows: dict[str, int] = {}
-            for table, expected in EXPECTED_TARGET_ROWS.items():
-                n = _scalar(
+            target_rows = {
+                table: _scalar(
                     connection,
                     f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{table}]",
                 )
-                if n != expected:
-                    raise RuntimeError(
-                        f"Target row count changed for {table}: {n:,} != {expected:,}"
-                    )
-                target_rows[table] = n
+                for table in TARGET_TABLES
+            }
 
             lineage_rows: dict[str, int] = {}
-            for table, expected in EXPECTED_LINEAGE_ROWS.items():
-                n = _scalar(
+            lineage_reconciliation: dict[str, dict[str, int | bool]] = {}
+            for xwalk, target in LINEAGE_TO_TARGET.items():
+                lineage = _scalar(
                     connection,
-                    f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{table}]",
+                    f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{xwalk}]",
                 )
-                if n != expected:
+                expected = target_rows[target]
+                lineage_rows[xwalk] = lineage
+                lineage_reconciliation[xwalk] = {
+                    "target_rows": expected,
+                    "lineage_rows": lineage,
+                    "matched": lineage == expected,
+                }
+                if lineage != expected:
                     raise RuntimeError(
-                        f"Lineage row count changed for {table}: {n:,} != {expected:,}"
+                        f"Lineage reconciliation failed for {xwalk}: "
+                        f"lineage={lineage:,}, {target}={expected:,}"
                     )
-                lineage_rows[table] = n
 
-            route_rows: dict[str, int] = {}
-            for table, expected in EXPECTED_ROUTE_ROWS.items():
-                n = _scalar(
+            route_rows = {
+                table: _scalar(
                     connection,
-                    f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{table}]",
+                    f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{table}]",
                 )
-                if n != expected:
-                    raise RuntimeError(
-                        f"Route row count changed for {table}: {n:,} != {expected:,}"
-                    )
-                route_rows[table] = n
+                for table in ROUTE_TABLES
+            }
 
             required_date_nulls: dict[str, dict[str, int]] = {}
             for table, columns in CORE_REQUIRED_DATES.items():
@@ -186,11 +206,11 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                         WHERE [{column}] IS NULL
                         """,
                     )
-                    if n != 0:
+                    required_date_nulls[table][column] = n
+                    if n:
                         raise RuntimeError(
                             f"Required date NULLs found in {table}.{column}: {n:,}"
                         )
-                    required_date_nulls[table][column] = n
 
             reversed_intervals: dict[str, int] = {}
             for table, (start_col, end_col) in INTERVAL_CHECKS.items():
@@ -203,11 +223,11 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                       AND [{end_col}] < [{start_col}]
                     """,
                 )
-                if n != 0:
+                reversed_intervals[table] = n
+                if n:
                     raise RuntimeError(
                         f"Reversed target intervals found in {table}: {n:,}"
                     )
-                reversed_intervals[table] = n
 
             concept_zero: dict[str, dict[str, int]] = {}
             for table, columns in CONCEPT_COLUMNS.items():
@@ -226,27 +246,18 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                 }
                 concept_zero[table] = {}
                 for column in columns:
-                    if column not in present:
-                        continue
-                    concept_zero[table][column] = _scalar(
-                        connection,
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM [{target_schema}].[{table}]
-                        WHERE [{column}] = 0
-                        """,
-                    )
+                    if column in present:
+                        concept_zero[table][column] = _scalar(
+                            connection,
+                            f"""
+                            SELECT COUNT_BIG(*)
+                            FROM [{target_schema}].[{table}]
+                            WHERE COALESCE([{column}], 0) = 0
+                            """,
+                        )
 
             visit_linkage: dict[str, dict[str, int]] = {}
-            for table in (
-                "condition_occurrence",
-                "procedure_occurrence",
-                "measurement",
-                "observation",
-                "drug_exposure",
-                "device_exposure",
-            ):
-                total = target_rows[table]
+            for table in VISIT_LINKED_TABLES:
                 linked = _scalar(
                     connection,
                     f"""
@@ -257,7 +268,7 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                 )
                 visit_linkage[table] = {
                     "linked": linked,
-                    "unlinked": total - linked,
+                    "unlinked": target_rows[table] - linked,
                 }
 
             procedure_domain_totals = {
@@ -266,35 +277,33 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                     text(
                         f"""
                         SELECT target_domain, COUNT_BIG(*)
-                        FROM [{source_schema}].[etl_procedure_event_route]
+                        FROM [{target_schema}].[etl_procedure_event_route]
                         GROUP BY target_domain
                         ORDER BY target_domain
                         """
                     )
                 ).fetchall()
             }
-
             obs_clin_domain_totals = {
                 str(row[0]): int(row[1])
                 for row in connection.execute(
                     text(
                         f"""
                         SELECT target_domain, COUNT_BIG(*)
-                        FROM [{source_schema}].[etl_obs_clin_route]
+                        FROM [{target_schema}].[etl_obs_clin_route]
                         GROUP BY target_domain
                         ORDER BY target_domain
                         """
                     )
                 ).fetchall()
             }
-
             drug_family_totals = {
                 str(row[0]): int(row[1])
                 for row in connection.execute(
                     text(
                         f"""
                         SELECT source_domain, COUNT_BIG(*)
-                        FROM [{source_schema}].[etl_drug_event_route]
+                        FROM [{target_schema}].[etl_drug_event_route]
                         GROUP BY source_domain
                         ORDER BY source_domain
                         """
@@ -303,20 +312,8 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
             }
 
             duplicate_primary_keys: dict[str, int] = {}
-            primary_key_columns = {
-                "person": "person_id",
-                "observation_period": "observation_period_id",
-                "visit_occurrence": "visit_occurrence_id",
-                "condition_occurrence": "condition_occurrence_id",
-                "procedure_occurrence": "procedure_occurrence_id",
-                "measurement": "measurement_id",
-                "observation": "observation_id",
-                "drug_exposure": "drug_exposure_id",
-                "device_exposure": "device_exposure_id",
-                "specimen": "specimen_id",
-            }
-            for table, column in primary_key_columns.items():
-                duplicate_primary_keys[table] = _scalar(
+            for table, column in PRIMARY_KEYS.items():
+                n = _scalar(
                     connection,
                     f"""
                     SELECT COUNT_BIG(*)
@@ -328,10 +325,10 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
                     ) x
                     """,
                 )
-                if duplicate_primary_keys[table] != 0:
+                duplicate_primary_keys[table] = n
+                if n:
                     raise RuntimeError(
-                        f"Duplicate primary IDs found in {table}: "
-                        f"{duplicate_primary_keys[table]:,}"
+                        f"Duplicate primary IDs found in {table}: {n:,}"
                     )
 
         payload = {
@@ -339,6 +336,7 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
             "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
             "target_rows": target_rows,
             "lineage_rows": lineage_rows,
+            "lineage_reconciliation": lineage_reconciliation,
             "route_rows": route_rows,
             "required_date_nulls": required_date_nulls,
             "reversed_intervals": reversed_intervals,
@@ -350,7 +348,6 @@ def reconcile_validated_etl(config: EtlConfig) -> dict[str, object]:
             "duplicate_primary_keys": duplicate_primary_keys,
             "status": "matched",
         }
-
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         audit_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True),
