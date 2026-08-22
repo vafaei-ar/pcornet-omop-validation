@@ -9,26 +9,29 @@ from .database import check_connection
 
 
 REQUIRED_SOURCE_TABLES = {
-    "PCORnet_DEMOGRAPHIC.parquet",
-    "PCORnet_ENROLLMENT.parquet",
-    "PCORnet_ENCOUNTER.parquet",
-    "PCORnet_DIAGNOSIS.parquet",
-    "PCORnet_PROCEDURES.parquet",
-    "PCORnet_VITAL.parquet",
-    "PCORnet_PRESCRIBING.parquet",
-    "PCORnet_DISPENSING.parquet",
-    "PCORnet_LAB_RESULT_CM.parquet",
-    "PCORnet_MED_ADMIN.parquet",
-    "PCORnet_OBS_CLIN.parquet",
-    "PCORnet_OBS_GEN.parquet",
-    "PCORnet_CONDITION.parquet",
-    "PCORnet_DEATH.parquet",
-    "PCORnet_DEATH_CAUSE.parquet",
-    "PCORnet_IMMUNIZATION.parquet",
-    "PCORnet_LDS_ADDRESS_HISTORY.parquet",
+    "demographic.parquet",
+    "enrollment.parquet",
+    "encounter.parquet",
+    "diagnosis.parquet",
+    "procedures.parquet",
+    "vital.parquet",
+    "prescribing.parquet",
+    "dispensing.parquet",
+    "lab_result_cm.parquet",
+    "med_admin.parquet",
+    "obs_clin.parquet",
+    "obs_gen.parquet",
+    "condition.parquet",
+    "death.parquet",
+    "death_cause.parquet",
+    "immunization.parquet",
+    "lds_address_history.parquet",
 }
 
-OPTIONAL_SOURCE_TABLES = {"PCORnet_PROVIDER.parquet"}
+OPTIONAL_SOURCE_TABLES = {
+    "provider.parquet",
+}
+
 
 
 @dataclass(frozen=True)

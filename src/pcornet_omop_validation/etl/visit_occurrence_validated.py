@@ -77,27 +77,29 @@ def _validate_nonzero_visit_concepts(connection, schema: str) -> None:
 
 
 def _safe_datetime_sql(date_column: str, time_column: str) -> str:
-    """Combine date/time without directly casting numeric staging values to time.
+    """Combine a source date with PCORnet numeric seconds-since-midnight.
 
-    Some PCORnet parquet exports materialize time columns as floating-point values.
-    SQL Server rejects TRY_CAST(float AS time), so first convert the source value to
-    text and then attempt a time parse. If the value cannot be interpreted as a SQL
-    Server time literal, retain the valid source date at midnight rather than invent
-    a time-of-day representation.
+    In this PCORnet extract, ADMIT_TIME and DISCHARGE_TIME are floating-point
+    seconds since midnight, with observed values from 0 through 86340.
+    Values outside the valid [0, 86400) interval fall back to the source date
+    at midnight rather than inventing a time.
     """
-    time_text = f"NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(64), {time_column}))), '')"
-    parsed_time = f"TRY_CONVERT(time(7), {time_text})"
+    seconds = f"TRY_CONVERT(float, {time_column})"
     return f"""
     CASE
       WHEN {date_column} IS NULL THEN NULL
-      WHEN {parsed_time} IS NULL THEN CAST({date_column} AS datetime2(7))
+      WHEN {seconds} IS NULL
+        OR {seconds} < 0
+        OR {seconds} >= 86400
+        THEN CAST(CAST({date_column} AS date) AS datetime2(7))
       ELSE DATEADD(
-        NANOSECOND,
-        DATEDIFF_BIG(NANOSECOND, CAST('00:00:00' AS time(7)), {parsed_time}),
+        MILLISECOND,
+        CAST(ROUND({seconds} * 1000.0, 0) AS bigint),
         CAST(CAST({date_column} AS date) AS datetime2(7))
       )
     END
     """.strip()
+
 
 
 VisitOccurrenceTransformResult = _legacy.VisitOccurrenceTransformResult

@@ -145,7 +145,12 @@ def _load_one_table(
     schema: str,
     batch_size: int,
 ) -> StagingTableResult:
-    table = _validate_identifier(path.stem, "table")
+    stem = path.stem
+    if stem.lower().startswith("pcornet_"):
+        table_name = stem
+    else:
+        table_name = "PCORnet_" + stem.upper()
+    table = _validate_identifier(table_name, "table")
     parquet = pq.ParquetFile(path)
     source_rows = int(parquet.metadata.num_rows)
     file_hash = _sha256(path)

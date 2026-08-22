@@ -138,7 +138,7 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
        AND tgt.invalid_reason IS NULL
       WHERE NOT (
         us.source_invalid_reason IS NULL
-        AND us.source_standard_concept = 'S'
+        AND COALESCE(us.source_standard_concept, '') = 'S'
       )
     ),
     resolved_standard AS (
