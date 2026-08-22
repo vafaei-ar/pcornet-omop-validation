@@ -21,6 +21,8 @@ EXPECTED = {
 
 EXPECTED_TOTAL = 48_457_880
 EXPECTED_CONCEPT_ZERO = 17_469_480
+EXPECTED_INVALID_SOURCE_INTERVAL_SOURCE_EVENTS = 27_662
+EXPECTED_INVALID_SOURCE_INTERVAL_ROUTE_ROWS = 27_842
 
 TYPE_CONCEPTS = {
     "PRESCRIBING": 32838,     # EHR prescription
@@ -111,7 +113,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                     "reconciled"
                 )
 
-            # Verify frozen route ledger.
             route_total = int(
                 con.execute(
                     text("""
@@ -159,7 +160,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                         f"{n:,} != {expected:,}"
                     )
 
-            # Validate type concepts.
             for family, cid in TYPE_CONCEPTS.items():
                 row = con.execute(
                     text("""
@@ -202,8 +202,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # Deterministic global IDs are assigned from route_id.
-            # route_id is already unique and frozen in the route ledger.
             con.execute(
                 text(f"""
                     INSERT INTO dbo.{XWALK_TABLE} (
@@ -236,9 +234,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # PRESCRIBING
-            # -------------------------------------------------
             rx_start = """
                 COALESCE(
                     CAST(p.RX_START_DATE AS date),
@@ -374,9 +369,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # DISPENSING
-            # -------------------------------------------------
             dispense_end = """
                 CASE
                     WHEN TRY_CONVERT(int, d.DISPENSE_SUP) > 0
@@ -470,9 +462,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # MED_ADMIN
-            # -------------------------------------------------
             con.execute(
                 text(f"""
                     INSERT INTO dbo.drug_exposure (
@@ -574,9 +563,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # IMMUNIZATION
-            # -------------------------------------------------
             con.execute(
                 text(f"""
                     INSERT INTO dbo.drug_exposure (
@@ -649,9 +635,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # PROCEDURES
-            # -------------------------------------------------
             con.execute(
                 text(f"""
                     INSERT INTO dbo.drug_exposure (
@@ -724,9 +707,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                 """)
             )
 
-            # -------------------------------------------------
-            # Final reconciliation
-            # -------------------------------------------------
             family_counts = {}
 
             for family, expected in EXPECTED.items():
@@ -854,7 +834,6 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                     f"Drug end before start found: {reversed:,}"
                 )
 
-            # Quantify PRESCRIBING date derivation.
             prescribing_date_basis = dict(
                 con.execute(
                     text("""
@@ -888,7 +867,19 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                         SELECT
                             CASE
                                 WHEN p.RX_END_DATE IS NOT NULL
+                                 AND CAST(p.RX_END_DATE AS date) >=
+                                     COALESCE(
+                                         CAST(p.RX_START_DATE AS date),
+                                         CAST(p.RX_ORDER_DATE AS date)
+                                     )
                                     THEN 'RX_END_DATE'
+                                WHEN p.RX_END_DATE IS NOT NULL
+                                 AND CAST(p.RX_END_DATE AS date) <
+                                     COALESCE(
+                                         CAST(p.RX_START_DATE AS date),
+                                         CAST(p.RX_ORDER_DATE AS date)
+                                     )
+                                    THEN 'INVALID_SOURCE_INTERVAL_CLAMPED'
                                 WHEN TRY_CONVERT(
                                         int,
                                         p.RX_DAYS_SUPPLY
@@ -907,7 +898,19 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                         GROUP BY
                             CASE
                                 WHEN p.RX_END_DATE IS NOT NULL
+                                 AND CAST(p.RX_END_DATE AS date) >=
+                                     COALESCE(
+                                         CAST(p.RX_START_DATE AS date),
+                                         CAST(p.RX_ORDER_DATE AS date)
+                                     )
                                     THEN 'RX_END_DATE'
+                                WHEN p.RX_END_DATE IS NOT NULL
+                                 AND CAST(p.RX_END_DATE AS date) <
+                                     COALESCE(
+                                         CAST(p.RX_START_DATE AS date),
+                                         CAST(p.RX_ORDER_DATE AS date)
+                                     )
+                                    THEN 'INVALID_SOURCE_INTERVAL_CLAMPED'
                                 WHEN TRY_CONVERT(
                                         int,
                                         p.RX_DAYS_SUPPLY
@@ -918,6 +921,47 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
                     """)
                 ).all()
             )
+
+            invalid_source_interval_source_events = int(
+                con.execute(
+                    text("""
+                        SELECT COUNT_BIG(*)
+                        FROM dbo.PCORnet_PRESCRIBING p
+                        WHERE p.RX_END_DATE IS NOT NULL
+                          AND CAST(p.RX_END_DATE AS date) <
+                              COALESCE(
+                                  CAST(p.RX_START_DATE AS date),
+                                  CAST(p.RX_ORDER_DATE AS date)
+                              )
+                    """)
+                ).scalar_one()
+            )
+
+            invalid_source_interval_route_rows = int(
+                prescribing_end_basis.get(
+                    "INVALID_SOURCE_INTERVAL_CLAMPED", 0
+                )
+            )
+
+            if (
+                invalid_source_interval_source_events
+                != EXPECTED_INVALID_SOURCE_INTERVAL_SOURCE_EVENTS
+            ):
+                raise RuntimeError(
+                    "Unexpected reversed PRESCRIBING source-event count: "
+                    f"{invalid_source_interval_source_events:,} != "
+                    f"{EXPECTED_INVALID_SOURCE_INTERVAL_SOURCE_EVENTS:,}"
+                )
+
+            if (
+                invalid_source_interval_route_rows
+                != EXPECTED_INVALID_SOURCE_INTERVAL_ROUTE_ROWS
+            ):
+                raise RuntimeError(
+                    "Unexpected reversed PRESCRIBING route-row count: "
+                    f"{invalid_source_interval_route_rows:,} != "
+                    f"{EXPECTED_INVALID_SOURCE_INTERVAL_ROUTE_ROWS:,}"
+                )
 
         payload = {
             "stage": "drug_exposure_transform",
@@ -932,10 +976,12 @@ def transform_drug_exposure(config: EtlConfig) -> dict[str, object]:
             "null_start_date_rows": invalid_start,
             "null_end_date_rows": invalid_end,
             "end_before_start_rows": reversed,
-            "prescribing_start_date_basis":
-                prescribing_date_basis,
-            "prescribing_end_date_basis":
-                prescribing_end_basis,
+            "prescribing_start_date_basis": prescribing_date_basis,
+            "prescribing_end_date_basis": prescribing_end_basis,
+            "invalid_source_interval_source_events":
+                invalid_source_interval_source_events,
+            "invalid_source_interval_route_rows":
+                invalid_source_interval_route_rows,
             "status": "matched",
         }
 
