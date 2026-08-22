@@ -78,6 +78,7 @@ def _require_tables(connection, source_schema: str, target_schema: str) -> None:
         (target_schema, "condition_occurrence"),
         (target_schema, "concept"),
         (target_schema, "concept_relationship"),
+        (target_schema, "etl_visit_occurrence_xwalk"),
     )
     for schema, table in required:
         if not table_exists(connection, schema, table):
@@ -277,7 +278,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                   FROM [{source_schema}].[PCORnet_DIAGNOSIS] d
                   JOIN [{target_schema}].[person] p
                     ON CAST(d.PATID AS nvarchar(50)) = p.person_source_value
-                  LEFT JOIN [{source_schema}].[etl_visit_occurrence_xwalk] v
+                  LEFT JOIN [{target_schema}].[etl_visit_occurrence_xwalk] v
                     ON CAST(d.ENCOUNTERID AS nvarchar(255)) = v.encounterid
                   WHERE d.DIAGNOSISID IS NOT NULL
                     AND LTRIM(RTRIM(CAST(d.DIAGNOSISID AS nvarchar(max)))) <> ''
@@ -291,7 +292,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                   FROM [{source_schema}].[PCORnet_CONDITION] c
                   JOIN [{target_schema}].[person] p
                     ON CAST(c.PATID AS nvarchar(50)) = p.person_source_value
-                  LEFT JOIN [{source_schema}].[etl_visit_occurrence_xwalk] v
+                  LEFT JOIN [{target_schema}].[etl_visit_occurrence_xwalk] v
                     ON CAST(c.ENCOUNTERID AS nvarchar(255)) = v.encounterid
                   WHERE c.CONDITIONID IS NOT NULL
                     AND LTRIM(RTRIM(CAST(c.CONDITIONID AS nvarchar(max)))) <> ''
@@ -409,7 +410,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                   condition_status_source_value
                 FROM numbered;
 
-                CREATE TABLE [{source_schema}].[{xwalk_table}] (
+                CREATE TABLE [{target_schema}].[{xwalk_table}] (
                   source_domain varchar(16) NOT NULL,
                   source_record_id nvarchar(255) NOT NULL,
                   condition_occurrence_id bigint NOT NULL,
@@ -452,7 +453,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                   SELECT ROW_NUMBER() OVER (ORDER BY source_domain, source_record_id) AS condition_occurrence_id, *
                   FROM combined_ids
                 )
-                INSERT INTO [{source_schema}].[{xwalk_table}] (
+                INSERT INTO [{target_schema}].[{xwalk_table}] (
                   source_domain, source_record_id, condition_occurrence_id,
                   source_code_type, source_provenance, date_basis
                 )
@@ -472,10 +473,10 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                     f"Condition reconciliation failed: eligible={expected_rows:,}, target={target_rows:,}"
                 )
 
-            if not table_exists(connection, source_schema, xwalk_table):
+            if not table_exists(connection, target_schema, xwalk_table):
                 raise RuntimeError("Condition lineage table is missing after transformation")
             lineage_rows = _scalar(
-                connection, f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{xwalk_table}]"
+                connection, f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{xwalk_table}]"
             )
             if lineage_rows != target_rows:
                 raise RuntimeError(
@@ -484,17 +485,17 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
 
             diagnosis_target_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{xwalk_table}] WHERE source_domain='DIAGNOSIS'",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{xwalk_table}] WHERE source_domain='DIAGNOSIS'",
             )
             condition_target_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{xwalk_table}] WHERE source_domain='CONDITION'",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{xwalk_table}] WHERE source_domain='CONDITION'",
             )
             diagnosis_concept_zero = _scalar(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='DIAGNOSIS' AND co.condition_concept_id=0
                 """,
             )
@@ -502,7 +503,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='CONDITION' AND co.condition_concept_id=0
                 """,
             )
@@ -510,7 +511,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='DIAGNOSIS' AND co.condition_source_concept_id=0
                 """,
             )
@@ -518,7 +519,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='CONDITION' AND co.condition_source_concept_id=0
                 """,
             )
@@ -526,7 +527,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='DIAGNOSIS' AND co.visit_occurrence_id IS NOT NULL
                 """,
             )
@@ -534,7 +535,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                 connection,
                 f"""
                 SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence] co
-                JOIN [{source_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
+                JOIN [{target_schema}].[{xwalk_table}] x ON x.condition_occurrence_id=co.condition_occurrence_id
                 WHERE x.source_domain='CONDITION' AND co.visit_occurrence_id IS NOT NULL
                 """,
             )
@@ -583,7 +584,7 @@ def transform_condition_occurrence(config: EtlConfig) -> ConditionOccurrenceTran
                     f"{source_schema}.PCORnet_CONDITION",
                 ],
                 "target_table": f"{target_schema}.condition_occurrence",
-                "lineage_table": f"{source_schema}.{xwalk_table}",
+                "lineage_table": f"{target_schema}.{xwalk_table}",
                 "policies": {
                     "condition_sources": policies.get("condition_sources"),
                     "missing_required_date": policies.get("missing_required_date"),
