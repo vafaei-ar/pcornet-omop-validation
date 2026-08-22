@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 from sqlalchemy import text
 
@@ -83,7 +83,35 @@ def _safe_datetime_sql(date_expr: str, time_expr: str) -> str:
     """
 
 
-def _column_max_chars(connection, table: str, column: str) -> int:
+def _validated_schema(value: object, label: str) -> str:
+    schema = str(value or "dbo")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema) is None:
+        raise ValueError(f"Unsafe SQL Server {label}: {schema!r}")
+    return schema
+
+
+def _render_sql(sql: str, source_schema: str, target_schema: str) -> str:
+    """Render legacy dbo-qualified SQL using configured source/target schemas.
+
+    PCORnet staging tables are source objects. OMOP tables and ETL lineage/route
+    ledgers are target objects. Keeping this classification in one place makes
+    the transformation portable without changing its semantic rules.
+    """
+    return sql.replace(
+        "dbo.PCORnet_",
+        f"{source_schema}.PCORnet_",
+    ).replace(
+        "dbo.",
+        f"{target_schema}.",
+    )
+
+
+def _column_max_chars(
+    connection,
+    table: str,
+    column: str,
+    target_schema: str,
+) -> int:
     row = connection.execute(
         text("""
             SELECT
@@ -93,7 +121,7 @@ def _column_max_chars(connection, table: str, column: str) -> int:
             WHERE c.object_id = OBJECT_ID(:table)
               AND c.name = :column
         """),
-        {"table": f"dbo.{table}", "column": column},
+        {"table": f"{target_schema}.{table}", "column": column},
     ).one()
 
     data_type = str(row[0]).lower()
@@ -106,15 +134,15 @@ def _column_max_chars(connection, table: str, column: str) -> int:
     return max_length
 
 
-def _procedure_route_columns(connection) -> tuple[str, str | None]:
+def _procedure_route_columns(connection, target_schema: str) -> tuple[str, str | None]:
     cols = {
         str(r[0]).lower(): str(r[0])
         for r in connection.execute(
-            text("""
+            text(f"""
                 SELECT c.name
                 FROM sys.columns c
                 WHERE c.object_id =
-                      OBJECT_ID('dbo.etl_procedure_event_route')
+                      OBJECT_ID('{target_schema}.etl_procedure_event_route')
             """)
         )
     }
@@ -132,7 +160,7 @@ def _procedure_route_columns(connection) -> tuple[str, str | None]:
     if source_id is None:
         raise RuntimeError(
             "Could not identify source procedure ID column in "
-            "dbo.etl_procedure_event_route"
+            f"{target_schema}.etl_procedure_event_route"
         )
 
     source_concept_candidates = (
@@ -147,7 +175,7 @@ def _procedure_route_columns(connection) -> tuple[str, str | None]:
     return source_id, source_concept
 
 
-def _validate_vital_concepts(connection) -> None:
+def _validate_vital_concepts(connection, target_schema: str) -> None:
     expected = {
         43054909: ("Observation", "LOINC", "72166-2"),
         3039561: ("Observation", "LOINC", "39240-7"),
@@ -176,7 +204,7 @@ def _validate_vital_concepts(connection) -> None:
                 concept_code,
                 standard_concept,
                 invalid_reason
-            FROM dbo.concept
+            FROM {target_schema}.concept
             WHERE concept_id IN ({ids})
         """)
     ).fetchall()
@@ -194,68 +222,80 @@ def _validate_vital_concepts(connection) -> None:
             or r[5] is not None
         ):
             raise RuntimeError(
-                f"Validated concept {cid} does not match "
-                f"expected semantics"
+                f"Validated concept {cid} does not match expected semantics"
             )
 
 
-def transform_observation(
-    config: EtlConfig,
-) -> ObservationTransformResult:
+def transform_observation(config: EtlConfig) -> ObservationTransformResult:
     engine = make_engine(config)
-    audit_path = (
-        config.audit_dir / "observation_transform.json"
+    audit_path = config.audit_dir / "observation_transform.json"
+
+    sql_cfg = config.raw["sqlserver"]
+    source_schema = _validated_schema(
+        sql_cfg.get("source_schema", "dbo"),
+        "source_schema",
     )
+    target_schema = _validated_schema(
+        sql_cfg.get("target_schema", "dbo"),
+        "target_schema",
+    )
+
+    def sql(statement: str):
+        return text(_render_sql(statement, source_schema, target_schema))
 
     try:
         with engine.begin() as con:
-            required = (
-                "observation",
-                "person",
-                "etl_visit_occurrence_xwalk",
-                "etl_obs_clin_route",
-                "etl_procedure_event_route",
+            source_required = (
                 "PCORnet_OBS_CLIN",
                 "PCORnet_OBS_GEN",
                 "PCORnet_LAB_RESULT_CM",
                 "PCORnet_PROCEDURES",
                 "PCORnet_VITAL",
+            )
+            target_required = (
+                "observation",
+                "person",
+                "etl_visit_occurrence_xwalk",
+                "etl_obs_clin_route",
+                "etl_procedure_event_route",
                 "concept",
             )
 
-            for table in required:
-                if not table_exists(con, "dbo", table):
+            for table in source_required:
+                if not table_exists(con, source_schema, table):
                     raise RuntimeError(
-                        f"Required table dbo.{table} does not exist"
+                        f"Required table {source_schema}.{table} does not exist"
+                    )
+            for table in target_required:
+                if not table_exists(con, target_schema, table):
+                    raise RuntimeError(
+                        f"Required table {target_schema}.{table} does not exist"
                     )
 
             target_rows_pre = int(
                 con.execute(
-                    text(
-                        "SELECT COUNT_BIG(*) "
-                        "FROM dbo.observation"
-                    )
+                    sql("SELECT COUNT_BIG(*) FROM dbo.observation")
                 ).scalar_one()
             )
             if target_rows_pre != 0:
                 raise RuntimeError(
-                    "dbo.observation must be empty before this stage; "
+                    f"{target_schema}.observation must be empty before this stage; "
                     f"found {target_rows_pre:,} rows"
                 )
 
-            if table_exists(con, "dbo", XWALK_TABLE):
+            if table_exists(con, target_schema, XWALK_TABLE):
                 raise RuntimeError(
-                    f"dbo.{XWALK_TABLE} already exists"
+                    f"{target_schema}.{XWALK_TABLE} already exists"
                 )
-            if table_exists(con, "dbo", OVERFLOW_TABLE):
+            if table_exists(con, target_schema, OVERFLOW_TABLE):
                 raise RuntimeError(
-                    f"dbo.{OVERFLOW_TABLE} already exists"
+                    f"{target_schema}.{OVERFLOW_TABLE} already exists"
                 )
 
-            _validate_vital_concepts(con)
+            _validate_vital_concepts(con, target_schema)
 
             procedure_source_id, procedure_source_concept = (
-                _procedure_route_columns(con)
+                _procedure_route_columns(con, target_schema)
             )
             procedure_source_concept_expr = (
                 f"r.[{procedure_source_concept}]"
@@ -268,7 +308,7 @@ def transform_observation(
 
             counts["OBS_CLIN"] = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.etl_obs_clin_route
                         WHERE target_domain = 'Observation'
@@ -278,16 +318,13 @@ def transform_observation(
 
             counts["OBS_GEN"] = int(
                 con.execute(
-                    text(
-                        "SELECT COUNT_BIG(*) "
-                        "FROM dbo.PCORnet_OBS_GEN"
-                    )
+                    sql("SELECT COUNT_BIG(*) FROM dbo.PCORnet_OBS_GEN")
                 ).scalar_one()
             )
 
             counts["LAB_RESULT_CM"] = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.PCORnet_LAB_RESULT_CM l
                         JOIN dbo.concept c
@@ -305,7 +342,7 @@ def transform_observation(
 
             counts["PROCEDURES"] = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.etl_procedure_event_route
                         WHERE target_domain = 'Observation'
@@ -315,7 +352,7 @@ def transform_observation(
 
             counts["VITAL"] = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT
                             COUNT_BIG(SMOKING)
                           + COUNT_BIG(TOBACCO)
@@ -330,7 +367,7 @@ def transform_observation(
             expected_concept_zero = int(
                 counts["OBS_GEN"]
                 + con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.etl_obs_clin_route
                         WHERE target_domain = 'Observation'
@@ -338,7 +375,7 @@ def transform_observation(
                     """)
                 ).scalar_one()
                 + con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.etl_procedure_event_route
                         WHERE target_domain = 'Observation'
@@ -349,19 +386,19 @@ def transform_observation(
 
             expected_vital_value_zero = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT
-                            SUM(CASE
+                            COALESCE(SUM(CASE
                                   WHEN SMOKING IS NOT NULL
                                    AND SMOKING NOT IN (
                                      '01','02','03','04','05','06','07','08'
                                    )
-                                  THEN 1 ELSE 0 END)
+                                  THEN 1 ELSE 0 END), 0)
                           + COUNT_BIG(TOBACCO)
-                          + SUM(CASE
+                          + COALESCE(SUM(CASE
                                   WHEN TOBACCO_TYPE IS NOT NULL
                                    AND TOBACCO_TYPE NOT IN ('01','03','05')
-                                  THEN 1 ELSE 0 END)
+                                  THEN 1 ELSE 0 END), 0)
                         FROM dbo.PCORnet_VITAL
                     """)
                 ).scalar_one()
@@ -369,41 +406,65 @@ def transform_observation(
 
             # Actual OMOP string limits from the installed DDL.
             source_max = _column_max_chars(
-                con, "observation", "observation_source_value"
+                con,
+                "observation",
+                "observation_source_value",
+                target_schema,
             )
             value_max = _column_max_chars(
-                con, "observation", "value_source_value"
+                con,
+                "observation",
+                "value_source_value",
+                target_schema,
             )
             string_max = _column_max_chars(
-                con, "observation", "value_as_string"
+                con,
+                "observation",
+                "value_as_string",
+                target_schema,
             )
             unit_max = _column_max_chars(
-                con, "observation", "unit_source_value"
+                con,
+                "observation",
+                "unit_source_value",
+                target_schema,
             )
 
-            con.exec_driver_sql(f"""
-                CREATE TABLE dbo.{XWALK_TABLE} (
-                    observation_id bigint NOT NULL PRIMARY KEY,
-                    source_family varchar(32) NOT NULL,
-                    source_record_id nvarchar(255) NOT NULL,
-                    source_field varchar(32) NULL,
-                    source_route_id bigint NULL
+            con.exec_driver_sql(
+                _render_sql(
+                    f"""
+                    CREATE TABLE dbo.{XWALK_TABLE} (
+                        observation_id bigint NOT NULL PRIMARY KEY,
+                        source_family varchar(32) NOT NULL,
+                        source_record_id nvarchar(255) NOT NULL,
+                        source_field varchar(32) NULL,
+                        source_route_id bigint NULL
+                    )
+                    """,
+                    source_schema,
+                    target_schema,
                 )
-            """)
+            )
 
-            con.exec_driver_sql(f"""
-                CREATE TABLE dbo.{OVERFLOW_TABLE} (
-                    observation_id bigint NOT NULL PRIMARY KEY,
-                    source_family varchar(32) NOT NULL,
-                    source_record_id nvarchar(255) NOT NULL,
-                    source_field varchar(32) NULL,
-                    full_source_value nvarchar(max) NOT NULL,
-                    source_length int NOT NULL
+            con.exec_driver_sql(
+                _render_sql(
+                    f"""
+                    CREATE TABLE dbo.{OVERFLOW_TABLE} (
+                        observation_id bigint NOT NULL PRIMARY KEY,
+                        source_family varchar(32) NOT NULL,
+                        source_record_id nvarchar(255) NOT NULL,
+                        source_field varchar(32) NULL,
+                        full_source_value nvarchar(max) NOT NULL,
+                        source_length int NOT NULL
+                    )
+                    """,
+                    source_schema,
+                    target_schema,
                 )
-            """)
+            )
 
             # XWALK: deterministic contiguous IDs by source family.
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
                     observation_id,
                     source_family,
@@ -412,9 +473,7 @@ def transform_observation(
                     source_route_id
                 )
                 SELECT
-                    ROW_NUMBER() OVER (
-                        ORDER BY source_obsclin_id
-                    ),
+                    ROW_NUMBER() OVER (ORDER BY source_obsclin_id),
                     'OBS_CLIN',
                     source_obsclin_id,
                     NULL,
@@ -425,7 +484,7 @@ def transform_observation(
 
             obs_gen_offset = counts["OBS_CLIN"]
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
                     observation_id,
                     source_family,
@@ -436,15 +495,12 @@ def transform_observation(
                 SELECT
                     {obs_gen_offset}
                     + ROW_NUMBER() OVER (
-                        ORDER BY
-                            LTRIM(RTRIM(CONVERT(
-                              nvarchar(255), OBSGENID
-                            )))
+                        ORDER BY LTRIM(RTRIM(CONVERT(
+                          nvarchar(255), OBSGENID
+                        )))
                     ),
                     'OBS_GEN',
-                    LTRIM(RTRIM(CONVERT(
-                      nvarchar(255), OBSGENID
-                    ))),
+                    LTRIM(RTRIM(CONVERT(nvarchar(255), OBSGENID))),
                     NULL,
                     NULL
                 FROM dbo.PCORnet_OBS_GEN
@@ -452,7 +508,7 @@ def transform_observation(
 
             lab_offset = obs_gen_offset + counts["OBS_GEN"]
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
                     observation_id,
                     source_family,
@@ -463,10 +519,9 @@ def transform_observation(
                 SELECT
                     {lab_offset}
                     + ROW_NUMBER() OVER (
-                        ORDER BY
-                            LTRIM(RTRIM(CONVERT(
-                              nvarchar(255), l.LAB_RESULT_CM_ID
-                            )))
+                        ORDER BY LTRIM(RTRIM(CONVERT(
+                          nvarchar(255), l.LAB_RESULT_CM_ID
+                        )))
                     ),
                     'LAB_RESULT_CM',
                     LTRIM(RTRIM(CONVERT(
@@ -486,11 +541,9 @@ def transform_observation(
                  AND c.domain_id = 'Observation'
             """))
 
-            procedure_offset = (
-                lab_offset + counts["LAB_RESULT_CM"]
-            )
+            procedure_offset = lab_offset + counts["LAB_RESULT_CM"]
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{XWALK_TABLE} (
                     observation_id,
                     source_family,
@@ -500,13 +553,10 @@ def transform_observation(
                 )
                 SELECT
                     {procedure_offset}
-                    + ROW_NUMBER() OVER (
-                        ORDER BY r.route_id
-                    ),
+                    + ROW_NUMBER() OVER (ORDER BY r.route_id),
                     'PROCEDURES',
                     LTRIM(RTRIM(CONVERT(
-                      nvarchar(255),
-                      r.[{procedure_source_id}]
+                      nvarchar(255), r.[{procedure_source_id}]
                     ))),
                     NULL,
                     r.route_id
@@ -514,11 +564,9 @@ def transform_observation(
                 WHERE r.target_domain = 'Observation'
             """))
 
-            vital_offset = (
-                procedure_offset + counts["PROCEDURES"]
-            )
+            vital_offset = procedure_offset + counts["PROCEDURES"]
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 WITH expanded AS (
                     SELECT
                         v.VITALID,
@@ -549,9 +597,7 @@ def transform_observation(
                             field_order
                     ),
                     'VITAL',
-                    LTRIM(RTRIM(CONVERT(
-                      nvarchar(255), VITALID
-                    ))),
+                    LTRIM(RTRIM(CONVERT(nvarchar(255), VITALID))),
                     source_field,
                     NULL
                 FROM expanded
@@ -559,10 +605,7 @@ def transform_observation(
 
             lineage_rows = int(
                 con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(*) "
-                        f"FROM dbo.{XWALK_TABLE}"
-                    )
+                    sql(f"SELECT COUNT_BIG(*) FROM dbo.{XWALK_TABLE}")
                 ).scalar_one()
             )
             if lineage_rows != expected_total:
@@ -606,7 +649,7 @@ def transform_observation(
                 )
             """
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.observation (
                     observation_id,
                     person_id,
@@ -664,8 +707,7 @@ def transform_observation(
                      )))
                 JOIN dbo.{XWALK_TABLE} x
                   ON x.source_family = 'OBS_CLIN'
-                 AND x.source_record_id =
-                     r.source_obsclin_id
+                 AND x.source_record_id = r.source_obsclin_id
                 JOIN dbo.person p
                   ON p.person_source_value =
                      LTRIM(RTRIM(CONVERT(
@@ -692,7 +734,7 @@ def transform_observation(
                 )
             """
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.observation (
                     observation_id,
                     person_id,
@@ -773,7 +815,7 @@ def transform_observation(
                 )
             """
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.observation (
                     observation_id,
                     person_id,
@@ -852,7 +894,7 @@ def transform_observation(
             """))
 
             # PROCEDURES -> Observation
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.observation (
                     observation_id,
                     person_id,
@@ -881,10 +923,7 @@ def transform_observation(
                     p.person_id,
                     CONVERT(int, r.target_concept_id),
                     CAST(pr.PX_DATE AS date),
-                    CAST(
-                      CAST(pr.PX_DATE AS date)
-                      AS datetime2(7)
-                    ),
+                    CAST(CAST(pr.PX_DATE AS date) AS datetime2(7)),
                     0,
                     NULL,
                     NULL,
@@ -894,15 +933,10 @@ def transform_observation(
                     NULL,
                     vx.visit_occurrence_id,
                     NULL,
-                    LEFT(CONVERT(
-                      nvarchar(max), pr.PX
-                    ), {source_max}),
+                    LEFT(CONVERT(nvarchar(max), pr.PX), {source_max}),
                     CONVERT(
                       int,
-                      COALESCE(
-                        {procedure_source_concept_expr},
-                        0
-                      )
+                      COALESCE({procedure_source_concept_expr}, 0)
                     ),
                     NULL,
                     NULL,
@@ -912,12 +946,10 @@ def transform_observation(
                 FROM dbo.etl_procedure_event_route r
                 JOIN dbo.PCORnet_PROCEDURES pr
                   ON LTRIM(RTRIM(CONVERT(
-                       nvarchar(255),
-                       r.[{procedure_source_id}]
+                       nvarchar(255), r.[{procedure_source_id}]
                      ))) =
                      LTRIM(RTRIM(CONVERT(
-                       nvarchar(255),
-                       pr.PROCEDURESID
+                       nvarchar(255), pr.PROCEDURESID
                      )))
                 JOIN dbo.{XWALK_TABLE} x
                   ON x.source_family = 'PROCEDURES'
@@ -936,7 +968,7 @@ def transform_observation(
             """))
 
             # VITAL categorical observations
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 WITH expanded AS (
                     SELECT
                         v.VITALID,
@@ -966,12 +998,7 @@ def transform_observation(
                             ELSE 0
                           END
                         ),
-                        (
-                          'TOBACCO',
-                          v.TOBACCO,
-                          3039561,
-                          0
-                        ),
+                        ('TOBACCO', v.TOBACCO, 3039561, 0),
                         (
                           'TOBACCO_TYPE',
                           v.TOBACCO_TYPE,
@@ -1064,10 +1091,7 @@ def transform_observation(
 
             target_rows = int(
                 con.execute(
-                    text(
-                        "SELECT COUNT_BIG(*) "
-                        "FROM dbo.observation"
-                    )
+                    sql("SELECT COUNT_BIG(*) FROM dbo.observation")
                 ).scalar_one()
             )
 
@@ -1078,7 +1102,7 @@ def transform_observation(
                 )
 
             # Preserve source strings that exceed value_source_value.
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
                     source_family,
@@ -1104,7 +1128,7 @@ def transform_observation(
                   AND LEN({obsclin_value}) > {value_max}
             """))
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
                     source_family,
@@ -1130,7 +1154,7 @@ def transform_observation(
                   AND LEN({obsgen_value}) > {value_max}
             """))
 
-            con.execute(text(f"""
+            con.execute(sql(f"""
                 INSERT INTO dbo.{OVERFLOW_TABLE} (
                     observation_id,
                     source_family,
@@ -1158,7 +1182,7 @@ def transform_observation(
 
             concept_zero_rows = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.observation
                         WHERE observation_concept_id = 0
@@ -1175,12 +1199,11 @@ def transform_observation(
 
             vital_value_zero = int(
                 con.execute(
-                    text(f"""
+                    sql(f"""
                         SELECT COUNT_BIG(*)
                         FROM dbo.observation o
                         JOIN dbo.{XWALK_TABLE} x
-                          ON x.observation_id =
-                             o.observation_id
+                          ON x.observation_id = o.observation_id
                         WHERE x.source_family = 'VITAL'
                           AND o.value_as_concept_id = 0
                     """)
@@ -1196,7 +1219,7 @@ def transform_observation(
 
             visit_linked_rows = int(
                 con.execute(
-                    text("""
+                    sql("""
                         SELECT COUNT_BIG(*)
                         FROM dbo.observation
                         WHERE visit_occurrence_id IS NOT NULL
@@ -1206,24 +1229,20 @@ def transform_observation(
 
             overflow_rows = int(
                 con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(*) "
-                        f"FROM dbo.{OVERFLOW_TABLE}"
-                    )
+                    sql(f"SELECT COUNT_BIG(*) FROM dbo.{OVERFLOW_TABLE}")
                 ).scalar_one()
             )
 
             family_target = {
                 str(r[0]): int(r[1])
                 for r in con.execute(
-                    text(f"""
+                    sql(f"""
                         SELECT
                             x.source_family,
                             COUNT_BIG(*)
                         FROM dbo.observation o
                         JOIN dbo.{XWALK_TABLE} x
-                          ON x.observation_id =
-                             o.observation_id
+                          ON x.observation_id = o.observation_id
                         GROUP BY x.source_family
                     """)
                 ).fetchall()
@@ -1241,9 +1260,9 @@ def transform_observation(
 
         payload = {
             "stage": "observation",
-            "recorded_at_utc": datetime.now(
-                timezone.utc
-            ).isoformat(),
+            "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+            "source_schema": source_schema,
+            "target_schema": target_schema,
             "source_family_expected_rows": counts,
             "source_family_target_rows": family_target,
             "expected_rows": expected_total,
@@ -1257,8 +1276,8 @@ def transform_observation(
             "overflow_rows": overflow_rows,
             "policies": {
                 "obs_clin": (
-                    "Use OBS_CLIN domain route ledger; "
-                    "no cross-source deduplication"
+                    "Use OBS_CLIN domain route ledger; no cross-source "
+                    "deduplication"
                 ),
                 "obs_gen": (
                     "Retain PC_COVID 2000 and 3000, including N; "
@@ -1266,21 +1285,26 @@ def transform_observation(
                     "prespecified standard concept"
                 ),
                 "lab": (
-                    "Direct active standard LOINC concepts whose "
-                    "OMOP domain is Observation"
+                    "Direct active standard LOINC concepts whose OMOP "
+                    "domain is Observation"
                 ),
                 "procedures": (
-                    "Use procedure event route ledger, including "
-                    "unresolved Observation-domain routes"
+                    "Use procedure event route ledger, including unresolved "
+                    "Observation-domain routes"
                 ),
                 "vital": (
-                    "SMOKING, TOBACCO and TOBACCO_TYPE only; "
-                    "BP_POSITION NI does not generate an event"
+                    "SMOKING, TOBACCO and TOBACCO_TYPE only; BP_POSITION NI "
+                    "does not generate an event"
                 ),
                 "text": (
-                    "value_source_value projected to the installed "
-                    "OMOP column width; longer source values retained "
-                    "in local overflow lineage"
+                    "value_source_value projected to the installed OMOP "
+                    "column width; longer source values retained in local "
+                    "overflow lineage"
+                ),
+                "schemas": (
+                    "PCORnet staging tables use configured source_schema; "
+                    "OMOP and ETL lineage/route tables use configured "
+                    "target_schema"
                 ),
             },
             "status": status,
