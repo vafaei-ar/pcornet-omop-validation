@@ -185,47 +185,35 @@ def append_obs_clin_measurements(
                 "o.OBSCLIN_START_TIME",
             )
 
-            # Explicit frozen unit mapping.
-            unit_concept_sql = """
-                CASE LTRIM(RTRIM(CONVERT(
-                    varchar(50), o.OBSCLIN_RESULT_UNIT
-                )))
-                    WHEN 'mm[Hg]' THEN 8876
-                    WHEN '%' THEN 8554
-                    WHEN 'Cel' THEN 586323
-                    WHEN 'cm' THEN 8582
-                    WHEN 'kg/m2' THEN 9531
-                    WHEN 'kg' THEN 9529
-                    WHEN 'ms' THEN 9593
-                    WHEN 'deg' THEN 9484
-                    WHEN 'L' THEN 8519
-                    WHEN 'L/min' THEN 8698
-                    WHEN 'mmol/min' THEN 710200
-                    WHEN 'F' THEN 9289
-                    ELSE 0
-                END
-            """
-
-            # F is contextually normalized to [degF], so its source
-            # concept remains 0. Other exact UCUM codes use the same
-            # standard concept as unit_source_concept_id.
-            unit_source_concept_sql = """
-                CASE LTRIM(RTRIM(CONVERT(
-                    varchar(50), o.OBSCLIN_RESULT_UNIT
-                )))
-                    WHEN 'mm[Hg]' THEN 8876
-                    WHEN '%' THEN 8554
-                    WHEN 'Cel' THEN 586323
-                    WHEN 'cm' THEN 8582
-                    WHEN 'kg/m2' THEN 9531
-                    WHEN 'kg' THEN 9529
-                    WHEN 'ms' THEN 9593
-                    WHEN 'deg' THEN 9484
-                    WHEN 'L' THEN 8519
-                    WHEN 'L/min' THEN 8698
-                    WHEN 'mmol/min' THEN 710200
-                    ELSE 0
-                END
+            # OBSCLIN_RESULT_UNIT is a standardized mixed-case UCUM field.
+            # Resolve only exact, case-sensitive, unique active Standard
+            # Unit concepts. Otherwise preserve the source string and use 0.
+            unit_cte_sql = """
+                WITH unit_candidates AS (
+                    SELECT
+                        c.concept_code COLLATE Latin1_General_100_BIN2
+                            AS concept_code,
+                        c.concept_id,
+                        COUNT_BIG(*) OVER (
+                            PARTITION BY
+                                c.concept_code COLLATE Latin1_General_100_BIN2
+                        ) AS candidate_count
+                    FROM dbo.concept c
+                    WHERE c.vocabulary_id = 'UCUM'
+                      AND c.domain_id = 'Unit'
+                      AND c.standard_concept = 'S'
+                      AND c.invalid_reason IS NULL
+                ),
+                unit_map AS (
+                    SELECT
+                        concept_code,
+                        MAX(
+                            CASE WHEN candidate_count = 1
+                                 THEN concept_id ELSE NULL END
+                        ) AS unit_concept_id
+                    FROM unit_candidates
+                    GROUP BY concept_code
+                )
             """
 
             # RAW result is preferred, then normalized text.
@@ -242,7 +230,9 @@ def append_obs_clin_measurements(
             """
 
             con.execute(
-                text(f"""
+                text(
+                    unit_cte_sql
+                    + f"""
                     INSERT INTO dbo.measurement (
                         measurement_id,
                         person_id,
@@ -279,7 +269,7 @@ def append_obs_clin_measurements(
                         0,
                         TRY_CONVERT(float, o.OBSCLIN_RESULT_NUM),
                         0,
-                        {unit_concept_sql},
+                        COALESCE(um.unit_concept_id, 0),
                         NULL,
                         NULL,
                         NULL,
@@ -292,7 +282,7 @@ def append_obs_clin_measurements(
                         LEFT(CONVERT(
                             varchar(50), o.OBSCLIN_RESULT_UNIT
                         ), 50),
-                        {unit_source_concept_sql},
+                        COALESCE(um.unit_concept_id, 0),
                         LEFT(CONVERT(
                             varchar(max), {source_value_sql}
                         ), 50),
@@ -304,6 +294,11 @@ def append_obs_clin_measurements(
                          LTRIM(RTRIM(CONVERT(
                            nvarchar(255), o.OBSCLINID
                          )))
+                    LEFT JOIN unit_map um
+                      ON um.concept_code =
+                         NULLIF(LTRIM(RTRIM(CONVERT(
+                           nvarchar(50), o.OBSCLIN_RESULT_UNIT
+                         ))), '') COLLATE Latin1_General_100_BIN2
                     JOIN dbo.etl_measurement_xwalk x
                       ON x.source_family = 'OBS_CLIN'
                      AND x.source_record_id = r.source_obsclin_id
@@ -318,7 +313,8 @@ def append_obs_clin_measurements(
                            nvarchar(255), o.ENCOUNTERID
                          )))
                     WHERE r.target_domain = 'Measurement'
-                """)
+                """
+                )
             )
             con.commit()
 
@@ -470,13 +466,10 @@ def append_obs_clin_measurements(
             "unit_concept_zero_rows": unit_zero,
             "value_source_overflow_rows": overflow_rows,
             "visit_linked_rows": visit_linked,
-            "unit_policy": {
-                "ms": 9593,
-                "F_contextual_body_temperature": 9289,
-                "OT": 0,
-                "NI": 0,
-                "{beats}/min": 0,
-            },
+            "unit_policy": (
+                "Exact case-sensitive unique active Standard UCUM Unit "
+                "concept; otherwise concept_id=0 with source unit preserved"
+            ),
             "value_policy": (
                 "RAW_OBSCLIN_RESULT then OBSCLIN_RESULT_TEXT; "
                 "RESULT_QUAL is not substituted; OMOP projection "
