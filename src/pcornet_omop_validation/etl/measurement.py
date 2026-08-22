@@ -532,15 +532,18 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
                     "e.MEASURE_DATE", "e.MEASURE_TIME"
                 )
 
-                # LAB unit mapping deliberately avoids arbitrary selection
-                # when a UCUM code has multiple active standard concepts.
+                # UCUM codes are case-sensitive. Force binary collation so
+                # SQL Server cannot create false U/u or similar matches.
+                # Only an exact, unique, active Standard Unit concept maps.
                 lab_unit_cte = f"""
                 WITH unit_candidates AS (
                   SELECT
-                    c.concept_code,
+                    c.concept_code COLLATE Latin1_General_100_BIN2
+                      AS concept_code,
                     c.concept_id,
                     COUNT_BIG(*) OVER (
-                      PARTITION BY c.concept_code
+                      PARTITION BY
+                        c.concept_code COLLATE Latin1_General_100_BIN2
                     ) AS candidate_count
                   FROM [{target_schema}].[concept] c
                   WHERE c.vocabulary_id = 'UCUM'
@@ -553,12 +556,7 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
                     concept_code,
                     MAX(
                       CASE
-                        WHEN concept_code = 's'
-                          AND concept_id = 8555 THEN concept_id
-                        WHEN concept_code = 'h'
-                          AND concept_id = 8505 THEN concept_id
-                        WHEN concept_code NOT IN ('s', 'h')
-                          AND candidate_count = 1 THEN concept_id
+                        WHEN candidate_count = 1 THEN concept_id
                         ELSE NULL
                       END
                     ) AS unit_concept_id
@@ -659,7 +657,7 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
                       ON um.concept_code =
                          LTRIM(RTRIM(CONVERT(
                            nvarchar(50), l.RESULT_UNIT
-                         )))
+                         ))) COLLATE Latin1_General_100_BIN2
                     WHERE lm.measurement_concept_id IS NOT NULL
                     """
                 )
@@ -976,8 +974,8 @@ def transform_measurement(config: EtlConfig) -> MeasurementTransformResult:
             "Plausibility flags are audit-only."
         ),
         "lab_units": (
-            "Exact active standard UCUM mapping when unambiguous; "
-            "s resolves to second and h resolves to hour; otherwise "
+            "Exact case-sensitive active standard UCUM mapping when "
+            "there is exactly one matching Unit concept; otherwise "
             "unit_concept_id=0 with unit_source_value preserved."
         ),
         "weight_unit": (
