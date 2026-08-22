@@ -69,10 +69,10 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
                 c.standard_concept,
                 c.domain_id,
                 c.invalid_reason,
-                COUNT(*) OVER (
+                COUNT(c.concept_id) OVER (
                   PARTITION BY e.source_domain, e.source_record_id
                 ) AS candidate_count,
-                SUM(CASE WHEN c.invalid_reason IS NULL THEN 1 ELSE 0 END) OVER (
+                SUM(CASE WHEN c.concept_id IS NOT NULL AND c.invalid_reason IS NULL THEN 1 ELSE 0 END) OVER (
                   PARTITION BY e.source_domain, e.source_record_id
                 ) AS active_candidate_count
               FROM events e
@@ -88,7 +88,7 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
                 vocabulary_id,
                 CASE
                   WHEN MAX(active_candidate_count) = 1
-                    THEN MAX(CASE WHEN invalid_reason IS NULL THEN concept_id END)
+                    THEN MAX(CASE WHEN concept_id IS NOT NULL AND invalid_reason IS NULL THEN concept_id END)
                   WHEN MAX(active_candidate_count) = 0 AND MAX(candidate_count) = 1
                     THEN MAX(concept_id)
                   ELSE NULL
@@ -130,7 +130,7 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
                AND tgt.standard_concept = 'S'
                AND tgt.invalid_reason IS NULL
               WHERE NOT (
-                src.standard_concept = 'S'
+                COALESCE(src.standard_concept, '') = 'S'
                 AND src.invalid_reason IS NULL
               )
             ),
@@ -202,8 +202,8 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
             ),
             source_candidates AS (
               SELECT e.*, c.concept_id, c.standard_concept, c.domain_id, c.invalid_reason,
-                     COUNT(*) OVER (PARTITION BY e.source_domain, e.source_record_id) AS candidate_count,
-                     SUM(CASE WHEN c.invalid_reason IS NULL THEN 1 ELSE 0 END) OVER (PARTITION BY e.source_domain, e.source_record_id) AS active_candidate_count
+                     COUNT(c.concept_id) OVER (PARTITION BY e.source_domain, e.source_record_id) AS candidate_count,
+                     SUM(CASE WHEN c.concept_id IS NOT NULL AND c.invalid_reason IS NULL THEN 1 ELSE 0 END) OVER (PARTITION BY e.source_domain, e.source_record_id) AS active_candidate_count
               FROM events e
               LEFT JOIN [{target_schema}].[concept] c
                 ON c.concept_code = e.source_code AND c.vocabulary_id = e.vocabulary_id
@@ -211,7 +211,7 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
             source_resolved AS (
               SELECT source_domain, source_record_id,
                      CASE
-                       WHEN MAX(active_candidate_count) = 1 THEN MAX(CASE WHEN invalid_reason IS NULL THEN concept_id END)
+                       WHEN MAX(active_candidate_count) = 1 THEN MAX(CASE WHEN concept_id IS NOT NULL AND invalid_reason IS NULL THEN concept_id END)
                        WHEN MAX(active_candidate_count) = 0 AND MAX(candidate_count) = 1 THEN MAX(concept_id)
                        ELSE NULL
                      END AS source_concept_id
@@ -236,7 +236,10 @@ def audit_condition_source_routes(config_path: str) -> dict[str, object]:
               JOIN [{target_schema}].[concept] tgt
                 ON tgt.concept_id = cr.concept_id_2
                AND tgt.standard_concept = 'S' AND tgt.invalid_reason IS NULL
-              WHERE NOT (src.standard_concept = 'S' AND src.invalid_reason IS NULL)
+              WHERE NOT (
+                COALESCE(src.standard_concept, '') = 'S'
+                AND src.invalid_reason IS NULL
+              )
             ),
             nonzero AS (
               SELECT * FROM direct_standard
