@@ -42,8 +42,8 @@ def _scalar(connection, sql: str) -> int:
 def _require_tables(connection, source_schema: str, target_schema: str) -> None:
     required = (
         (source_schema, "PCORnet_PROCEDURES"),
-        (source_schema, ROUTE_TABLE),
-        (source_schema, "etl_visit_occurrence_xwalk"),
+        (target_schema, ROUTE_TABLE),
+        (target_schema, "etl_visit_occurrence_xwalk"),
         (target_schema, "person"),
         (target_schema, "procedure_occurrence"),
         (target_schema, "concept"),
@@ -99,7 +99,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(DISTINCT source_procedure_id)
-                FROM [{source_schema}].[{ROUTE_TABLE}]
+                FROM [{target_schema}].[{ROUTE_TABLE}]
                 """,
             )
 
@@ -107,7 +107,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
-                FROM [{source_schema}].[{ROUTE_TABLE}]
+                FROM [{target_schema}].[{ROUTE_TABLE}]
                 WHERE target_domain = 'Procedure'
                 """,
             )
@@ -116,7 +116,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(DISTINCT source_procedure_id)
-                FROM [{source_schema}].[{ROUTE_TABLE}]
+                FROM [{target_schema}].[{ROUTE_TABLE}]
                 WHERE target_domain = 'Procedure'
                 """,
             )
@@ -129,7 +129,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
-                FROM [{source_schema}].[{ROUTE_TABLE}]
+                FROM [{target_schema}].[{ROUTE_TABLE}]
                 WHERE target_domain = 'Procedure'
                   AND target_concept_id = 0
                 """,
@@ -139,7 +139,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
-                FROM [{source_schema}].[{ROUTE_TABLE}] r
+                FROM [{target_schema}].[{ROUTE_TABLE}] r
                 LEFT JOIN [{target_schema}].[concept] c
                   ON c.concept_id = r.target_concept_id
                 WHERE r.target_domain = 'Procedure'
@@ -163,7 +163,7 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
-                FROM [{source_schema}].[{ROUTE_TABLE}] r
+                FROM [{target_schema}].[{ROUTE_TABLE}] r
                 LEFT JOIN [{target_schema}].[person] p
                   ON r.patid = p.person_source_value
                 WHERE r.target_domain = 'Procedure'
@@ -180,8 +180,8 @@ def transform_procedure_occurrence(
                 connection,
                 f"""
                 SELECT COUNT_BIG(*)
-                FROM [{source_schema}].[{ROUTE_TABLE}] r
-                JOIN [{source_schema}].[etl_visit_occurrence_xwalk] v
+                FROM [{target_schema}].[{ROUTE_TABLE}] r
+                JOIN [{target_schema}].[etl_visit_occurrence_xwalk] v
                   ON r.encounterid = v.encounterid
                 WHERE r.target_domain = 'Procedure'
                 """,
@@ -243,10 +243,10 @@ def transform_procedure_occurrence(
                         r.px,
                         r.source_concept_id,
                         NULL
-                    FROM [{source_schema}].[{ROUTE_TABLE}] r
+                    FROM [{target_schema}].[{ROUTE_TABLE}] r
                     JOIN [{target_schema}].[person] p
                       ON r.patid = p.person_source_value
-                    LEFT JOIN [{source_schema}].[etl_visit_occurrence_xwalk] v
+                    LEFT JOIN [{target_schema}].[etl_visit_occurrence_xwalk] v
                       ON r.encounterid = v.encounterid
                     WHERE r.target_domain = 'Procedure'
                     """
@@ -286,12 +286,12 @@ def transform_procedure_occurrence(
                 """,
             )
 
-            if table_exists(connection, source_schema, XWALK_TABLE):
+            if table_exists(connection, target_schema, XWALK_TABLE):
                 lineage_rows = _scalar(
                     connection,
                     f"""
                     SELECT COUNT_BIG(*)
-                    FROM [{source_schema}].[{XWALK_TABLE}]
+                    FROM [{target_schema}].[{XWALK_TABLE}]
                     """,
                 )
                 if lineage_rows != procedure_route_rows:
@@ -303,7 +303,7 @@ def transform_procedure_occurrence(
             else:
                 connection.exec_driver_sql(
                     f"""
-                    CREATE TABLE [{source_schema}].[{XWALK_TABLE}] (
+                    CREATE TABLE [{target_schema}].[{XWALK_TABLE}] (
                         procedure_occurrence_id bigint NOT NULL,
                         route_id bigint NOT NULL,
                         source_procedure_id nvarchar(255) NOT NULL,
@@ -322,7 +322,7 @@ def transform_procedure_occurrence(
                 )
                 connection.exec_driver_sql(
                     f"""
-                    INSERT INTO [{source_schema}].[{XWALK_TABLE}] (
+                    INSERT INTO [{target_schema}].[{XWALK_TABLE}] (
                         procedure_occurrence_id,
                         route_id,
                         source_procedure_id,
@@ -339,7 +339,7 @@ def transform_procedure_occurrence(
                         source_concept_id,
                         target_concept_id,
                         route_status
-                    FROM [{source_schema}].[{ROUTE_TABLE}]
+                    FROM [{target_schema}].[{ROUTE_TABLE}]
                     WHERE target_domain = 'Procedure'
                     """
                 )
@@ -349,7 +349,7 @@ def transform_procedure_occurrence(
                     connection,
                     f"""
                     SELECT COUNT_BIG(*)
-                    FROM [{source_schema}].[{XWALK_TABLE}]
+                    FROM [{target_schema}].[{XWALK_TABLE}]
                     """,
                 )
 
@@ -384,6 +384,8 @@ def transform_procedure_occurrence(
     )
     payload["recorded_at_utc"] = datetime.now(timezone.utc).isoformat()
     payload["stage"] = "procedure_occurrence"
+    payload["source_schema"] = source_schema
+    payload["target_schema"] = target_schema
     payload["mapping_strategy"] = {
         "source": "etl_procedure_event_route",
         "domain": "Procedure only",
