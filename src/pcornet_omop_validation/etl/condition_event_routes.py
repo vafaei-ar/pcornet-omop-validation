@@ -11,21 +11,24 @@ from .database import make_engine, table_exists
 
 
 ROUTE_TABLE = "etl_condition_event_route"
+XWALK_TABLE = "etl_condition_occurrence_xwalk"
 
 
-def _require_tables(connection, source_schema: str, target_schema: str) -> None:
+def _require_tables(connection, target_schema: str) -> None:
     required = (
-        (source_schema, "etl_condition_occurrence_xwalk"),
-        (target_schema, "condition_occurrence"),
-        (target_schema, "concept"),
-        (target_schema, "concept_relationship"),
+        XWALK_TABLE,
+        "condition_occurrence",
+        "concept",
+        "concept_relationship",
     )
-    for schema, table in required:
-        if not table_exists(connection, schema, table):
-            raise RuntimeError(f"Required table [{schema}].[{table}] does not exist")
+    for table in required:
+        if not table_exists(connection, target_schema, table):
+            raise RuntimeError(
+                f"Required table [{target_schema}].[{table}] does not exist"
+            )
 
 
-def _routing_cte(source_schema: str, target_schema: str) -> str:
+def _routing_cte(target_schema: str) -> str:
     return f"""
     WITH base AS (
       SELECT
@@ -41,7 +44,7 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
         src.standard_concept AS source_standard_concept,
         src.invalid_reason AS source_invalid_reason
       FROM [{target_schema}].[condition_occurrence] co
-      JOIN [{source_schema}].[etl_condition_occurrence_xwalk] x
+      JOIN [{target_schema}].[{XWALK_TABLE}] x
         ON x.condition_occurrence_id = co.condition_occurrence_id
       LEFT JOIN [{target_schema}].[concept] src
         ON src.concept_id = co.condition_source_concept_id
@@ -126,11 +129,12 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
         CAST(0 AS bigint) AS target_concept_id,
         CAST(
           CASE
-            WHEN b.source_concept_id = 0 THEN 'source_concept_not_found'
-            WHEN b.source_invalid_reason IS NOT NULL THEN 'invalid_source_without_standard_target'
+            WHEN b.source_concept_id = 0
+              THEN 'source_concept_not_found'
+            WHEN b.source_invalid_reason IS NOT NULL
+              THEN 'invalid_source_without_standard_target'
             ELSE 'no_active_standard_target'
-          END
-          AS varchar(64)
+          END AS varchar(64)
         ) AS route_status
       FROM base b
       WHERE b.condition_concept_id = 0
@@ -152,18 +156,19 @@ def _routing_cte(source_schema: str, target_schema: str) -> str:
 def materialize_condition_event_routes(config_path: str) -> int:
     config = load_etl_config(config_path)
     sql_cfg = config.raw["sqlserver"]
-    source_schema = str(sql_cfg.get("source_schema", "dbo"))
     target_schema = str(sql_cfg.get("target_schema", "dbo"))
     audit_path = config.audit_dir / "condition_event_routes.json"
 
     engine = make_engine(config)
     try:
         with engine.connect() as connection:
-            _require_tables(connection, source_schema, target_schema)
-            cte = _routing_cte(source_schema, target_schema)
+            _require_tables(connection, target_schema)
+            cte = _routing_cte(target_schema)
 
             expected_rows = int(
-                connection.execute(text(cte + " SELECT COUNT_BIG(*) FROM resolved")).scalar_one()
+                connection.execute(
+                    text(cte + " SELECT COUNT_BIG(*) FROM resolved")
+                ).scalar_one()
             )
             source_events = int(
                 connection.execute(
@@ -171,7 +176,7 @@ def materialize_condition_event_routes(config_path: str) -> int:
                         f"""
                         SELECT COUNT_BIG(*)
                         FROM [{target_schema}].[condition_occurrence] co
-                        JOIN [{source_schema}].[etl_condition_occurrence_xwalk] x
+                        JOIN [{target_schema}].[{XWALK_TABLE}] x
                           ON x.condition_occurrence_id = co.condition_occurrence_id
                         """
                     )
@@ -179,29 +184,35 @@ def materialize_condition_event_routes(config_path: str) -> int:
             )
 
             existing = 0
-            if table_exists(connection, source_schema, ROUTE_TABLE):
+            if table_exists(connection, target_schema, ROUTE_TABLE):
                 existing = int(
                     connection.execute(
-                        text(f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{ROUTE_TABLE}]")
+                        text(
+                            f"SELECT COUNT_BIG(*) FROM "
+                            f"[{target_schema}].[{ROUTE_TABLE}]"
+                        )
                     ).scalar_one()
                 )
 
             if existing:
                 if existing != expected_rows:
                     raise RuntimeError(
-                        f"[{source_schema}].[{ROUTE_TABLE}] already has {existing:,} rows; "
-                        f"current routing logic expects {expected_rows:,}. Drop the route table before rerunning "
-                        "after a routing-logic change."
+                        f"[{target_schema}].[{ROUTE_TABLE}] already has "
+                        f"{existing:,} rows; current routing logic expects "
+                        f"{expected_rows:,}. Drop the route table before "
+                        "rerunning after a routing-logic change."
                     )
                 status = "already_materialized_matched"
             else:
-                if table_exists(connection, source_schema, ROUTE_TABLE):
-                    connection.exec_driver_sql(f"DROP TABLE [{source_schema}].[{ROUTE_TABLE}]")
+                if table_exists(connection, target_schema, ROUTE_TABLE):
+                    connection.exec_driver_sql(
+                        f"DROP TABLE [{target_schema}].[{ROUTE_TABLE}]"
+                    )
                     connection.commit()
 
                 connection.exec_driver_sql(
                     f"""
-                    CREATE TABLE [{source_schema}].[{ROUTE_TABLE}] (
+                    CREATE TABLE [{target_schema}].[{ROUTE_TABLE}] (
                       route_id bigint NOT NULL,
                       source_domain varchar(16) NOT NULL,
                       source_record_id nvarchar(255) NOT NULL,
@@ -225,12 +236,13 @@ def materialize_condition_event_routes(config_path: str) -> int:
                 , numbered AS (
                   SELECT
                     ROW_NUMBER() OVER (
-                      ORDER BY source_domain, source_record_id, target_domain, target_concept_id, route_status
+                      ORDER BY source_domain, source_record_id,
+                               target_domain, target_concept_id, route_status
                     ) AS route_id,
                     *
                   FROM resolved
                 )
-                INSERT INTO [{source_schema}].[{ROUTE_TABLE}] (
+                INSERT INTO [{target_schema}].[{ROUTE_TABLE}] (
                   route_id, source_domain, source_record_id,
                   source_condition_occurrence_id, source_concept_id,
                   target_domain, target_concept_id, route_status,
@@ -249,12 +261,16 @@ def materialize_condition_event_routes(config_path: str) -> int:
 
             actual_rows = int(
                 connection.execute(
-                    text(f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{ROUTE_TABLE}]")
+                    text(
+                        f"SELECT COUNT_BIG(*) FROM "
+                        f"[{target_schema}].[{ROUTE_TABLE}]"
+                    )
                 ).scalar_one()
             )
             if actual_rows != expected_rows:
                 raise RuntimeError(
-                    f"Route reconciliation failed: expected={expected_rows:,}, actual={actual_rows:,}"
+                    "Route reconciliation failed: "
+                    f"expected={expected_rows:,}, actual={actual_rows:,}"
                 )
 
             summary = connection.execute(
@@ -263,9 +279,10 @@ def materialize_condition_event_routes(config_path: str) -> int:
                     SELECT source_domain, target_domain, route_status,
                            COUNT_BIG(*) AS target_rows,
                            COUNT_BIG(DISTINCT source_record_id) AS source_events
-                    FROM [{source_schema}].[{ROUTE_TABLE}]
+                    FROM [{target_schema}].[{ROUTE_TABLE}]
                     GROUP BY source_domain, target_domain, route_status
-                    ORDER BY source_domain, target_rows DESC, target_domain, route_status
+                    ORDER BY source_domain, target_rows DESC,
+                             target_domain, route_status
                     """
                 )
             ).fetchall()
@@ -274,8 +291,9 @@ def materialize_condition_event_routes(config_path: str) -> int:
                     f"""
                     SELECT route_count, COUNT_BIG(*) AS source_events
                     FROM (
-                      SELECT source_domain, source_record_id, COUNT_BIG(*) AS route_count
-                      FROM [{source_schema}].[{ROUTE_TABLE}]
+                      SELECT source_domain, source_record_id,
+                             COUNT_BIG(*) AS route_count
+                      FROM [{target_schema}].[{ROUTE_TABLE}]
                       GROUP BY source_domain, source_record_id
                     ) x
                     GROUP BY route_count
@@ -293,11 +311,17 @@ def materialize_condition_event_routes(config_path: str) -> int:
         "source_events": source_events,
         "route_rows": actual_rows,
         "additional_rows_from_one_to_many_mapping": actual_rows - source_events,
+        "route_table": f"{target_schema}.{ROUTE_TABLE}",
+        "lineage_table": f"{target_schema}.{XWALK_TABLE}",
         "routing_rules": {
             "existing_nonzero_condition_mapping": "Condition",
-            "valid_standard_source_concept": "use its current vocabulary domain and concept",
+            "valid_standard_source_concept": (
+                "use its current vocabulary domain and concept"
+            ),
             "otherwise": "emit every active valid standard Maps to target",
-            "no_valid_target": "emit one unresolved route with target_concept_id 0",
+            "no_valid_target": (
+                "emit one unresolved route with target_concept_id 0"
+            ),
             "core_omop_tables": "not modified by this stage",
         },
         "summary": [
@@ -315,12 +339,16 @@ def materialize_condition_event_routes(config_path: str) -> int:
             for row in multiplicity
         ],
         "interpretation_note": (
-            "This is the canonical source-event routing ledger for DIAGNOSIS/CONDITION-derived records. "
-            "It preserves one-to-many vocabulary mappings and does not yet write cross-domain records into OMOP core tables."
+            "This is the canonical source-event routing ledger for "
+            "DIAGNOSIS/CONDITION-derived records. It preserves one-to-many "
+            "vocabulary mappings and does not write cross-domain records into "
+            "OMOP core tables."
         ),
     }
     audit_path.parent.mkdir(parents=True, exist_ok=True)
-    audit_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    audit_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     print(f"Condition-derived source events: {source_events:,}")
     print(f"Materialized route rows: {actual_rows:,} [{status}]")
@@ -338,7 +366,10 @@ def materialize_condition_event_routes(config_path: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Materialize the audited DIAGNOSIS/CONDITION source-event routing ledger."
+        description=(
+            "Materialize the audited DIAGNOSIS/CONDITION source-event "
+            "routing ledger."
+        )
     )
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
