@@ -78,8 +78,7 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
     """Read-only audit of clean-rebuild safety and stage-order dependencies.
 
     This function never creates, drops, truncates, deletes, or updates database
-    objects. A destructive reset, if later approved, must be a separate explicit
-    operation with its own database-name confirmation guard.
+    objects. Destructive reset semantics remain isolated in clean_reset.py.
     """
     sql_cfg = config.raw["sqlserver"]
     etl_cfg = config.raw.get("etl", {}) or {}
@@ -89,9 +88,10 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
     target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
 
     configured_stages = tuple(config.stages)
-    reset_flag = bool(etl_cfg.get("reset", False))
-    fail_on_existing = etl_cfg.get("fail_on_existing")
-    fail_on_missing = etl_cfg.get("fail_on_missing")
+    # Use the actual public configuration keys from config/etl.example.yaml.
+    reset_flag = bool(etl_cfg.get("reset_target", False))
+    fail_on_existing = etl_cfg.get("fail_on_existing_target_rows")
+    fail_on_missing = etl_cfg.get("fail_on_missing_required_table")
 
     engine = make_engine(config)
     try:
@@ -134,48 +134,61 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
         k: int(v) for k, v in target_rows.items() if v is not None and int(v) > 0
     }
     missing_core = [k for k, v in target_rows.items() if v is None]
+    all_core_empty = not populated_core and not missing_core
 
     blockers: list[str] = []
     warnings: list[str] = []
 
     if reset_flag:
         blockers.append(
-            "etl.reset is true. Clean-build reset must remain a separate explicit operation; "
-            "the ordinary ETL must not contain an implicit destructive reset."
+            "etl.reset_target is true. Clean-build reset must remain a separate explicit operation; "
+            "ordinary ETL execution must not contain an implicit destructive reset."
         )
     if fail_on_existing is False:
         warnings.append(
-            "etl.fail_on_existing is false; freeze-candidate execution should refuse accidental append/overwrite states."
+            "etl.fail_on_existing_target_rows is false; freeze-candidate execution should refuse accidental append/overwrite states."
+        )
+    if fail_on_existing is None:
+        warnings.append(
+            "etl.fail_on_existing_target_rows is not configured explicitly."
         )
     if fail_on_missing is False:
         warnings.append(
-            "etl.fail_on_missing is false; freeze-candidate execution should fail on missing required inputs."
+            "etl.fail_on_missing_required_table is false; freeze-candidate execution should fail on missing required inputs."
+        )
+    if fail_on_missing is None:
+        warnings.append(
+            "etl.fail_on_missing_required_table is not configured explicitly."
         )
     if missing_core:
         warnings.append("OMOP core schema is incomplete: " + ", ".join(missing_core))
     if concept_rows == 0:
-        warnings.append("Vocabulary concept table is absent or empty.")
+        blockers.append("Vocabulary concept table is absent or empty.")
     if staging_tables == 0:
-        warnings.append("No PCORnet staging tables were detected in the configured target schema.")
+        blockers.append("No PCORnet staging tables were detected in the configured target schema.")
 
-    # A populated validated target is expected before the future clean reset. It
-    # is not a blocker for this read-only audit, but it confirms that running the
-    # new materializers in-place would be unsafe.
     if populated_core:
         warnings.append(
-            "Core OMOP targets are populated. Do not run the new route-aware materializers in-place; "
-            "perform the separately guarded clean reset first."
+            "Core OMOP targets are populated. Do not run route-aware materializers in-place; "
+            "use the separately guarded clean reset first."
         )
 
-    # Configured stage lists are treated as documentation only until they match
-    # the dependency-safe canonical order exactly.
+    # Configured stage lists are documentation until they match the code-defined
+    # dependency-safe order exactly. A mismatch does not make the empty database
+    # unsafe, but the clean-build runner must use CANONICAL_STAGE_ORDER directly.
     stage_order_matches = configured_stages == CANONICAL_STAGE_ORDER
     if configured_stages and not stage_order_matches:
         warnings.append(
             "Configured stages do not exactly match the canonical dependency-safe clean-build order."
         )
 
-    status = "ready_for_reset_design" if not blockers else "blocked"
+    if blockers:
+        status = "blocked"
+    elif all_core_empty:
+        status = "ready_for_clean_build"
+    else:
+        status = "ready_for_guarded_reset"
+
     payload = {
         "stage": "rebuild_readiness",
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -190,6 +203,7 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
         "canonical_stage_order": list(CANONICAL_STAGE_ORDER),
         "stage_order_matches": stage_order_matches,
         "target_rows": target_rows,
+        "all_core_targets_empty": all_core_empty,
         "new_route_aware_ledgers": ledgers,
         "pcornet_staging_table_count": staging_tables,
         "concept_rows": concept_rows,
@@ -198,8 +212,8 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
         "policy": {
             "ordinary_schema_stage": "non-destructive",
             "ordinary_etl": "must never implicitly drop or reset the configured database",
-            "future_clean_reset": (
-                "must be a separate explicit command requiring the operator to repeat the exact configured database name"
+            "clean_reset": (
+                "separate explicit command requiring the operator to repeat the exact configured database and schema"
             ),
             "prior_comparator": (
                 "never inferred, discovered, dropped, truncated, or modified by the validated-target reset path"
@@ -230,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     print("fail_on_existing:", result["fail_on_existing"])
     print("fail_on_missing:", result["fail_on_missing"])
     print("stage_order_matches:", result["stage_order_matches"])
+    print("all_core_targets_empty:", result["all_core_targets_empty"])
     print("pcornet_staging_table_count:", result["pcornet_staging_table_count"])
     print("concept_rows:", result["concept_rows"])
     print("new_route_aware_ledgers:", result["new_route_aware_ledgers"])
