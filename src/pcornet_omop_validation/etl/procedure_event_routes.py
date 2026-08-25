@@ -251,41 +251,36 @@ def materialize_procedure_event_routes(config_path: str, replace: bool = False) 
         with engine.connect() as connection:
             _require_tables(connection, source_schema, target_schema)
 
-            exists = table_exists(connection, source_schema, ROUTE_TABLE)
+            exists = table_exists(connection, target_schema, ROUTE_TABLE)
             if exists and not replace:
                 raise RuntimeError(
-                    f"[{source_schema}].[{ROUTE_TABLE}] already exists. "
+                    f"[{target_schema}].[{ROUTE_TABLE}] already exists. "
                     "Use --replace to rebuild it after vocabulary or routing-rule changes."
                 )
             if exists:
-                connection.exec_driver_sql(f"DROP TABLE [{source_schema}].[{ROUTE_TABLE}]")
+                connection.exec_driver_sql(f"DROP TABLE [{target_schema}].[{ROUTE_TABLE}]")
                 connection.commit()
 
             cte = _routing_cte(source_schema, target_schema)
             source_events = int(
-                connection.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM [{source_schema}].[PCORnet_PROCEDURES]
-                        WHERE PX_DATE IS NOT NULL
-                          AND PROCEDURESID IS NOT NULL
-                          AND LTRIM(RTRIM(CONVERT(nvarchar(255), PROCEDURESID))) <> ''
-                          AND PATID IS NOT NULL
-                          AND LTRIM(RTRIM(CONVERT(nvarchar(255), PATID))) <> ''
-                          AND PX IS NOT NULL
-                          AND LTRIM(RTRIM(CONVERT(nvarchar(255), PX))) <> ''
-                        """
-                    )
-                ).scalar_one()
+                connection.execute(text(f"""
+                    SELECT COUNT_BIG(*)
+                    FROM [{source_schema}].[PCORnet_PROCEDURES]
+                    WHERE PX_DATE IS NOT NULL
+                      AND PROCEDURESID IS NOT NULL
+                      AND LTRIM(RTRIM(CONVERT(nvarchar(255), PROCEDURESID))) <> ''
+                      AND PATID IS NOT NULL
+                      AND LTRIM(RTRIM(CONVERT(nvarchar(255), PATID))) <> ''
+                      AND PX IS NOT NULL
+                      AND LTRIM(RTRIM(CONVERT(nvarchar(255), PX))) <> ''
+                """)).scalar_one()
             )
             expected_rows = int(
                 connection.execute(text(cte + " SELECT COUNT_BIG(*) FROM numbered")).scalar_one()
             )
 
-            connection.exec_driver_sql(
-                f"""
-                CREATE TABLE [{source_schema}].[{ROUTE_TABLE}] (
+            connection.exec_driver_sql(f"""
+                CREATE TABLE [{target_schema}].[{ROUTE_TABLE}] (
                   route_id bigint NOT NULL,
                   source_procedure_id nvarchar(255) NOT NULL,
                   target_ordinal int NOT NULL,
@@ -309,40 +304,31 @@ def materialize_procedure_event_routes(config_path: str, replace: bool = False) 
                   CONSTRAINT UQ_{ROUTE_TABLE}_target UNIQUE
                     (source_procedure_id, target_domain, target_concept_id)
                 )
-                """
-            )
+            """)
             connection.commit()
 
-            insert_sql = cte + f"""
-            INSERT INTO [{source_schema}].[{ROUTE_TABLE}] (
-              route_id, source_procedure_id, target_ordinal,
-              patid, encounterid, px, px_type, raw_px, raw_px_type, px_source, px_date,
-              source_concept_id, source_vocabulary_id, source_concept_domain,
-              target_domain, target_concept_id, route_status, disposition
-            )
-            SELECT
-              route_id, source_procedure_id, target_ordinal,
-              patid, encounterid, px, px_type, raw_px, raw_px_type, px_source, px_date,
-              source_concept_id, source_vocabulary_id, source_concept_domain,
-              target_domain, target_concept_id, route_status, disposition
-            FROM numbered
-            """
-            connection.exec_driver_sql(insert_sql)
+            connection.exec_driver_sql(cte + f"""
+                INSERT INTO [{target_schema}].[{ROUTE_TABLE}] (
+                  route_id, source_procedure_id, target_ordinal,
+                  patid, encounterid, px, px_type, raw_px, raw_px_type, px_source, px_date,
+                  source_concept_id, source_vocabulary_id, source_concept_domain,
+                  target_domain, target_concept_id, route_status, disposition
+                )
+                SELECT
+                  route_id, source_procedure_id, target_ordinal,
+                  patid, encounterid, px, px_type, raw_px, raw_px_type, px_source, px_date,
+                  source_concept_id, source_vocabulary_id, source_concept_domain,
+                  target_domain, target_concept_id, route_status, disposition
+                FROM numbered
+            """)
             connection.commit()
 
-            actual_rows = int(
-                connection.execute(
-                    text(f"SELECT COUNT_BIG(*) FROM [{source_schema}].[{ROUTE_TABLE}]")
-                ).scalar_one()
-            )
-            routed_events = int(
-                connection.execute(
-                    text(
-                        f"SELECT COUNT_BIG(DISTINCT source_procedure_id) "
-                        f"FROM [{source_schema}].[{ROUTE_TABLE}]"
-                    )
-                ).scalar_one()
-            )
+            actual_rows = int(connection.execute(text(
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{ROUTE_TABLE}]"
+            )).scalar_one())
+            routed_events = int(connection.execute(text(
+                f"SELECT COUNT_BIG(DISTINCT source_procedure_id) FROM [{target_schema}].[{ROUTE_TABLE}]"
+            )).scalar_one())
             if actual_rows != expected_rows or routed_events != source_events:
                 raise RuntimeError(
                     "Procedure route reconciliation failed: "
@@ -350,49 +336,38 @@ def materialize_procedure_event_routes(config_path: str, replace: bool = False) 
                     f"expected_rows={expected_rows:,}, actual_rows={actual_rows:,}"
                 )
 
-            summary = connection.execute(
-                text(
-                    f"""
-                    SELECT target_domain, disposition, route_status,
-                           COUNT_BIG(*) AS target_rows,
-                           COUNT_BIG(DISTINCT source_procedure_id) AS source_events
-                    FROM [{source_schema}].[{ROUTE_TABLE}]
-                    GROUP BY target_domain, disposition, route_status
-                    ORDER BY target_rows DESC, target_domain, route_status
-                    """
-                )
-            ).fetchall()
-            multiplicity = connection.execute(
-                text(
-                    f"""
-                    SELECT route_count, COUNT_BIG(*) AS source_events
-                    FROM (
-                      SELECT source_procedure_id, COUNT_BIG(*) AS route_count
-                      FROM [{source_schema}].[{ROUTE_TABLE}]
-                      GROUP BY source_procedure_id
-                    ) x
-                    GROUP BY route_count
-                    ORDER BY route_count
-                    """
-                )
-            ).fetchall()
-            disposition_rows = connection.execute(
-                text(
-                    f"""
-                    SELECT disposition, COUNT_BIG(*) AS route_rows,
-                           COUNT_BIG(DISTINCT source_procedure_id) AS source_events
-                    FROM [{source_schema}].[{ROUTE_TABLE}]
-                    GROUP BY disposition
-                    ORDER BY route_rows DESC, disposition
-                    """
-                )
-            ).fetchall()
+            summary = connection.execute(text(f"""
+                SELECT target_domain, disposition, route_status,
+                       COUNT_BIG(*) AS target_rows,
+                       COUNT_BIG(DISTINCT source_procedure_id) AS source_events
+                FROM [{target_schema}].[{ROUTE_TABLE}]
+                GROUP BY target_domain, disposition, route_status
+                ORDER BY target_rows DESC, target_domain, route_status
+            """)).fetchall()
+            multiplicity = connection.execute(text(f"""
+                SELECT route_count, COUNT_BIG(*) AS source_events
+                FROM (
+                  SELECT source_procedure_id, COUNT_BIG(*) AS route_count
+                  FROM [{target_schema}].[{ROUTE_TABLE}]
+                  GROUP BY source_procedure_id
+                ) x
+                GROUP BY route_count
+                ORDER BY route_count
+            """)).fetchall()
+            disposition_rows = connection.execute(text(f"""
+                SELECT disposition, COUNT_BIG(*) AS route_rows,
+                       COUNT_BIG(DISTINCT source_procedure_id) AS source_events
+                FROM [{target_schema}].[{ROUTE_TABLE}]
+                GROUP BY disposition
+                ORDER BY route_rows DESC, disposition
+            """)).fetchall()
     finally:
         engine.dispose()
 
     payload = {
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "stage": "procedure_event_routes",
+        "route_table": f"{target_schema}.{ROUTE_TABLE}",
         "source_events": source_events,
         "route_rows": actual_rows,
         "additional_rows_from_one_to_many_mapping": actual_rows - source_events,
@@ -409,19 +384,13 @@ def materialize_procedure_event_routes(config_path: str, replace: bool = False) 
             "core_omop_tables": "not modified by this stage",
         },
         "dispositions": [
-            {
-                "disposition": row[0],
-                "route_rows": int(row[1]),
-                "source_events": int(row[2]),
-            }
+            {"disposition": row[0], "route_rows": int(row[1]), "source_events": int(row[2])}
             for row in disposition_rows
         ],
         "summary": [
             {
-                "target_domain": row[0],
-                "disposition": row[1],
-                "route_status": row[2],
-                "target_rows": int(row[3]),
+                "target_domain": row[0], "disposition": row[1],
+                "route_status": row[2], "target_rows": int(row[3]),
                 "source_events": int(row[4]),
             }
             for row in summary
@@ -444,10 +413,7 @@ def materialize_procedure_event_routes(config_path: str, replace: bool = False) 
     print(f"Additional one-to-many rows: {actual_rows - source_events:,}")
     print("Disposition summary:")
     for row in disposition_rows:
-        print(
-            f"  {row[0]:30s} route_rows={int(row[1]):,} "
-            f"source_events={int(row[2]):,}"
-        )
+        print(f"  {row[0]:30s} route_rows={int(row[1]):,} source_events={int(row[2]):,}")
     print("Routes by target domain/status:")
     for row in summary:
         print(
@@ -463,11 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Materialize the audited native PCORnet PROCEDURES source-event routing ledger."
     )
     parser.add_argument("--config", required=True)
-    parser.add_argument(
-        "--replace",
-        action="store_true",
-        help="Drop and rebuild an existing route ledger after vocabulary or routing-rule changes.",
-    )
+    parser.add_argument("--replace", action="store_true")
     args = parser.parse_args(argv)
     return materialize_procedure_event_routes(args.config, replace=args.replace)
 
