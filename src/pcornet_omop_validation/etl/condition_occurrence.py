@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,9 +12,6 @@ from .config import EtlConfig
 from .database import make_engine, table_exists
 
 
-# Historical PCORnet provenance/status mappings are retained only when the
-# referenced concept exists in the loaded vocabulary. Unknown or obsolete
-# concepts become 0.
 DX_ORIGIN_TYPE_MAP = {
     "OD": 32817,
     "BI": 32821,
@@ -34,6 +32,7 @@ DX_SOURCE_STATUS_MAP = {
     "OT": 44814649,
 }
 
+CANONICAL_ROUTE_TABLE = "etl_condition_event_route_v2"
 XWALK_TABLE = "etl_condition_occurrence_xwalk"
 
 
@@ -69,6 +68,13 @@ class ConditionOccurrenceTransformResult:
     audit_path: Path
 
 
+def _schema(value: object, label: str) -> str:
+    schema = str(value or "dbo")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema) is None:
+        raise ValueError(f"Unsafe SQL Server {label}: {schema!r}")
+    return schema
+
+
 def _scalar(connection, sql: str) -> int:
     return int(connection.execute(text(sql)).scalar_one())
 
@@ -80,14 +86,12 @@ def _require_tables(connection, source_schema: str, target_schema: str) -> None:
         (target_schema, "person"),
         (target_schema, "condition_occurrence"),
         (target_schema, "concept"),
-        (target_schema, "concept_relationship"),
         (target_schema, "etl_visit_occurrence_xwalk"),
+        (target_schema, CANONICAL_ROUTE_TABLE),
     )
     for schema, table in required:
         if not table_exists(connection, schema, table):
-            raise RuntimeError(
-                f"Required table [{schema}].[{table}] does not exist"
-            )
+            raise RuntimeError(f"Required table [{schema}].[{table}] does not exist")
 
 
 def _validated_existing_map(
@@ -109,16 +113,13 @@ def _validated_existing_map(
         ).fetchall()
     }
     valid = {key: value for key, value in mapping.items() if value in present}
-    rejected = {
-        key: value for key, value in mapping.items() if value not in present
-    }
+    rejected = {key: value for key, value in mapping.items() if value not in present}
     return valid, rejected
 
 
 def _case_sql(column: str, mapping: dict[str, int]) -> str:
     clauses = " ".join(
-        f"WHEN {column} = '{key}' THEN {value}"
-        for key, value in mapping.items()
+        f"WHEN {column} = '{key}' THEN {value}" for key, value in mapping.items()
     )
     return f"CASE {clauses} ELSE 0 END"
 
@@ -142,6 +143,13 @@ def _vocabulary_case(column: str) -> str:
 
 
 def _eligible_ctes(source_schema: str, target_schema: str) -> str:
+    """Return source-semantic eligibility CTEs only.
+
+    Vocabulary mapping is intentionally not performed here. Canonical source-concept
+    resolution and one-to-many Standard routing are owned by
+    condition_canonical_routes.py so that no arbitrary TOP(1) mapping can enter the
+    primary Condition materialization.
+    """
     dx_vocab = _vocabulary_case("DX_TYPE")
     cond_vocab = _vocabulary_case("CONDITION_TYPE")
     return f"""
@@ -174,65 +182,78 @@ def _eligible_ctes(source_schema: str, target_schema: str) -> str:
           OR CAST(c.RESOLVE_DATE AS date) >=
              CAST(COALESCE(c.ONSET_DATE, c.REPORT_DATE) AS date)
         )
-    ),
-    source_codes AS (
-      SELECT DISTINCT CAST(DX AS nvarchar(255)) AS source_code, vocabulary_id
-      FROM diag_eligible
-      WHERE DX IS NOT NULL AND vocabulary_id IS NOT NULL
-      UNION
-      SELECT DISTINCT CAST(CONDITION AS nvarchar(255)), vocabulary_id
-      FROM cond_eligible
-      WHERE CONDITION IS NOT NULL AND vocabulary_id IS NOT NULL
-    ),
-    code_map AS (
-      SELECT
-        sc.source_code,
-        sc.vocabulary_id,
-        src.concept_id AS source_concept_id,
-        CASE
-          WHEN src.standard_concept = 'S'
-           AND src.domain_id = 'Condition'
-           AND src.invalid_reason IS NULL
-            THEN src.concept_id
-          WHEN mapped.target_count = 1
-            THEN mapped.unique_target_concept_id
-          ELSE NULL
-        END AS standard_concept_id,
-        COALESCE(mapped.target_count, 0) AS condition_target_count
-      FROM source_codes sc
-      OUTER APPLY (
-        SELECT TOP (1)
-          c.concept_id,
-          c.standard_concept,
-          c.domain_id,
-          c.invalid_reason
-        FROM [{target_schema}].[concept] c
-        WHERE c.concept_code = sc.source_code
-          AND c.vocabulary_id = sc.vocabulary_id
-        ORDER BY
-          CASE WHEN c.invalid_reason IS NULL THEN 0 ELSE 1 END,
-          c.concept_id
-      ) src
-      OUTER APPLY (
-        SELECT
-          COUNT(DISTINCT target.concept_id) AS target_count,
-          CASE
-            WHEN COUNT(DISTINCT target.concept_id) = 1
-              THEN MAX(target.concept_id)
-            ELSE NULL
-          END AS unique_target_concept_id
-        FROM [{target_schema}].[concept_relationship] cr
-        JOIN [{target_schema}].[concept] target
-          ON target.concept_id = cr.concept_id_2
-        WHERE cr.concept_id_1 = src.concept_id
-          AND cr.relationship_id = 'Maps to'
-          AND target.standard_concept = 'S'
-          AND target.domain_id = 'Condition'
-          AND target.invalid_reason IS NULL
-          AND (cr.invalid_reason IS NULL OR cr.invalid_reason = '')
-      ) mapped
     )
     """
+
+
+def _source_classification_counts(connection, source_schema: str, target_schema: str):
+    diag_cte = f"""
+    WITH classified AS (
+      SELECT d.*,
+             CASE
+               WHEN d.DIAGNOSISID IS NULL
+                 OR LTRIM(RTRIM(CAST(d.DIAGNOSISID AS nvarchar(max)))) = ''
+                 THEN 'missing_id'
+               WHEN d.PATID IS NULL
+                 OR LTRIM(RTRIM(CAST(d.PATID AS nvarchar(max)))) = ''
+                 THEN 'missing_patid'
+               WHEN p.person_id IS NULL THEN 'unlinked_person'
+               WHEN d.DX_DATE IS NULL THEN 'missing_dx_date'
+               ELSE 'eligible'
+             END AS record_status
+      FROM [{source_schema}].[PCORnet_DIAGNOSIS] d
+      LEFT JOIN [{target_schema}].[person] p
+        ON CAST(d.PATID AS nvarchar(50)) = p.person_source_value
+    )
+    """
+    diag_counts = dict(
+        connection.execute(
+            text(
+                diag_cte
+                + " SELECT record_status, COUNT_BIG(*) FROM classified GROUP BY record_status"
+            )
+        ).fetchall()
+    )
+
+    cond_cte = f"""
+    WITH classified AS (
+      SELECT c.*,
+             CASE
+               WHEN c.CONDITIONID IS NULL
+                 OR LTRIM(RTRIM(CAST(c.CONDITIONID AS nvarchar(max)))) = ''
+                 THEN 'missing_id'
+               WHEN c.PATID IS NULL
+                 OR LTRIM(RTRIM(CAST(c.PATID AS nvarchar(max)))) = ''
+                 THEN 'missing_patid'
+               WHEN p.person_id IS NULL THEN 'unlinked_person'
+               WHEN c.ONSET_DATE IS NULL AND c.REPORT_DATE IS NULL
+                 THEN 'missing_date'
+               WHEN c.RESOLVE_DATE IS NOT NULL
+                AND CAST(c.RESOLVE_DATE AS date) <
+                    CAST(COALESCE(c.ONSET_DATE, c.REPORT_DATE) AS date)
+                 THEN 'invalid_interval'
+               ELSE 'eligible'
+             END AS record_status
+      FROM [{source_schema}].[PCORnet_CONDITION] c
+      LEFT JOIN [{target_schema}].[person] p
+        ON CAST(c.PATID AS nvarchar(50)) = p.person_source_value
+    )
+    """
+    cond_counts = dict(
+        connection.execute(
+            text(
+                cond_cte
+                + " SELECT record_status, COUNT_BIG(*) FROM classified GROUP BY record_status"
+            )
+        ).fetchall()
+    )
+    report_fallback = _scalar(
+        connection,
+        cond_cte
+        + " SELECT COUNT_BIG(*) FROM classified WHERE record_status='eligible' "
+        "AND ONSET_DATE IS NULL AND REPORT_DATE IS NOT NULL",
+    )
+    return diag_counts, cond_counts, report_fallback
 
 
 def transform_condition_occurrence(
@@ -241,23 +262,20 @@ def transform_condition_occurrence(
     policies = config.raw.get("policies", {}) or {}
     if policies.get("missing_required_date") != "exclude":
         raise RuntimeError(
-            "The validated condition stage requires "
-            "policies.missing_required_date=exclude"
+            "The validated condition stage requires policies.missing_required_date=exclude"
         )
     if policies.get("unmapped_standard_concept") != "concept_zero":
         raise RuntimeError(
-            "The validated condition stage requires "
-            "policies.unmapped_standard_concept=concept_zero"
+            "The validated condition stage requires policies.unmapped_standard_concept=concept_zero"
         )
     if policies.get("condition_sources") != "include_both":
         raise RuntimeError(
-            "The validated condition stage requires "
-            "policies.condition_sources=include_both"
+            "The validated condition stage requires policies.condition_sources=include_both"
         )
 
     sql_cfg = config.raw["sqlserver"]
-    source_schema = str(sql_cfg.get("source_schema", "dbo"))
-    target_schema = str(sql_cfg.get("target_schema", "dbo"))
+    source_schema = _schema(sql_cfg.get("source_schema", "dbo"), "source_schema")
+    target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
     audit_path = config.audit_dir / "condition_occurrence_transform.json"
 
     engine = make_engine(config)
@@ -267,113 +285,30 @@ def transform_condition_occurrence(
 
             diagnosis_source_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM "
-                f"[{source_schema}].[PCORnet_DIAGNOSIS]",
+                f"SELECT COUNT_BIG(*) FROM [{source_schema}].[PCORnet_DIAGNOSIS]",
             )
             condition_source_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM "
-                f"[{source_schema}].[PCORnet_CONDITION]",
+                f"SELECT COUNT_BIG(*) FROM [{source_schema}].[PCORnet_CONDITION]",
+            )
+            diag_counts, cond_counts, condition_report_date_fallback = (
+                _source_classification_counts(connection, source_schema, target_schema)
             )
 
-            diag_cte = f"""
-            WITH classified AS (
-              SELECT d.*, p.person_id,
-                     CASE
-                       WHEN d.DIAGNOSISID IS NULL
-                         OR LTRIM(RTRIM(CAST(d.DIAGNOSISID AS nvarchar(max)))) = ''
-                         THEN 'missing_id'
-                       WHEN d.PATID IS NULL
-                         OR LTRIM(RTRIM(CAST(d.PATID AS nvarchar(max)))) = ''
-                         THEN 'missing_patid'
-                       WHEN p.person_id IS NULL THEN 'unlinked_person'
-                       WHEN d.DX_DATE IS NULL THEN 'missing_dx_date'
-                       ELSE 'eligible'
-                     END AS record_status
-              FROM [{source_schema}].[PCORnet_DIAGNOSIS] d
-              LEFT JOIN [{target_schema}].[person] p
-                ON CAST(d.PATID AS nvarchar(50)) = p.person_source_value
-            )
-            """
-            diag_counts = dict(
-                connection.execute(
-                    text(
-                        diag_cte
-                        + " SELECT record_status, COUNT_BIG(*) "
-                          "FROM classified GROUP BY record_status"
-                    )
-                ).fetchall()
-            )
             diagnosis_eligible_rows = int(diag_counts.get("eligible", 0))
             diagnosis_missing_id = int(diag_counts.get("missing_id", 0))
-            diagnosis_missing_patid = int(
-                diag_counts.get("missing_patid", 0)
-            )
-            diagnosis_unlinked_person = int(
-                diag_counts.get("unlinked_person", 0)
-            )
-            diagnosis_missing_dx_date = int(
-                diag_counts.get("missing_dx_date", 0)
-            )
-            diagnosis_excluded_rows = (
-                diagnosis_source_rows - diagnosis_eligible_rows
-            )
+            diagnosis_missing_patid = int(diag_counts.get("missing_patid", 0))
+            diagnosis_unlinked_person = int(diag_counts.get("unlinked_person", 0))
+            diagnosis_missing_dx_date = int(diag_counts.get("missing_dx_date", 0))
+            diagnosis_excluded_rows = diagnosis_source_rows - diagnosis_eligible_rows
 
-            cond_cte = f"""
-            WITH classified AS (
-              SELECT c.*, p.person_id,
-                     CASE
-                       WHEN c.CONDITIONID IS NULL
-                         OR LTRIM(RTRIM(CAST(c.CONDITIONID AS nvarchar(max)))) = ''
-                         THEN 'missing_id'
-                       WHEN c.PATID IS NULL
-                         OR LTRIM(RTRIM(CAST(c.PATID AS nvarchar(max)))) = ''
-                         THEN 'missing_patid'
-                       WHEN p.person_id IS NULL THEN 'unlinked_person'
-                       WHEN c.ONSET_DATE IS NULL AND c.REPORT_DATE IS NULL
-                         THEN 'missing_date'
-                       WHEN c.RESOLVE_DATE IS NOT NULL
-                        AND CAST(c.RESOLVE_DATE AS date) <
-                            CAST(COALESCE(c.ONSET_DATE, c.REPORT_DATE) AS date)
-                         THEN 'invalid_interval'
-                       ELSE 'eligible'
-                     END AS record_status
-              FROM [{source_schema}].[PCORnet_CONDITION] c
-              LEFT JOIN [{target_schema}].[person] p
-                ON CAST(c.PATID AS nvarchar(50)) = p.person_source_value
-            )
-            """
-            cond_counts = dict(
-                connection.execute(
-                    text(
-                        cond_cte
-                        + " SELECT record_status, COUNT_BIG(*) "
-                          "FROM classified GROUP BY record_status"
-                    )
-                ).fetchall()
-            )
             condition_eligible_rows = int(cond_counts.get("eligible", 0))
             condition_missing_id = int(cond_counts.get("missing_id", 0))
-            condition_missing_patid = int(
-                cond_counts.get("missing_patid", 0)
-            )
-            condition_unlinked_person = int(
-                cond_counts.get("unlinked_person", 0)
-            )
+            condition_missing_patid = int(cond_counts.get("missing_patid", 0))
+            condition_unlinked_person = int(cond_counts.get("unlinked_person", 0))
             condition_missing_date = int(cond_counts.get("missing_date", 0))
-            condition_invalid_interval = int(
-                cond_counts.get("invalid_interval", 0)
-            )
-            condition_excluded_rows = (
-                condition_source_rows - condition_eligible_rows
-            )
-            condition_report_date_fallback = _scalar(
-                connection,
-                cond_cte
-                + " SELECT COUNT_BIG(*) FROM classified "
-                  "WHERE record_status='eligible' "
-                  "AND ONSET_DATE IS NULL AND REPORT_DATE IS NOT NULL",
-            )
+            condition_invalid_interval = int(cond_counts.get("invalid_interval", 0))
+            condition_excluded_rows = condition_source_rows - condition_eligible_rows
 
             duplicate_diag_ids = _scalar(
                 connection,
@@ -408,6 +343,67 @@ def transform_condition_occurrence(
                     f"CONDITIONID duplicates={duplicate_condition_ids:,}"
                 )
 
+            route_source_events = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*) FROM (
+                  SELECT source_domain, source_record_id
+                  FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}]
+                  GROUP BY source_domain, source_record_id
+                ) x
+                """,
+            )
+            eligible_source_events = diagnosis_eligible_rows + condition_eligible_rows
+            if route_source_events != eligible_source_events:
+                raise RuntimeError(
+                    "Canonical Condition route coverage does not match eligible source events: "
+                    f"routes={route_source_events:,}, eligible={eligible_source_events:,}. "
+                    "Rebuild the canonical route ledger before materializing Condition rows."
+                )
+
+            invalid_condition_targets = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}] r
+                LEFT JOIN [{target_schema}].[concept] c
+                  ON c.concept_id = r.target_concept_id
+                WHERE r.is_core_event_route = 1
+                  AND r.target_domain = 'Condition'
+                  AND r.target_concept_id <> 0
+                  AND NOT (
+                    c.concept_id IS NOT NULL
+                    AND c.domain_id = 'Condition'
+                    AND c.standard_concept = 'S'
+                    AND c.invalid_reason IS NULL
+                  )
+                """,
+            )
+            if invalid_condition_targets:
+                raise RuntimeError(
+                    "Canonical route ledger contains invalid nonzero Condition targets: "
+                    f"{invalid_condition_targets:,}"
+                )
+
+            expected_rows = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}]
+                WHERE is_core_event_route = 1 AND target_domain = 'Condition'
+                """,
+            )
+            expected_diag_rows = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}]
+                WHERE is_core_event_route = 1 AND target_domain = 'Condition'
+                  AND source_domain = 'DIAGNOSIS'
+                """,
+            )
+            expected_cond_rows = expected_rows - expected_diag_rows
+
             type_map, rejected_type_map = _validated_existing_map(
                 connection, target_schema, DX_ORIGIN_TYPE_MAP
             )
@@ -415,42 +411,72 @@ def transform_condition_occurrence(
                 connection, target_schema, DX_SOURCE_STATUS_MAP
             )
 
-            expected_rows = diagnosis_eligible_rows + condition_eligible_rows
             existing = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM "
-                f"[{target_schema}].[condition_occurrence]",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence]",
             )
             if existing:
                 if existing != expected_rows:
                     raise RuntimeError(
-                        f"Target [{target_schema}].[condition_occurrence] already "
-                        f"has {existing:,} rows; validated eligible total is "
-                        f"{expected_rows:,}. Refusing to append or overwrite."
+                        f"Target [{target_schema}].[condition_occurrence] already has "
+                        f"{existing:,} rows; canonical Condition routes require {expected_rows:,}. "
+                        "Refusing to patch or overwrite an existing materialization."
                     )
                 if not table_exists(connection, target_schema, XWALK_TABLE):
+                    raise RuntimeError("Condition target exists but route-aware lineage is missing")
+                lineage_rows = _scalar(
+                    connection,
+                    f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{XWALK_TABLE}]",
+                )
+                if lineage_rows != existing:
                     raise RuntimeError(
-                        "Condition target exists but lineage table is missing"
+                        "Condition route-aware lineage does not match target: "
+                        f"lineage={lineage_rows:,}, target={existing:,}"
+                    )
+                legacy_shape = _scalar(
+                    connection,
+                    f"""
+                    SELECT COUNT_BIG(*)
+                    FROM sys.indexes i
+                    JOIN sys.index_columns ic
+                      ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                    JOIN sys.columns c
+                      ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                    WHERE i.object_id = OBJECT_ID('[{target_schema}].[{XWALK_TABLE}]')
+                      AND i.is_primary_key = 1
+                      AND c.name = 'route_id'
+                    """,
+                )
+                if legacy_shape == 0:
+                    raise RuntimeError(
+                        "Existing Condition lineage uses the legacy one-row-per-source schema. "
+                        "A clean rebuild is required for route-aware one-to-many lineage."
                     )
                 status = "already_loaded_matched"
             else:
                 if table_exists(connection, target_schema, XWALK_TABLE):
                     raise RuntimeError(
-                        f"[{target_schema}].[{XWALK_TABLE}] exists while "
-                        "condition_occurrence is empty; refusing partial-state load"
+                        f"[{target_schema}].[{XWALK_TABLE}] exists while condition_occurrence "
+                        "is empty; refusing partial-state load"
                     )
 
-                type_case = _case_sql("DX_ORIGIN", type_map)
-                status_case = _case_sql("DX_SOURCE", status_map)
-                ctes = _eligible_ctes(source_schema, target_schema)
-
-                insert_sql = ctes + f"""
-                , combined AS (
+                type_case = _case_sql("d.DX_ORIGIN", type_map)
+                status_case = _case_sql("d.DX_SOURCE", status_map)
+                eligible = _eligible_ctes(source_schema, target_schema)
+                insert_sql = eligible + f"""
+                , condition_routes AS (
+                  SELECT *
+                  FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}]
+                  WHERE is_core_event_route = 1
+                    AND target_domain = 'Condition'
+                ),
+                combined AS (
                   SELECT
-                    'DIAGNOSIS' AS source_domain,
-                    CAST(d.DIAGNOSISID AS nvarchar(255)) AS source_record_id,
+                    r.route_id,
+                    r.source_domain,
+                    r.source_record_id,
                     d.person_id,
-                    COALESCE(cm.standard_concept_id, 0) AS condition_concept_id,
+                    r.target_concept_id AS condition_concept_id,
                     CAST(d.DX_DATE AS date) AS condition_start_date,
                     CAST(d.DX_DATE AS datetime2(7)) AS condition_start_datetime,
                     CAST(NULL AS date) AS condition_end_date,
@@ -460,23 +486,26 @@ def transform_condition_occurrence(
                     CAST(NULL AS bigint) AS provider_id,
                     d.visit_occurrence_id,
                     CAST(d.DX AS nvarchar(255)) AS condition_source_value,
-                    COALESCE(cm.source_concept_id, 0) AS condition_source_concept_id,
+                    r.source_concept_id AS condition_source_concept_id,
                     CAST(d.DX_SOURCE AS nvarchar(50)) AS condition_status_source_value,
-                    CAST(d.DX_TYPE AS nvarchar(50)) AS source_code_type,
-                    CAST(d.DX_ORIGIN AS nvarchar(50)) AS source_provenance,
-                    CAST('DX_DATE' AS nvarchar(32)) AS date_basis
-                  FROM diag_eligible d
-                  LEFT JOIN code_map cm
-                    ON cm.source_code = CAST(d.DX AS nvarchar(255))
-                   AND cm.vocabulary_id = d.vocabulary_id
+                    r.source_code_type,
+                    r.source_provenance,
+                    r.date_basis,
+                    r.route_status,
+                    r.is_fallback
+                  FROM condition_routes r
+                  JOIN diag_eligible d
+                    ON r.source_domain = 'DIAGNOSIS'
+                   AND r.source_record_id = CAST(d.DIAGNOSISID AS nvarchar(255))
 
                   UNION ALL
 
                   SELECT
-                    'CONDITION',
-                    CAST(c.CONDITIONID AS nvarchar(255)),
+                    r.route_id,
+                    r.source_domain,
+                    r.source_record_id,
                     c.person_id,
-                    COALESCE(cm.standard_concept_id, 0),
+                    r.target_concept_id,
                     CAST(c.effective_start_date AS date),
                     CAST(c.effective_start_date AS datetime2(7)),
                     CAST(c.RESOLVE_DATE AS date),
@@ -486,137 +515,95 @@ def transform_condition_occurrence(
                     CAST(NULL AS bigint),
                     c.visit_occurrence_id,
                     CAST(c.CONDITION AS nvarchar(255)),
-                    COALESCE(cm.source_concept_id, 0),
+                    r.source_concept_id,
                     CAST(c.CONDITION_STATUS AS nvarchar(50)),
-                    CAST(c.CONDITION_TYPE AS nvarchar(50)),
-                    CAST(c.CONDITION_SOURCE AS nvarchar(50)),
-                    CASE
-                      WHEN c.ONSET_DATE IS NOT NULL THEN 'ONSET_DATE'
-                      ELSE 'REPORT_DATE'
-                    END
-                  FROM cond_eligible c
-                  LEFT JOIN code_map cm
-                    ON cm.source_code = CAST(c.CONDITION AS nvarchar(255))
-                   AND cm.vocabulary_id = c.vocabulary_id
+                    r.source_code_type,
+                    r.source_provenance,
+                    r.date_basis,
+                    r.route_status,
+                    r.is_fallback
+                  FROM condition_routes r
+                  JOIN cond_eligible c
+                    ON r.source_domain = 'CONDITION'
+                   AND r.source_record_id = CAST(c.CONDITIONID AS nvarchar(255))
                 ),
                 numbered AS (
                   SELECT
-                    ROW_NUMBER() OVER (
-                      ORDER BY source_domain, source_record_id
-                    ) AS condition_occurrence_id,
+                    ROW_NUMBER() OVER (ORDER BY route_id) AS condition_occurrence_id,
                     *
                   FROM combined
                 )
                 INSERT INTO [{target_schema}].[condition_occurrence] (
-                  condition_occurrence_id,
-                  person_id,
-                  condition_concept_id,
-                  condition_start_date,
-                  condition_start_datetime,
-                  condition_end_date,
-                  condition_end_datetime,
-                  condition_type_concept_id,
-                  condition_status_concept_id,
-                  provider_id,
-                  visit_occurrence_id,
-                  condition_source_value,
-                  condition_source_concept_id,
-                  condition_status_source_value
+                  condition_occurrence_id, person_id, condition_concept_id,
+                  condition_start_date, condition_start_datetime,
+                  condition_end_date, condition_end_datetime,
+                  condition_type_concept_id, condition_status_concept_id,
+                  provider_id, visit_occurrence_id, condition_source_value,
+                  condition_source_concept_id, condition_status_source_value
                 )
                 SELECT
-                  condition_occurrence_id,
-                  person_id,
-                  condition_concept_id,
-                  condition_start_date,
-                  condition_start_datetime,
-                  condition_end_date,
-                  condition_end_datetime,
-                  condition_type_concept_id,
-                  condition_status_concept_id,
-                  provider_id,
-                  visit_occurrence_id,
-                  condition_source_value,
-                  condition_source_concept_id,
-                  condition_status_source_value
+                  condition_occurrence_id, person_id, condition_concept_id,
+                  condition_start_date, condition_start_datetime,
+                  condition_end_date, condition_end_datetime,
+                  condition_type_concept_id, condition_status_concept_id,
+                  provider_id, visit_occurrence_id, condition_source_value,
+                  condition_source_concept_id, condition_status_source_value
                 FROM numbered;
 
                 CREATE TABLE [{target_schema}].[{XWALK_TABLE}] (
+                  route_id bigint NOT NULL,
                   source_domain varchar(16) NOT NULL,
                   source_record_id nvarchar(255) NOT NULL,
                   condition_occurrence_id bigint NOT NULL,
+                  target_concept_id bigint NOT NULL,
+                  route_status varchar(64) NOT NULL,
+                  is_fallback bit NOT NULL,
                   source_code_type nvarchar(50) NULL,
                   source_provenance nvarchar(50) NULL,
                   date_basis varchar(32) NOT NULL,
-                  CONSTRAINT PK_{XWALK_TABLE}
-                    PRIMARY KEY (source_domain, source_record_id),
-                  CONSTRAINT UQ_{XWALK_TABLE}_condition
-                    UNIQUE (condition_occurrence_id)
+                  CONSTRAINT PK_{XWALK_TABLE} PRIMARY KEY (route_id),
+                  CONSTRAINT UQ_{XWALK_TABLE}_condition UNIQUE (condition_occurrence_id)
                 );
 
-                WITH diag_ids AS (
-                  SELECT
-                    CAST(DIAGNOSISID AS nvarchar(255)) AS source_record_id,
-                    CAST(DX_TYPE AS nvarchar(50)) AS source_code_type,
-                    CAST(DX_ORIGIN AS nvarchar(50)) AS source_provenance,
-                    CAST('DX_DATE' AS varchar(32)) AS date_basis
-                  FROM [{source_schema}].[PCORnet_DIAGNOSIS] d
-                  JOIN [{target_schema}].[person] p
-                    ON CAST(d.PATID AS nvarchar(50)) = p.person_source_value
-                  WHERE d.DIAGNOSISID IS NOT NULL
-                    AND LTRIM(RTRIM(CAST(d.DIAGNOSISID AS nvarchar(max)))) <> ''
-                    AND d.DX_DATE IS NOT NULL
+                {eligible}
+                , condition_routes AS (
+                  SELECT *
+                  FROM [{target_schema}].[{CANONICAL_ROUTE_TABLE}]
+                  WHERE is_core_event_route = 1
+                    AND target_domain = 'Condition'
                 ),
-                cond_ids AS (
+                route_ids AS (
                   SELECT
-                    CAST(CONDITIONID AS nvarchar(255)) AS source_record_id,
-                    CAST(CONDITION_TYPE AS nvarchar(50)) AS source_code_type,
-                    CAST(CONDITION_SOURCE AS nvarchar(50)) AS source_provenance,
-                    CAST(
-                      CASE
-                        WHEN ONSET_DATE IS NOT NULL THEN 'ONSET_DATE'
-                        ELSE 'REPORT_DATE'
-                      END AS varchar(32)
-                    ) AS date_basis
-                  FROM [{source_schema}].[PCORnet_CONDITION] c
-                  JOIN [{target_schema}].[person] p
-                    ON CAST(c.PATID AS nvarchar(50)) = p.person_source_value
-                  WHERE c.CONDITIONID IS NOT NULL
-                    AND LTRIM(RTRIM(CAST(c.CONDITIONID AS nvarchar(max)))) <> ''
-                    AND COALESCE(c.ONSET_DATE, c.REPORT_DATE) IS NOT NULL
-                    AND (
-                      c.RESOLVE_DATE IS NULL
-                      OR CAST(c.RESOLVE_DATE AS date) >=
-                         CAST(COALESCE(c.ONSET_DATE, c.REPORT_DATE) AS date)
-                    )
-                ),
-                combined_ids AS (
-                  SELECT 'DIAGNOSIS' AS source_domain, * FROM diag_ids
+                    r.route_id, r.source_domain, r.source_record_id,
+                    r.target_concept_id, r.route_status, r.is_fallback,
+                    r.source_code_type, r.source_provenance, r.date_basis
+                  FROM condition_routes r
+                  JOIN diag_eligible d
+                    ON r.source_domain = 'DIAGNOSIS'
+                   AND r.source_record_id = CAST(d.DIAGNOSISID AS nvarchar(255))
                   UNION ALL
-                  SELECT 'CONDITION', * FROM cond_ids
+                  SELECT
+                    r.route_id, r.source_domain, r.source_record_id,
+                    r.target_concept_id, r.route_status, r.is_fallback,
+                    r.source_code_type, r.source_provenance, r.date_basis
+                  FROM condition_routes r
+                  JOIN cond_eligible c
+                    ON r.source_domain = 'CONDITION'
+                   AND r.source_record_id = CAST(c.CONDITIONID AS nvarchar(255))
                 ),
                 numbered_ids AS (
-                  SELECT
-                    ROW_NUMBER() OVER (
-                      ORDER BY source_domain, source_record_id
-                    ) AS condition_occurrence_id,
-                    *
-                  FROM combined_ids
+                  SELECT ROW_NUMBER() OVER (ORDER BY route_id) AS condition_occurrence_id, *
+                  FROM route_ids
                 )
                 INSERT INTO [{target_schema}].[{XWALK_TABLE}] (
-                  source_domain,
-                  source_record_id,
-                  condition_occurrence_id,
-                  source_code_type,
-                  source_provenance,
-                  date_basis
+                  route_id, source_domain, source_record_id, condition_occurrence_id,
+                  target_concept_id, route_status, is_fallback,
+                  source_code_type, source_provenance, date_basis
                 )
                 SELECT
-                  source_domain,
-                  source_record_id,
-                  condition_occurrence_id,
-                  source_code_type,
-                  source_provenance,
-                  date_basis
+                  route_id, source_domain, source_record_id, condition_occurrence_id,
+                  target_concept_id, route_status, is_fallback,
+                  source_code_type, source_provenance, date_basis
                 FROM numbered_ids;
                 """
                 connection.exec_driver_sql(insert_sql)
@@ -625,28 +612,37 @@ def transform_condition_occurrence(
 
             target_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM "
-                f"[{target_schema}].[condition_occurrence]",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[condition_occurrence]",
             )
-            if target_rows != expected_rows:
-                raise RuntimeError(
-                    "Condition reconciliation failed: "
-                    f"eligible={expected_rows:,}, target={target_rows:,}"
-                )
-
-            if not table_exists(connection, target_schema, XWALK_TABLE):
-                raise RuntimeError(
-                    "Condition lineage table is missing after transformation"
-                )
             lineage_rows = _scalar(
                 connection,
-                f"SELECT COUNT_BIG(*) FROM "
-                f"[{target_schema}].[{XWALK_TABLE}]",
+                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{XWALK_TABLE}]",
             )
-            if lineage_rows != target_rows:
+            if target_rows != expected_rows or lineage_rows != expected_rows:
                 raise RuntimeError(
-                    "Condition lineage reconciliation failed: "
-                    f"lineage={lineage_rows:,}, target={target_rows:,}"
+                    "Condition route reconciliation failed: "
+                    f"routes={expected_rows:,}, target={target_rows:,}, lineage={lineage_rows:,}"
+                )
+
+            bad_lineage = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[{XWALK_TABLE}] x
+                JOIN [{target_schema}].[condition_occurrence] co
+                  ON co.condition_occurrence_id = x.condition_occurrence_id
+                LEFT JOIN [{target_schema}].[{CANONICAL_ROUTE_TABLE}] r
+                  ON r.route_id = x.route_id
+                WHERE r.route_id IS NULL
+                   OR r.target_domain <> 'Condition'
+                   OR r.is_core_event_route <> 1
+                   OR co.condition_concept_id <> r.target_concept_id
+                   OR x.target_concept_id <> r.target_concept_id
+                """,
+            )
+            if bad_lineage:
+                raise RuntimeError(
+                    f"Condition route-aware lineage has {bad_lineage:,} mismatched rows"
                 )
 
             diagnosis_target_rows = _scalar(
@@ -654,11 +650,9 @@ def transform_condition_occurrence(
                 f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{XWALK_TABLE}] "
                 "WHERE source_domain='DIAGNOSIS'",
             )
-            condition_target_rows = _scalar(
-                connection,
-                f"SELECT COUNT_BIG(*) FROM [{target_schema}].[{XWALK_TABLE}] "
-                "WHERE source_domain='CONDITION'",
-            )
+            condition_target_rows = target_rows - diagnosis_target_rows
+            if diagnosis_target_rows != expected_diag_rows or condition_target_rows != expected_cond_rows:
+                raise RuntimeError("Condition family route counts do not reconcile")
 
             def family_count(source_domain: str, predicate: str) -> int:
                 return _scalar(
@@ -668,8 +662,7 @@ def transform_condition_occurrence(
                     FROM [{target_schema}].[condition_occurrence] co
                     JOIN [{target_schema}].[{XWALK_TABLE}] x
                       ON x.condition_occurrence_id = co.condition_occurrence_id
-                    WHERE x.source_domain = '{source_domain}'
-                      AND {predicate}
+                    WHERE x.source_domain = '{source_domain}' AND {predicate}
                     """,
                 )
 
@@ -734,49 +727,48 @@ def transform_condition_occurrence(
             f"{source_schema}.PCORnet_CONDITION",
         ],
         "target_table": f"{target_schema}.condition_occurrence",
+        "canonical_route_table": f"{target_schema}.{CANONICAL_ROUTE_TABLE}",
         "lineage_table": f"{target_schema}.{XWALK_TABLE}",
         "policies": {
             "condition_sources": policies.get("condition_sources"),
             "missing_required_date": policies.get("missing_required_date"),
-            "unmapped_standard_concept": policies.get(
-                "unmapped_standard_concept"
-            ),
+            "unmapped_standard_concept": policies.get("unmapped_standard_concept"),
         },
         "mapping_strategy": {
-            "diagnosis_date": (
-                "DX_DATE required; missing DX_DATE excluded without sentinel"
+            "canonical_routing": (
+                "Materialize every canonical core-event route whose target domain is Condition; "
+                "one source event may therefore produce multiple condition_occurrence rows."
             ),
+            "fallback": (
+                "If no core event-domain Standard target exists, canonical routing contributes one "
+                "Condition concept_id 0 row preserving source clinical-event semantics."
+            ),
+            "cross_domain": (
+                "Source events mapped only to other clinical event domains are not duplicated into "
+                "condition_occurrence; their routes are materialized by domain-specific stages."
+            ),
+            "maps_to_value": "Never treated as an independent clinical event route.",
+            "source_concept_resolution": (
+                "Owned by the canonical route ledger; no TOP(1) source or target selection occurs here."
+            ),
+            "diagnosis_date": "DX_DATE required; missing dates excluded without sentinel.",
             "condition_date": (
-                "ONSET_DATE when available; otherwise REPORT_DATE as an "
-                "explicit source-domain fallback; both absent excluded"
+                "ONSET_DATE when available, otherwise REPORT_DATE; both absent excluded."
             ),
             "condition_end": (
-                "RESOLVE_DATE when present; rows resolving before effective "
-                "start are excluded"
-            ),
-            "source_vocabulary": (
-                "DX_TYPE/CONDITION_TYPE routed explicitly to ICD9CM, "
-                "ICD10CM, or SNOMED; unsupported types remain unmapped"
-            ),
-            "standard_mapping": (
-                "Use an active Standard Condition source concept directly; "
-                "otherwise assign a mapped Condition concept only when exactly "
-                "one active Standard Condition target exists. Zero or multiple "
-                "Condition targets remain concept_id 0 for downstream canonical "
-                "routing; no TOP(1) target selection is permitted."
+                "RESOLVE_DATE when present; intervals ending before the effective start are excluded."
             ),
             "source_lineage": (
-                "DIAGNOSIS and CONDITION retained separately; no silent "
-                "deduplication"
+                "Route-aware lineage preserves source event identity plus canonical route_id; "
+                "DIAGNOSIS and CONDITION remain separate with no silent deduplication."
             ),
             "visit_linkage": (
-                "ENCOUNTERID linked only when the encounter survived validated "
-                "visit_occurrence ETL; otherwise visit_occurrence_id is NULL"
+                "ENCOUNTERID linked only when the encounter survived validated visit_occurrence ETL."
             ),
-            "provider": "NULL because no validated provider mapping is assigned",
+            "provider": "NULL because no validated provider mapping is assigned.",
             "condition_provenance": (
-                "CONDITION_TYPE/CONDITION_SOURCE retained in lineage; OMOP "
-                "type/status concepts left 0 pending semantic validation"
+                "CONDITION_TYPE/CONDITION_SOURCE retained in lineage; OMOP type/status concepts remain 0 "
+                "unless source-established semantics support a validated mapping."
             ),
             "diagnosis_rejected_type_concepts": rejected_type_map,
             "diagnosis_rejected_status_concepts": rejected_status_map,
