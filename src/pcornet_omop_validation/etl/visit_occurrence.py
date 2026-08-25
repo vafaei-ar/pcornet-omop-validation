@@ -11,29 +11,22 @@ from .config import EtlConfig
 from .database import make_engine, table_exists
 
 
+# PCORnet ENC_TYPE -> broad, standard OMOP Visit concepts.
+#
+# These mappings use only concepts from the standard OMOP Visit hierarchy and
+# avoid network-specific/PEDSnet extension concepts. Where PCORnet semantics do
+# not establish a defensible OMOP Visit concept, the primary ETL uses 0 and
+# preserves ENC_TYPE in visit_source_value.
 VISIT_CONCEPT_MAP = {
-    "AV": 38004207,
-    "ED": 9203,
-    "EI": 262,
-    "IP": 9201,
-    "IS": 44814710,
-    "OS": 581385,
-    "IC": 4127751,
-    "OA": 44814711,
-}
-
-VISIT_SOURCE_CONCEPT_MAP = {
-    "AV": 44814708,
-    "ED": 44814709,
-    "EI": 262,
-    "IP": 44814707,
-    "IS": 44814710,
-    "OS": 581385,
-    "IC": 4127751,
-    "OA": 44814711,
-    "NI": 44814650,
-    "UN": 44814653,
-    "OT": 44814649,
+    "AV": 9202,       # Ambulatory Visit -> Outpatient Visit
+    "ED": 9203,       # Emergency Department -> Emergency Room Visit
+    "EI": 262,        # Combined ED + inpatient -> ER and Inpatient Visit
+    "IP": 9201,       # Inpatient Hospital Stay -> Inpatient Visit
+    "IS": 42898160,   # Non-Acute Institutional Stay -> Non-hospital institution Visit
+    "OS": 581385,     # Observation Stay -> Observation Room
+    "IC": 0,          # Institutional Professional Consult does not establish visit setting
+    "TH": 5083,       # Telehealth -> Telehealth Visit
+    "OA": 9202,       # Other Ambulatory Visit -> broad Outpatient Visit
 }
 
 
@@ -74,15 +67,19 @@ def _require_tables(connection, source_schema: str, target_schema: str) -> None:
 
 
 def _validate_visit_concepts(connection, schema: str) -> None:
-    ids = sorted(set(VISIT_CONCEPT_MAP.values()))
+    ids = sorted({value for value in VISIT_CONCEPT_MAP.values() if value != 0})
     values = ",".join(str(value) for value in ids)
     invalid = connection.execute(
         text(
             f"""
-            SELECT concept_id, concept_name, domain_id, standard_concept
+            SELECT concept_id, concept_name, domain_id, standard_concept, invalid_reason
             FROM [{schema}].[concept]
             WHERE concept_id IN ({values})
-              AND NOT (domain_id = 'Visit' AND standard_concept = 'S')
+              AND NOT (
+                    domain_id = 'Visit'
+                AND standard_concept = 'S'
+                AND invalid_reason IS NULL
+              )
             """
         )
     ).fetchall()
@@ -99,14 +96,21 @@ def _validate_visit_concepts(connection, schema: str) -> None:
             details.append("missing=" + ",".join(str(x) for x in missing))
         if invalid:
             details.append(
-                "not_standard_visit="
-                + "; ".join(f"{row[0]}:{row[2]}:{row[3]}" for row in invalid)
+                "not_active_standard_visit="
+                + "; ".join(
+                    f"{row[0]}:{row[2]}:{row[3]}:{row[4]}" for row in invalid
+                )
             )
-        raise RuntimeError("Configured visit concept mapping failed vocabulary validation: " + " | ".join(details))
+        raise RuntimeError(
+            "Configured visit concept mapping failed vocabulary validation: "
+            + " | ".join(details)
+        )
 
 
 def _case_sql(column: str, mapping: dict[str, int], default: int = 0) -> str:
-    clauses = " ".join(f"WHEN {column} = '{key}' THEN {value}" for key, value in mapping.items())
+    clauses = " ".join(
+        f"WHEN {column} = '{key}' THEN {value}" for key, value in mapping.items()
+    )
     return f"CASE {clauses} ELSE {default} END"
 
 
@@ -130,7 +134,8 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
     The validated primary ETL excludes encounters missing required start/end dates rather
     than manufacturing sentinel dates. It preserves encounter lineage in a separate
     ETL crosswalk table and leaves provider/care_site linkage null until those dimensions
-    are built. Unknown ENC_TYPE values remain in visit_source_value and map to concept 0.
+    are built. Unsupported or semantically ambiguous ENC_TYPE values remain in
+    visit_source_value and map to visit_concept_id 0.
     """
     policies = config.raw.get("policies", {}) or {}
     if policies.get("missing_required_date") != "exclude":
@@ -217,6 +222,7 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
             excluded_invalid_interval = int(counts.get("invalid_interval", 0))
             excluded_rows = source_rows - eligible_rows
 
+            known_types_sql = ",".join(repr(x) for x in VISIT_CONCEPT_MAP)
             unknown_enc_type_rows = _scalar(
                 connection,
                 f"""
@@ -224,7 +230,7 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
                 SELECT COUNT_BIG(*)
                 FROM classified
                 WHERE record_status = 'eligible'
-                  AND (ENC_TYPE IS NULL OR ENC_TYPE NOT IN ({','.join(repr(x) for x in VISIT_CONCEPT_MAP)}))
+                  AND (ENC_TYPE IS NULL OR ENC_TYPE NOT IN ({known_types_sql}))
                 """,
             )
 
@@ -241,7 +247,6 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
                 status = "already_loaded_matched"
             else:
                 visit_concept_case = _case_sql("ENC_TYPE", VISIT_CONCEPT_MAP)
-                source_concept_case = _case_sql("ENC_TYPE", VISIT_SOURCE_CONCEPT_MAP)
                 start_datetime = _datetime_sql("ADMIT_DATE", "ADMIT_TIME")
                 end_datetime = _datetime_sql("DISCHARGE_DATE", "DISCHARGE_TIME")
 
@@ -284,7 +289,7 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
                     NULL,
                     NULL,
                     CAST(ENC_TYPE AS nvarchar(50)),
-                    {source_concept_case},
+                    0,
                     0,
                     CAST(ADMITTING_SOURCE AS nvarchar(50)),
                     0,
@@ -395,8 +400,15 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
                 },
                 "mapping_strategy": {
                     "id": "deterministic ROW_NUMBER ordered by ENCOUNTERID in clean target",
-                    "visit_concept": "historical PCORnet encounter mappings, accepted only after runtime validation as standard Visit concepts",
-                    "visit_source_concept": "PCORnet source-concept mappings from historical ETL lineage",
+                    "visit_concept": (
+                        "PCORnet ENC_TYPE mapped to broad active Standard OMOP Visit concepts; "
+                        "ambiguous IC and unsupported values use concept_id 0"
+                    ),
+                    "visit_source_concept": (
+                        "0 because PCORnet ENC_TYPE is a local CDM categorical code without a "
+                        "corresponding source vocabulary concept in the loaded OMOP vocabulary; "
+                        "the exact code is preserved in visit_source_value"
+                    ),
                     "visit_type_concept": "0 because PCORnet ENCOUNTER alone does not establish OMOP provenance type",
                     "provider_id": "NULL pending provider source availability",
                     "care_site_id": "NULL pending audited care_site/location stage",
