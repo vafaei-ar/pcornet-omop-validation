@@ -21,6 +21,17 @@ PHASE1_TARGETS = (
     "visit_occurrence",
 )
 
+POST_PHASE1_TARGETS = (
+    "condition_occurrence",
+    "procedure_occurrence",
+    "measurement",
+    "observation",
+    "drug_exposure",
+    "device_exposure",
+    "specimen",
+    "death",
+)
+
 
 def _serializable(value: object) -> object:
     if is_dataclass(value):
@@ -49,24 +60,88 @@ def _target_counts(config: EtlConfig) -> dict[str, int | None]:
         engine.dispose()
 
 
+def _resume_guard(config: EtlConfig) -> dict[str, object]:
+    """Verify a partially completed Phase 1 can be resumed without reset.
+
+    A resume is allowed only when no post-Phase-1 clinical target has rows and
+    no ETL-owned ledger exists except the Visit xwalk, which itself is a Phase 1
+    object. This prevents a convenient resume path from becoming an accidental
+    append path for later stages.
+    """
+    schema = str(config.raw["sqlserver"].get("target_schema", "dbo"))
+    engine = make_engine(config)
+    try:
+        with engine.connect() as con:
+            later_rows = {
+                table: (
+                    _scalar(con, f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]")
+                    if table_exists(con, schema, table)
+                    else None
+                )
+                for table in POST_PHASE1_TARGETS
+            }
+            etl_tables = [
+                str(row[0])
+                for row in con.execute(
+                    text(
+                        """
+                        SELECT TABLE_NAME
+                        FROM INFORMATION_SCHEMA.TABLES
+                        WHERE TABLE_SCHEMA = :schema
+                          AND TABLE_TYPE = 'BASE TABLE'
+                          AND TABLE_NAME LIKE 'etl[_]%'
+                        ORDER BY TABLE_NAME
+                        """
+                    ),
+                    {"schema": schema},
+                ).fetchall()
+            ]
+    finally:
+        engine.dispose()
+
+    nonzero_later = {
+        table: rows
+        for table, rows in later_rows.items()
+        if rows not in (0, None)
+    }
+    disallowed_ledgers = [
+        table for table in etl_tables if table != "etl_visit_occurrence_xwalk"
+    ]
+    if nonzero_later or disallowed_ledgers:
+        raise RuntimeError(
+            "Refusing Phase 1 resume because later-stage materialization is present: "
+            f"nonzero_later_targets={nonzero_later}, "
+            f"disallowed_etl_tables={disallowed_ledgers}"
+        )
+
+    return {
+        "status": "guarded_phase1_resume",
+        "post_phase1_target_rows": later_rows,
+        "etl_tables": etl_tables,
+    }
+
+
 def run_clean_build_phase1(config: EtlConfig) -> dict[str, object]:
-    """Run the first irreversible materialization phase of the clean build.
+    """Run or safely resume the first materialization phase of the clean build.
 
     Phase 1 is deliberately limited to Person, Observation Period, and Visit
-    Occurrence. The route ledgers and high-volume event tables are not started
-    until these foundational tables reconcile successfully.
+    Occurrence. If an early Phase 1 stage succeeded before a later Phase 1 stage
+    failed, the runner may resume only after proving no later ETL stage has run.
     """
-    preflight = audit_clean_build_preflight(config)
-    if preflight.get("status") != "ready_for_phase1":
-        raise RuntimeError(
-            "Clean-build preflight is not ready_for_phase1; refusing materialization"
-        )
-
     before = _target_counts(config)
-    if any(value not in (0, None) for value in before.values()):
-        raise RuntimeError(
-            "Phase 1 requires empty foundational targets at entry: " + repr(before)
-        )
+    empty_entry = all(value in (0, None) for value in before.values())
+
+    if empty_entry:
+        preflight = audit_clean_build_preflight(config)
+        if preflight.get("status") != "ready_for_phase1":
+            raise RuntimeError(
+                "Clean-build preflight is not ready_for_phase1; refusing materialization"
+            )
+        entry_guard: dict[str, object] = {
+            "status": str(preflight.get("status")),
+        }
+    else:
+        entry_guard = _resume_guard(config)
 
     person = transform_person(config)
     observation_period = transform_observation_period(config)
@@ -90,7 +165,8 @@ def run_clean_build_phase1(config: EtlConfig) -> dict[str, object]:
         "status": "phase1_complete",
         "database": str(config.raw["sqlserver"].get("database")),
         "target_schema": str(config.raw["sqlserver"].get("target_schema", "dbo")),
-        "preflight_status": preflight.get("status"),
+        "entry_guard": entry_guard,
+        "preflight_status": entry_guard.get("status"),
         "before_target_rows": before,
         "after_target_rows": after,
         "person": _serializable(person),
