@@ -19,7 +19,7 @@ VISIT_CONCEPT_MAP = {
     "IS": 42898160,
     "OS": 581385,
     "IC": 0,
-    "TH": 5083,
+    "TH": 0,
     "OA": 9202,
 }
 
@@ -404,7 +404,10 @@ def transform_visit_occurrence(config: EtlConfig) -> VisitOccurrenceTransformRes
             "invalid_numeric_discharge_time_rows_fallback_midnight": invalid_discharge_time_rows,
         },
         "mapping_strategy": {
-            "visit_concept": "broad active Standard OMOP Visit concept; ambiguous/unsupported -> 0",
+            "visit_concept": (
+                "broad active Standard OMOP Visit concept when source semantics justify it; "
+                "IC, TH, ambiguous/unsupported values -> 0 with exact ENC_TYPE preserved"
+            ),
             "visit_source_concept": "0; exact PCORnet ENC_TYPE preserved in visit_source_value",
             "visit_type_concept": "0 because ENCOUNTER does not establish a specific OMOP provenance type",
             "missing_required_date": "exclude",
