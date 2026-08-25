@@ -10,6 +10,12 @@ from .config import EtlConfig
 from .database import make_engine, table_exists
 
 
+PRIMARY_XWALK = "etl_condition_occurrence_xwalk"
+OBSCLIN_XWALK = "etl_obs_clin_condition_xwalk"
+PROCEDURE_XWALK = "etl_procedure_condition_xwalk"
+ROUTE_TABLE = "etl_obs_clin_route"
+
+
 def _safe_datetime_sql(date_expr: str, time_expr: str) -> str:
     return f"""
     CASE
@@ -20,12 +26,7 @@ def _safe_datetime_sql(date_expr: str, time_expr: str) -> str:
         THEN CAST(CAST({date_expr} AS date) AS datetime2(7))
       ELSE DATEADD(
         MILLISECOND,
-        CAST(
-          ROUND(
-            TRY_CONVERT(float, {time_expr}) * 1000.0,
-            0
-          ) AS bigint
-        ),
+        CAST(ROUND(TRY_CONVERT(float, {time_expr}) * 1000.0, 0) AS bigint),
         CAST(CAST({date_expr} AS date) AS datetime2(7))
       )
     END
@@ -39,16 +40,16 @@ def _schema(value: object, label: str) -> str:
     return schema
 
 
-def append_obs_clin_conditions(
-    config: EtlConfig,
-) -> dict[str, int | str]:
-    """Append OBS_CLIN records routed to the OMOP Condition domain.
+def _scalar(connection, sql: str) -> int:
+    return int(connection.execute(text(sql)).scalar_one())
 
-    Reconciliation is source- and route-derived. No site-specific row counts or
-    target concept IDs are embedded in the transformation. Nonzero target
-    concepts must be active Standard Condition concepts; concept_id=0 is
-    retained when the route ledger explicitly carries an unresolved Condition
-    route.
+
+def append_obs_clin_conditions(config: EtlConfig) -> dict[str, int | str]:
+    """Append every OBS_CLIN route whose Standard target domain is Condition.
+
+    OBS_CLIN lineage is deliberately separate from the primary DIAGNOSIS/
+    CONDITION lineage table so route identifiers from independent route ledgers
+    cannot collide. One-to-many OBS_CLIN-to-Condition mappings are supported.
     """
     engine = make_engine(config)
     audit_path = config.audit_dir / "condition_obs_clin_append.json"
@@ -57,68 +58,42 @@ def append_obs_clin_conditions(
     source_schema = _schema(sql_cfg.get("source_schema", "dbo"), "source_schema")
     target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
 
-    source_obs = f"[{source_schema}].[PCORnet_OBS_CLIN]"
-    condition = f"[{target_schema}].[condition_occurrence]"
-    xwalk = f"[{target_schema}].[etl_condition_occurrence_xwalk]"
-    routes = f"[{target_schema}].[etl_obs_clin_route]"
-    person = f"[{target_schema}].[person]"
-    visit_xwalk = f"[{target_schema}].[etl_visit_occurrence_xwalk]"
-    concept = f"[{target_schema}].[concept]"
+    s = lambda table: f"[{source_schema}].[{table}]"
+    t = lambda table: f"[{target_schema}].[{table}]"
 
     try:
         with engine.begin() as con:
             required = (
                 (source_schema, "PCORnet_OBS_CLIN"),
                 (target_schema, "condition_occurrence"),
-                (target_schema, "etl_condition_occurrence_xwalk"),
-                (target_schema, "etl_obs_clin_route"),
+                (target_schema, PRIMARY_XWALK),
+                (target_schema, ROUTE_TABLE),
                 (target_schema, "person"),
                 (target_schema, "etl_visit_occurrence_xwalk"),
                 (target_schema, "concept"),
             )
             for schema, table in required:
                 if not table_exists(con, schema, table):
-                    raise RuntimeError(
-                        f"Required table [{schema}].[{table}] does not exist"
-                    )
+                    raise RuntimeError(f"Required table [{schema}].[{table}] does not exist")
 
-            route_rows = int(
-                con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(*) FROM {routes} "
-                        "WHERE target_domain = 'Condition'"
-                    )
-                ).scalar_one()
+            route_rows = _scalar(
+                con,
+                f"SELECT COUNT_BIG(*) FROM {t(ROUTE_TABLE)} WHERE target_domain='Condition'",
             )
-            route_distinct_source_rows = int(
-                con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(DISTINCT source_obsclin_id) "
-                        f"FROM {routes} WHERE target_domain = 'Condition'"
-                    )
-                ).scalar_one()
+            route_distinct_source_rows = _scalar(
+                con,
+                f"SELECT COUNT_BIG(DISTINCT source_obsclin_id) FROM {t(ROUTE_TABLE)} "
+                "WHERE target_domain='Condition'",
             )
-            if route_distinct_source_rows != route_rows:
-                raise RuntimeError(
-                    "OBS_CLIN Condition routing is not one-to-one by source "
-                    f"record: routes={route_rows:,}, distinct_sources="
-                    f"{route_distinct_source_rows:,}"
-                )
-
-            source_rows_resolved = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {routes} r
-                        JOIN {source_obs} o
-                          ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(
-                               nvarchar(255), o.OBSCLINID
-                             )))
-                        WHERE r.target_domain = 'Condition'
-                        """
-                    )
-                ).scalar_one()
+            source_rows_resolved = _scalar(
+                con,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM {t(ROUTE_TABLE)} r
+                JOIN {s('PCORnet_OBS_CLIN')} o
+                  ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(nvarchar(255), o.OBSCLINID)))
+                WHERE r.target_domain='Condition'
+                """,
             )
             if source_rows_resolved != route_rows:
                 raise RuntimeError(
@@ -126,338 +101,263 @@ def append_obs_clin_conditions(
                     f"routes={route_rows:,}, resolved={source_rows_resolved:,}"
                 )
 
-            invalid_standard_target_rows = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {routes} r
-                        LEFT JOIN {concept} c
-                          ON c.concept_id = r.target_concept_id
-                        WHERE r.target_domain = 'Condition'
-                          AND COALESCE(r.target_concept_id, 0) <> 0
-                          AND (
-                               c.concept_id IS NULL
-                            OR c.domain_id <> 'Condition'
-                            OR c.standard_concept <> 'S'
-                            OR c.invalid_reason IS NOT NULL
-                          )
-                        """
-                    )
-                ).scalar_one()
+            invalid_standard_target_rows = _scalar(
+                con,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM {t(ROUTE_TABLE)} r
+                LEFT JOIN {t('concept')} c ON c.concept_id = r.target_concept_id
+                WHERE r.target_domain='Condition'
+                  AND COALESCE(r.target_concept_id, 0) <> 0
+                  AND (
+                       c.concept_id IS NULL
+                    OR c.domain_id <> 'Condition'
+                    OR c.standard_concept <> 'S'
+                    OR c.invalid_reason IS NOT NULL
+                  )
+                """,
             )
             if invalid_standard_target_rows:
                 raise RuntimeError(
-                    "OBS_CLIN Condition routes contain nonzero target concepts "
-                    "that are not active Standard Condition concepts: "
+                    "OBS_CLIN Condition routes contain invalid nonzero Standard targets: "
                     f"{invalid_standard_target_rows:,}"
                 )
 
-            route_concept_zero_rows = int(
-                con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(*) FROM {routes} "
-                        "WHERE target_domain = 'Condition' "
-                        "AND COALESCE(target_concept_id, 0) = 0"
-                    )
-                ).scalar_one()
+            route_concept_zero_rows = _scalar(
+                con,
+                f"SELECT COUNT_BIG(*) FROM {t(ROUTE_TABLE)} "
+                "WHERE target_domain='Condition' AND COALESCE(target_concept_id,0)=0",
+            )
+            unlinked_person_rows = _scalar(
+                con,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM {t(ROUTE_TABLE)} r
+                JOIN {s('PCORnet_OBS_CLIN')} o
+                  ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(nvarchar(255), o.OBSCLINID)))
+                LEFT JOIN {t('person')} p
+                  ON p.person_source_value = LTRIM(RTRIM(CONVERT(nvarchar(255), o.PATID)))
+                WHERE r.target_domain='Condition' AND p.person_id IS NULL
+                """,
+            )
+            if unlinked_person_rows:
+                raise RuntimeError(
+                    f"OBS_CLIN Condition routes contain {unlinked_person_rows:,} unlinked persons"
+                )
+
+            current_rows = _scalar(con, f"SELECT COUNT_BIG(*) FROM {t('condition_occurrence')}")
+            current_max = _scalar(
+                con,
+                f"SELECT COALESCE(MAX(condition_occurrence_id),0) FROM {t('condition_occurrence')}",
             )
 
-            current_rows = int(
-                con.execute(text(f"SELECT COUNT_BIG(*) FROM {condition}")).scalar_one()
-            )
-            current_max = int(
-                con.execute(
-                    text(
-                        f"SELECT COALESCE(MAX(condition_occurrence_id), 0) "
-                        f"FROM {condition}"
-                    )
-                ).scalar_one()
-            )
-            xwalk_rows = int(
-                con.execute(text(f"SELECT COUNT_BIG(*) FROM {xwalk}")).scalar_one()
-            )
-            existing_obsclin_xwalk = int(
-                con.execute(
-                    text(
-                        f"SELECT COUNT_BIG(*) FROM {xwalk} "
-                        "WHERE source_domain = 'OBS_CLIN'"
-                    )
-                ).scalar_one()
-            )
-
-            # Idempotent recognition of an already materialized append.
-            if existing_obsclin_xwalk:
-                obsclin_target_rows = int(
-                    con.execute(
-                        text(
-                            f"""
-                            SELECT COUNT_BIG(*)
-                            FROM {condition} c
-                            JOIN {xwalk} x
-                              ON x.condition_occurrence_id = c.condition_occurrence_id
-                            WHERE x.source_domain = 'OBS_CLIN'
-                            """
-                        )
-                    ).scalar_one()
+            if table_exists(con, target_schema, OBSCLIN_XWALK):
+                existing_xwalk = _scalar(con, f"SELECT COUNT_BIG(*) FROM {t(OBSCLIN_XWALK)}")
+                mismatches = _scalar(
+                    con,
+                    f"""
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    LEFT JOIN {t(ROUTE_TABLE)} r ON r.route_id = x.route_id
+                    LEFT JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id = x.condition_occurrence_id
+                    WHERE r.route_id IS NULL
+                       OR r.target_domain <> 'Condition'
+                       OR c.condition_occurrence_id IS NULL
+                       OR c.condition_concept_id <> COALESCE(r.target_concept_id,0)
+                       OR x.target_concept_id <> COALESCE(r.target_concept_id,0)
+                    """,
                 )
-                route_target_mismatch_rows = int(
-                    con.execute(
-                        text(
-                            f"""
-                            SELECT COUNT_BIG(*)
-                            FROM {routes} r
-                            JOIN {xwalk} x
-                              ON x.source_domain = 'OBS_CLIN'
-                             AND x.source_record_id = r.source_obsclin_id
-                            JOIN {condition} c
-                              ON c.condition_occurrence_id = x.condition_occurrence_id
-                            WHERE r.target_domain = 'Condition'
-                              AND c.condition_concept_id <>
-                                  COALESCE(r.target_concept_id, 0)
-                            """
-                        )
-                    ).scalar_one()
-                )
-                if (
-                    existing_obsclin_xwalk != route_rows
-                    or obsclin_target_rows != route_rows
-                    or route_target_mismatch_rows != 0
-                ):
+                if existing_xwalk != route_rows or mismatches:
                     raise RuntimeError(
-                        "Existing OBS_CLIN Condition materialization does not "
-                        "match the current route ledger"
+                        "Existing OBS_CLIN Condition materialization does not match the route ledger"
                     )
-                return {
-                    "status": "already_matched",
-                    "baseline_condition_rows": current_rows - route_rows,
-                    "obs_clin_condition_rows": route_rows,
-                    "target_rows": current_rows,
-                    "target_max_condition_occurrence_id": current_max,
-                    "concept_zero_rows": route_concept_zero_rows,
-                    "audit_path": str(audit_path),
-                }
-
-            if xwalk_rows != current_rows:
-                raise RuntimeError(
-                    "Condition target and lineage row counts differ before "
-                    f"OBS_CLIN append: condition={current_rows:,}, "
-                    f"xwalk={xwalk_rows:,}"
-                )
-
-            baseline_rows = current_rows
-            baseline_max = current_max
-            expected_target_rows = baseline_rows + route_rows
-            expected_target_max = baseline_max + route_rows
-
-            condition_datetime = _safe_datetime_sql(
-                "o.OBSCLIN_START_DATE",
-                "o.OBSCLIN_START_TIME",
-            )
-
-            con.execute(
-                text(
+                obsclin_target_rows = existing_xwalk
+                obsclin_concept_zero = _scalar(
+                    con,
                     f"""
-                    INSERT INTO {xwalk} (
-                        source_domain,
-                        source_record_id,
-                        condition_occurrence_id,
-                        source_code_type,
-                        source_provenance,
-                        date_basis
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id=x.condition_occurrence_id
+                    WHERE c.condition_concept_id=0
+                    """,
+                )
+                visit_linked = _scalar(
+                    con,
+                    f"""
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id=x.condition_occurrence_id
+                    WHERE c.visit_occurrence_id IS NOT NULL
+                    """,
+                )
+                status = "already_matched"
+                baseline_rows = current_rows - route_rows
+                baseline_max = current_max - route_rows
+                target_rows = current_rows
+                target_max = current_max
+            else:
+                accounted_rows = _scalar(con, f"SELECT COUNT_BIG(*) FROM {t(PRIMARY_XWALK)}")
+                if table_exists(con, target_schema, PROCEDURE_XWALK):
+                    accounted_rows += _scalar(con, f"SELECT COUNT_BIG(*) FROM {t(PROCEDURE_XWALK)}")
+                if accounted_rows != current_rows:
+                    raise RuntimeError(
+                        "Condition rows are not fully explained by existing route-aware lineage before "
+                        f"OBS_CLIN append: condition={current_rows:,}, accounted={accounted_rows:,}"
                     )
-                    SELECT
-                        'OBS_CLIN',
-                        r.source_obsclin_id,
-                        {baseline_max}
-                        + ROW_NUMBER() OVER (
-                            ORDER BY r.source_obsclin_id
-                          ),
-                        LEFT(CONVERT(nvarchar(50), o.OBSCLIN_TYPE), 50),
-                        LEFT(CONVERT(nvarchar(50), o.OBSCLIN_SOURCE), 50),
-                        'OBSCLIN_START_DATE'
-                    FROM {routes} r
-                    JOIN {source_obs} o
-                      ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(
-                           nvarchar(255), o.OBSCLINID
-                         )))
-                    WHERE r.target_domain = 'Condition'
+
+                baseline_rows = current_rows
+                baseline_max = current_max
+                expected_target_rows = baseline_rows + route_rows
+                expected_target_max = baseline_max + route_rows
+
+                con.exec_driver_sql(
+                    f"""
+                    CREATE TABLE {t(OBSCLIN_XWALK)} (
+                      route_id bigint NOT NULL,
+                      source_record_id nvarchar(255) NOT NULL,
+                      condition_occurrence_id bigint NOT NULL,
+                      source_concept_id bigint NOT NULL,
+                      target_concept_id bigint NOT NULL,
+                      route_status varchar(64) NULL,
+                      source_code_type nvarchar(50) NULL,
+                      source_provenance nvarchar(50) NULL,
+                      date_basis varchar(32) NOT NULL,
+                      CONSTRAINT PK_{OBSCLIN_XWALK} PRIMARY KEY (route_id),
+                      CONSTRAINT UQ_{OBSCLIN_XWALK}_condition UNIQUE (condition_occurrence_id)
+                    )
                     """
                 )
-            )
 
-            new_xwalk_rows = int(
                 con.execute(
                     text(
-                        f"SELECT COUNT_BIG(*) FROM {xwalk} "
-                        "WHERE source_domain = 'OBS_CLIN'"
-                    )
-                ).scalar_one()
-            )
-            if new_xwalk_rows != route_rows:
-                raise RuntimeError(
-                    "OBS_CLIN Condition xwalk reconciliation failed: "
-                    f"xwalk={new_xwalk_rows:,}, routes={route_rows:,}"
+                        f"""
+                        WITH src AS (
+                          SELECT
+                            ROW_NUMBER() OVER (ORDER BY r.route_id) AS rn,
+                            r.route_id,
+                            r.source_obsclin_id,
+                            COALESCE(r.source_concept_id,0) AS source_concept_id,
+                            COALESCE(r.target_concept_id,0) AS target_concept_id,
+                            r.route_status,
+                            o.OBSCLIN_TYPE,
+                            o.OBSCLIN_SOURCE
+                          FROM {t(ROUTE_TABLE)} r
+                          JOIN {s('PCORnet_OBS_CLIN')} o
+                            ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(nvarchar(255), o.OBSCLINID)))
+                          WHERE r.target_domain='Condition'
+                        )
+                        INSERT INTO {t(OBSCLIN_XWALK)} (
+                          route_id, source_record_id, condition_occurrence_id,
+                          source_concept_id, target_concept_id, route_status,
+                          source_code_type, source_provenance, date_basis
+                        )
+                        SELECT
+                          route_id, source_obsclin_id, :base_id + CONVERT(bigint,rn),
+                          source_concept_id, target_concept_id, route_status,
+                          LEFT(CONVERT(nvarchar(50),OBSCLIN_TYPE),50),
+                          LEFT(CONVERT(nvarchar(50),OBSCLIN_SOURCE),50),
+                          'OBSCLIN_START_DATE'
+                        FROM src
+                        """
+                    ),
+                    {"base_id": baseline_max},
                 )
 
-            con.execute(
-                text(
+                start_dt = _safe_datetime_sql("o.OBSCLIN_START_DATE", "o.OBSCLIN_START_TIME")
+                stop_dt = _safe_datetime_sql("o.OBSCLIN_STOP_DATE", "o.OBSCLIN_STOP_TIME")
+                con.execute(
+                    text(
+                        f"""
+                        INSERT INTO {t('condition_occurrence')} (
+                          condition_occurrence_id, person_id, condition_concept_id,
+                          condition_start_date, condition_start_datetime,
+                          condition_end_date, condition_end_datetime,
+                          condition_type_concept_id, condition_status_concept_id,
+                          stop_reason, provider_id, visit_occurrence_id, visit_detail_id,
+                          condition_source_value, condition_source_concept_id,
+                          condition_status_source_value
+                        )
+                        SELECT
+                          x.condition_occurrence_id,
+                          p.person_id,
+                          x.target_concept_id,
+                          CAST(o.OBSCLIN_START_DATE AS date),
+                          {start_dt},
+                          CAST(o.OBSCLIN_STOP_DATE AS date),
+                          CASE WHEN o.OBSCLIN_STOP_DATE IS NULL THEN NULL ELSE {stop_dt} END,
+                          0, 0, NULL, NULL, v.visit_occurrence_id, NULL,
+                          LEFT(CONVERT(varchar(50),o.OBSCLIN_CODE),50),
+                          x.source_concept_id,
+                          NULL
+                        FROM {t(OBSCLIN_XWALK)} x
+                        JOIN {s('PCORnet_OBS_CLIN')} o
+                          ON x.source_record_id = LTRIM(RTRIM(CONVERT(nvarchar(255), o.OBSCLINID)))
+                        JOIN {t('person')} p
+                          ON p.person_source_value = LTRIM(RTRIM(CONVERT(nvarchar(255), o.PATID)))
+                        LEFT JOIN {t('etl_visit_occurrence_xwalk')} v
+                          ON v.encounterid = LTRIM(RTRIM(CONVERT(nvarchar(255), o.ENCOUNTERID)))
+                        """
+                    )
+                )
+
+                target_rows = _scalar(con, f"SELECT COUNT_BIG(*) FROM {t('condition_occurrence')}")
+                target_max = _scalar(
+                    con,
+                    f"SELECT COALESCE(MAX(condition_occurrence_id),0) FROM {t('condition_occurrence')}",
+                )
+                obsclin_target_rows = _scalar(con, f"SELECT COUNT_BIG(*) FROM {t(OBSCLIN_XWALK)}")
+                obsclin_concept_zero = _scalar(
+                    con,
                     f"""
-                    INSERT INTO {condition} (
-                        condition_occurrence_id,
-                        person_id,
-                        condition_concept_id,
-                        condition_start_date,
-                        condition_start_datetime,
-                        condition_end_date,
-                        condition_end_datetime,
-                        condition_type_concept_id,
-                        condition_status_concept_id,
-                        stop_reason,
-                        provider_id,
-                        visit_occurrence_id,
-                        visit_detail_id,
-                        condition_source_value,
-                        condition_source_concept_id,
-                        condition_status_source_value
-                    )
-                    SELECT
-                        x.condition_occurrence_id,
-                        p.person_id,
-                        COALESCE(CONVERT(int, r.target_concept_id), 0),
-                        CAST(o.OBSCLIN_START_DATE AS date),
-                        {condition_datetime},
-                        CAST(o.OBSCLIN_STOP_DATE AS date),
-                        CASE
-                            WHEN o.OBSCLIN_STOP_DATE IS NULL THEN NULL
-                            ELSE {_safe_datetime_sql(
-                                "o.OBSCLIN_STOP_DATE",
-                                "o.OBSCLIN_STOP_TIME",
-                            )}
-                        END,
-                        0,
-                        0,
-                        NULL,
-                        NULL,
-                        vx.visit_occurrence_id,
-                        NULL,
-                        LEFT(CONVERT(varchar(50), o.OBSCLIN_CODE), 50),
-                        COALESCE(CONVERT(int, r.source_concept_id), 0),
-                        NULL
-                    FROM {routes} r
-                    JOIN {source_obs} o
-                      ON r.source_obsclin_id = LTRIM(RTRIM(CONVERT(
-                           nvarchar(255), o.OBSCLINID
-                         )))
-                    JOIN {xwalk} x
-                      ON x.source_domain = 'OBS_CLIN'
-                     AND x.source_record_id = r.source_obsclin_id
-                    JOIN {person} p
-                      ON p.person_source_value = LTRIM(RTRIM(CONVERT(
-                           nvarchar(255), o.PATID
-                         )))
-                    LEFT JOIN {visit_xwalk} vx
-                      ON vx.encounterid = LTRIM(RTRIM(CONVERT(
-                           nvarchar(255), o.ENCOUNTERID
-                         )))
-                    WHERE r.target_domain = 'Condition'
-                    """
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id=x.condition_occurrence_id
+                    WHERE c.condition_concept_id=0
+                    """,
                 )
-            )
+                mismatches = _scalar(
+                    con,
+                    f"""
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    JOIN {t(ROUTE_TABLE)} r ON r.route_id=x.route_id
+                    JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id=x.condition_occurrence_id
+                    WHERE r.target_domain <> 'Condition'
+                       OR c.condition_concept_id <> COALESCE(r.target_concept_id,0)
+                       OR x.target_concept_id <> COALESCE(r.target_concept_id,0)
+                    """,
+                )
+                visit_linked = _scalar(
+                    con,
+                    f"""
+                    SELECT COUNT_BIG(*)
+                    FROM {t(OBSCLIN_XWALK)} x
+                    JOIN {t('condition_occurrence')} c
+                      ON c.condition_occurrence_id=x.condition_occurrence_id
+                    WHERE c.visit_occurrence_id IS NOT NULL
+                    """,
+                )
+                if target_rows != expected_target_rows or target_max != expected_target_max:
+                    raise RuntimeError(
+                        "OBS_CLIN Condition append row/ID reconciliation failed: "
+                        f"target={target_rows:,}/{expected_target_rows:,}, "
+                        f"max={target_max:,}/{expected_target_max:,}"
+                    )
+                if obsclin_target_rows != route_rows or mismatches:
+                    raise RuntimeError(
+                        "OBS_CLIN Condition route-aware lineage reconciliation failed"
+                    )
+                status = "matched"
 
-            target_rows = int(
-                con.execute(text(f"SELECT COUNT_BIG(*) FROM {condition}")).scalar_one()
-            )
-            target_max = int(
-                con.execute(
-                    text(f"SELECT COALESCE(MAX(condition_occurrence_id), 0) FROM {condition}")
-                ).scalar_one()
-            )
-            obsclin_target_rows = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {condition} c
-                        JOIN {xwalk} x
-                          ON x.condition_occurrence_id = c.condition_occurrence_id
-                        WHERE x.source_domain = 'OBS_CLIN'
-                        """
-                    )
-                ).scalar_one()
-            )
-            obsclin_concept_zero = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {condition} c
-                        JOIN {xwalk} x
-                          ON x.condition_occurrence_id = c.condition_occurrence_id
-                        WHERE x.source_domain = 'OBS_CLIN'
-                          AND c.condition_concept_id = 0
-                        """
-                    )
-                ).scalar_one()
-            )
-            route_target_mismatch_rows = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {routes} r
-                        JOIN {xwalk} x
-                          ON x.source_domain = 'OBS_CLIN'
-                         AND x.source_record_id = r.source_obsclin_id
-                        JOIN {condition} c
-                          ON c.condition_occurrence_id = x.condition_occurrence_id
-                        WHERE r.target_domain = 'Condition'
-                          AND c.condition_concept_id <>
-                              COALESCE(r.target_concept_id, 0)
-                        """
-                    )
-                ).scalar_one()
-            )
-            visit_linked = int(
-                con.execute(
-                    text(
-                        f"""
-                        SELECT COUNT_BIG(*)
-                        FROM {condition} c
-                        JOIN {xwalk} x
-                          ON x.condition_occurrence_id = c.condition_occurrence_id
-                        WHERE x.source_domain = 'OBS_CLIN'
-                          AND c.visit_occurrence_id IS NOT NULL
-                        """
-                    )
-                ).scalar_one()
-            )
-
-            if target_rows != expected_target_rows:
-                raise RuntimeError(
-                    "Final Condition row-count reconciliation failed: "
-                    f"target={target_rows:,}, expected={expected_target_rows:,}"
-                )
-            if target_max != expected_target_max:
-                raise RuntimeError(
-                    "Final Condition ID-boundary reconciliation failed: "
-                    f"max={target_max:,}, expected={expected_target_max:,}"
-                )
-            if obsclin_target_rows != route_rows:
-                raise RuntimeError(
-                    "OBS_CLIN Condition target reconciliation failed: "
-                    f"target={obsclin_target_rows:,}, routes={route_rows:,}"
-                )
             if obsclin_concept_zero != route_concept_zero_rows:
                 raise RuntimeError(
                     "OBS_CLIN Condition concept-zero reconciliation failed: "
-                    f"target={obsclin_concept_zero:,}, "
-                    f"routes={route_concept_zero_rows:,}"
-                )
-            if route_target_mismatch_rows:
-                raise RuntimeError(
-                    "OBS_CLIN Condition target concepts differ from route ledger: "
-                    f"{route_target_mismatch_rows:,} rows"
+                    f"target={obsclin_concept_zero:,}, routes={route_concept_zero_rows:,}"
                 )
 
         payload = {
@@ -465,32 +365,29 @@ def append_obs_clin_conditions(
             "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
             "source_schema": source_schema,
             "target_schema": target_schema,
+            "status": status,
             "baseline_condition_rows": baseline_rows,
             "baseline_max_condition_occurrence_id": baseline_max,
             "obs_clin_condition_rows": route_rows,
             "route_distinct_source_rows": route_distinct_source_rows,
+            "one_to_many_expansion_rows": route_rows - route_distinct_source_rows,
             "source_rows_resolved": source_rows_resolved,
             "target_rows": target_rows,
             "target_max_condition_occurrence_id": target_max,
             "concept_zero_rows": obsclin_concept_zero,
             "expected_concept_zero_rows": route_concept_zero_rows,
-            "route_target_mismatch_rows": route_target_mismatch_rows,
             "invalid_standard_target_rows": invalid_standard_target_rows,
+            "unlinked_person_rows": unlinked_person_rows,
             "visit_linked_rows": visit_linked,
+            "lineage_table": f"{target_schema}.{OBSCLIN_XWALK}",
             "policy": (
-                "OBS_CLIN rows are materialized from the domain route ledger; "
-                "nonzero targets must be active Standard Condition concepts, "
-                "and unresolved target_concept_id=0 is preserved when present."
+                "Materialize every OBS_CLIN Condition-domain route. Keep OBS_CLIN lineage in a "
+                "route-aware ledger separate from primary DIAGNOSIS/CONDITION lineage; never "
+                "select an arbitrary target when vocabulary routing is one-to-many."
             ),
-            "status": "matched",
         }
-
         audit_path.parent.mkdir(parents=True, exist_ok=True)
-        audit_path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        audit_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         return {**payload, "audit_path": str(audit_path)}
-
     finally:
         engine.dispose()
