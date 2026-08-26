@@ -25,7 +25,7 @@ def run_mapping_semantics_preflight(config: EtlConfig) -> dict[str, object]:
     engine = make_engine(config)
     try:
         with engine.connect() as con:
-            person_meta = _validate_mapping_concepts(con, target_schema)
+            person_validation = _validate_mapping_concepts(con, target_schema)
             type_valid, type_rejected = _validated_existing_map(
                 con, target_schema, DX_ORIGIN_TYPE_MAP, "Type Concept"
             )
@@ -83,7 +83,7 @@ def run_mapping_semantics_preflight(config: EtlConfig) -> dict[str, object]:
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "status": "matched",
         "person_positive_mapping_concepts": PERSON_MAPPING_CONCEPTS,
-        "person_mapping_concept_metadata": person_meta,
+        "person_mapping_validation": person_validation,
         "diagnosis_type_valid_map": type_valid,
         "diagnosis_type_rejected_map": type_rejected,
         "diagnosis_status_valid_map": status_valid,
@@ -105,7 +105,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
     result = run_mapping_semantics_preflight(load_etl_config(args.config))
+    p = result["person_mapping_validation"]
     print("status:", result["status"])
+    print("person_gender_valid_map:", p["gender_valid_map"])
+    print("person_gender_rejected_map:", p["gender_rejected_map"])
+    print("person_race_valid_map:", p["race_valid_map"])
+    print("person_race_rejected_map:", p["race_rejected_map"])
+    print("person_ethnicity_valid_map:", p["ethnicity_valid_map"])
+    print("person_ethnicity_rejected_map:", p["ethnicity_rejected_map"])
     print("diagnosis_type_valid_map:", result["diagnosis_type_valid_map"])
     print("diagnosis_type_rejected_map:", result["diagnosis_type_rejected_map"])
     print("diagnosis_status_valid_map:", result["diagnosis_status_valid_map"])
