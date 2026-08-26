@@ -98,22 +98,32 @@ def _validated_existing_map(
     connection,
     schema: str,
     mapping: dict[str, int],
+    expected_domain: str,
 ) -> tuple[dict[str, int], dict[str, int]]:
+    """Keep only active Standard concepts in the expected OMOP domain.
+
+    A configured identifier being present in CONCEPT is not sufficient. Deprecated,
+    non-Standard, or wrong-domain concepts are rejected to concept 0 by the caller.
+    """
     ids = sorted(set(mapping.values()))
     if not ids:
         return {}, mapping
     values = ",".join(str(value) for value in ids)
-    present = {
+    valid_ids = {
         int(row[0])
         for row in connection.execute(
             text(
                 f"SELECT concept_id FROM [{schema}].[concept] "
-                f"WHERE concept_id IN ({values})"
-            )
+                f"WHERE concept_id IN ({values}) "
+                "AND domain_id = :expected_domain "
+                "AND standard_concept = 'S' "
+                "AND invalid_reason IS NULL"
+            ),
+            {"expected_domain": expected_domain},
         ).fetchall()
     }
-    valid = {key: value for key, value in mapping.items() if value in present}
-    rejected = {key: value for key, value in mapping.items() if value not in present}
+    valid = {key: value for key, value in mapping.items() if value in valid_ids}
+    rejected = {key: value for key, value in mapping.items() if value not in valid_ids}
     return valid, rejected
 
 
@@ -405,10 +415,10 @@ def transform_condition_occurrence(
             expected_cond_rows = expected_rows - expected_diag_rows
 
             type_map, rejected_type_map = _validated_existing_map(
-                connection, target_schema, DX_ORIGIN_TYPE_MAP
+                connection, target_schema, DX_ORIGIN_TYPE_MAP, "Type Concept"
             )
             status_map, rejected_status_map = _validated_existing_map(
-                connection, target_schema, DX_SOURCE_STATUS_MAP
+                connection, target_schema, DX_SOURCE_STATUS_MAP, "Condition Status"
             )
 
             existing = _scalar(
@@ -624,6 +634,45 @@ def transform_condition_occurrence(
                     f"routes={expected_rows:,}, target={target_rows:,}, lineage={lineage_rows:,}"
                 )
 
+            invalid_nonzero_type = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[condition_occurrence] co
+                LEFT JOIN [{target_schema}].[concept] c
+                  ON c.concept_id = co.condition_type_concept_id
+                WHERE co.condition_type_concept_id <> 0
+                  AND (
+                       c.concept_id IS NULL
+                    OR c.domain_id <> 'Type Concept'
+                    OR c.standard_concept <> 'S'
+                    OR c.invalid_reason IS NOT NULL
+                  )
+                """,
+            )
+            invalid_nonzero_status = _scalar(
+                connection,
+                f"""
+                SELECT COUNT_BIG(*)
+                FROM [{target_schema}].[condition_occurrence] co
+                LEFT JOIN [{target_schema}].[concept] c
+                  ON c.concept_id = co.condition_status_concept_id
+                WHERE co.condition_status_concept_id <> 0
+                  AND (
+                       c.concept_id IS NULL
+                    OR c.domain_id <> 'Condition Status'
+                    OR c.standard_concept <> 'S'
+                    OR c.invalid_reason IS NOT NULL
+                  )
+                """,
+            )
+            if invalid_nonzero_type or invalid_nonzero_status:
+                raise RuntimeError(
+                    "Condition provenance concept integrity failed: "
+                    f"invalid_type={invalid_nonzero_type:,}, invalid_status={invalid_nonzero_status:,}. "
+                    "A clean rebuild is required; do not patch an existing target in place."
+                )
+
             bad_lineage = _scalar(
                 connection,
                 f"""
@@ -768,8 +817,10 @@ def transform_condition_occurrence(
             "provider": "NULL because no validated provider mapping is assigned.",
             "condition_provenance": (
                 "CONDITION_TYPE/CONDITION_SOURCE retained in lineage; OMOP type/status concepts remain 0 "
-                "unless source-established semantics support a validated mapping."
+                "unless source-established semantics map to an active Standard concept in the exact expected domain."
             ),
+            "diagnosis_type_expected_domain": "Type Concept",
+            "diagnosis_status_expected_domain": "Condition Status",
             "diagnosis_rejected_type_concepts": rejected_type_map,
             "diagnosis_rejected_status_concepts": rejected_status_map,
         },
