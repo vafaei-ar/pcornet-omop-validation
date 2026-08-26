@@ -33,7 +33,6 @@ OPTIONAL_SOURCE_TABLES = {
 }
 
 
-
 @dataclass(frozen=True)
 class PreflightResult:
     errors: list[str]
@@ -47,6 +46,35 @@ class PreflightResult:
 
 def _missing_files(directory: Path, names: set[str]) -> list[str]:
     return sorted(name for name in names if not (directory / name).exists())
+
+
+def _missing_source_files(
+    directory: Path,
+    logical_names: set[str],
+    table_prefix: str,
+) -> list[str]:
+    """Return missing logical PCORnet parquet names.
+
+    Source exports in this project use names such as ``PCORnet_DIAGNOSIS.parquet``
+    while the logical registry is intentionally prefix-free.  Preflight therefore
+    resolves both prefixed and unprefixed filenames and compares case-insensitively
+    on case-sensitive Linux filesystems.  This keeps preflight aligned with the
+    configured ``source.table_prefix`` rather than requiring users to rename files.
+    """
+    found = {
+        path.name.casefold(): path.name
+        for path in directory.glob("*.parquet")
+        if path.is_file()
+    }
+    prefix = str(table_prefix or "")
+    missing: list[str] = []
+    for logical in sorted(logical_names):
+        candidates = {logical.casefold()}
+        if prefix:
+            candidates.add(f"{prefix}{logical}".casefold())
+        if not any(candidate in found for candidate in candidates):
+            missing.append(logical)
+    return missing
 
 
 def _athena_vocabulary_ids(vocabulary_csv: Path) -> set[str]:
@@ -77,12 +105,15 @@ def run_preflight(config: EtlConfig) -> PreflightResult:
     warnings: list[str] = []
 
     source_dir = config.source_dir
+    table_prefix = str((config.raw.get("source", {}) or {}).get("table_prefix", ""))
     if not source_dir.is_dir():
         errors.append(f"PCORnet parquet directory does not exist: {source_dir}")
         found_tables: list[str] = []
     else:
         found_tables = sorted(path.name for path in source_dir.glob("*.parquet"))
-        missing_required = _missing_files(source_dir, REQUIRED_SOURCE_TABLES)
+        missing_required = _missing_source_files(
+            source_dir, REQUIRED_SOURCE_TABLES, table_prefix
+        )
         if missing_required:
             message = "Missing expected PCORnet tables: " + ", ".join(missing_required)
             if config.raw["etl"].get("fail_on_missing_required_table", True):
@@ -90,7 +121,9 @@ def run_preflight(config: EtlConfig) -> PreflightResult:
             else:
                 warnings.append(message)
 
-        missing_optional = _missing_files(source_dir, OPTIONAL_SOURCE_TABLES)
+        missing_optional = _missing_source_files(
+            source_dir, OPTIONAL_SOURCE_TABLES, table_prefix
+        )
         if missing_optional:
             warnings.append(
                 "Optional PCORnet table unavailable: " + ", ".join(missing_optional)
