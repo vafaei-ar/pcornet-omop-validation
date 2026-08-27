@@ -126,7 +126,7 @@ def run_stroke_planning_audit(config_path: str, top_codes: int = 40) -> int:
 
             stroke_predicate = _stroke_code_sql(f"d.{_q(dx_code)}")
             enc_type_expr = (
-                f"UPPER(LTRIM(RTRIM(CONVERT(nvarchar(20), e.{_q(enc_type)})))"
+                f"UPPER(LTRIM(RTRIM(CONVERT(nvarchar(20), e.{_q(enc_type)}))))"
                 if enc_type
                 else "CAST(NULL AS nvarchar(20))"
             )
