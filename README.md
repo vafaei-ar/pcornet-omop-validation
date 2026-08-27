@@ -8,10 +8,15 @@ The project does **not** assume that tables or row counts should be identical ac
 
 The audited ETL completed its final clean publication freeze at commit `887e6f4d60a6b185e58b3c9fe8887472b49777e3`. Downstream scientific analyses proceed on `publication/analysis` while treating that ETL commit as fixed.
 
+Stage A structural/semantic concordance is complete. Stage B Wave 1 patient-level semantic concordance is active; encounter/visit and death comparisons are complete with full patient/date agreement under the locked `stage-b-v1` definition, and Condition semantic concordance is the next active run.
+
 See:
 
-- `docs/project_history_and_decisions.md` for the durable project history, decisions, Stage A findings, Mermaid roadmap, and publication plan;
 - `docs/current_status_and_publication_plan.md` for current project status and next steps;
+- `docs/project_history_and_decisions.md` for the durable project history, methodological decisions, findings, and Mermaid roadmap;
+- `docs/stage_a_structural_semantic_results.md` for completed Stage A findings;
+- `docs/stage_b_patient_semantic_concordance_spec.md` for the locked Stage B design;
+- `docs/stage_b_wave1_progress.md` for live Stage B Wave 1 results and implementation status;
 - `docs/publication_etl_freeze_record.md` for the final ETL freeze acceptance record;
 - `docs/publication_analysis_workflow.md` for the concordance, phenotype, and analytical-equivalence workflow;
 - `docs/final_freeze_runbook.md` for the operational clean-build procedure used to establish the freeze;
@@ -133,10 +138,9 @@ zip -r pcornet_omop_profile_results.zip results/
 ## Validation and publication stages
 
 1. Audited ETL and structural fidelity — **frozen**.
-2. Stage A structural/semantic concordance — **in progress; core aggregate and manuscript-oriented summaries generated**.
-3. Stage B patient-level semantic concordance.
-4. Stage C phenotype reproducibility.
-5. Stage D analytical equivalence and sensitivity analyses.
+2. Structural and semantic concordance — **Stage A complete; Stage B active**.
+3. Phenotype reproducibility.
+4. Analytical equivalence and sensitivity analyses.
 
 ## Data governance
 
