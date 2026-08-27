@@ -4,7 +4,7 @@ Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
 Locked study definition: `study_definitions/stage_b_v1.json`
 
-This document records Stage B Wave 1 implementation and results as they are generated. Primary concordance uses independently defined native PCORnet and OMOP queries. Frozen ETL lineage/xwalk tables are used only after the primary comparison for discordance attribution.
+This document records Stage B Wave 1 implementation and results as they are generated. Primary concordance uses independently defined native PCORnet and OMOP queries where possible. For semantic domains that require vocabulary normalization, the frozen route ledger is used only as the prespecified source-side semantic reference; target OMOP event retrieval remains native and target lineage/xwalks are reserved for secondary discordance attribution.
 
 ## Preflight
 
@@ -42,26 +42,49 @@ Encounter type is descriptive rather than an exact-equality acceptance criterion
 
 ## Death concordance
 
-Implementation is committed and is the next Wave 1 run. The primary comparison is locked to:
+The native-CDM death comparison completed successfully.
 
-- patient-level death presence;
-- exact calendar death date;
-- native PCORnet DEATH versus native OMOP death queries using the fixed patient bridge;
-- no death xwalk in primary metrics;
-- death lineage only for secondary attribution.
+Primary results:
+
+- PCORnet eligible death events: **6,955**
+- OMOP death rows: **6,955**
+- source patients with death: **6,955**
+- OMOP patients with death: **6,955**
+- shared patients: **6,955**
+- source-only patients: **0**
+- OMOP-only patients: **0**
+- patient Jaccard: **1.0**
+- exact death-date matches: **6,955**
+- discordant date pairs: **0**
+
+Interpretation: patient-level death presence and exact calendar death date are fully concordant between native PCORnet DEATH and frozen OMOP Death under the locked Stage B v1 definition. The death xwalk was not used to define the primary result.
 
 Death type and cause concept equality are not Stage B concordance requirements because the frozen ETL explicitly retains concept `0` where source provenance/cause semantics do not justify an exact OMOP concept.
+
+## Condition semantic concordance
+
+Implementation is now committed. The primary semantic comparison is pre-specified as follows:
+
+- the frozen canonical Condition route ledger supplies the source-side Standard concept/domain semantic reference for eligible DIAGNOSIS and CONDITION events;
+- mapped nonzero routes are compared against native OMOP event tables in the appropriate target domain;
+- target lineage/xwalks are not used in primary metrics;
+- concept-0 fallback is reported separately as represented-but-unresolved;
+- one-to-many Standard routes are preserved rather than collapsed;
+- cross-domain routes are evaluated in Condition, Observation, Procedure, Measurement, Drug, Device, or Specimen as appropriate;
+- exact event agreement is a multiset comparison on person, calendar date, OMOP domain, and Standard concept.
+
+This design avoids treating raw source-row equality or Condition Occurrence-only equality as the semantic target.
 
 ## Remaining Wave 1 sequence
 
 ```mermaid
 flowchart LR
     A[Preflight complete] --> B[Encounter complete]
-    B --> C[Death]
+    B --> C[Death complete]
     C --> D[Condition semantics]
     D --> E[Procedure semantics]
     E --> F[Wave 1 aggregate manuscript tables]
     F --> G[Disclosure review]
 ```
 
-Condition and Procedure comparisons will preserve the locked rule that one-to-many and cross-domain Standard mappings are not automatically discordant. Primary metrics will be based on independently constructed semantic target representations; lineage will be used only afterward to classify disagreement.
+Condition and Procedure comparisons preserve the locked rule that one-to-many and cross-domain Standard mappings are not automatically discordant. Target lineage will be used only after primary semantic results are computed to classify disagreement.
