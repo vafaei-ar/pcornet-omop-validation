@@ -70,4 +70,7 @@ outputs/
 *.parquet
 *.zip
 config/local.yaml
+# Local ETL execution configs. Keep the tracked example config only.
+config/etl.yaml
+config/etl_*.yaml
 .DS_Store
