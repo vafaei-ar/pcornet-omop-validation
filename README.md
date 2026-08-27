@@ -4,6 +4,18 @@ This repository develops a reproducible PCORnet-to-OMOP ETL and validation frame
 
 The project does **not** assume that tables or row counts should be identical across CDMs. Validation proceeds from ETL/data understanding to semantic concordance, phenotype reproducibility, and analytical equivalence.
 
+## Publication status
+
+The audited ETL completed its final clean publication freeze at commit `887e6f4d60a6b185e58b3c9fe8887472b49777e3`. Downstream scientific analyses proceed on `publication/analysis` while treating that ETL commit as fixed.
+
+See:
+
+- `docs/current_status_and_publication_plan.md` for current project status and next steps;
+- `docs/publication_etl_freeze_record.md` for the final ETL freeze acceptance record;
+- `docs/publication_analysis_workflow.md` for the concordance, phenotype, and analytical-equivalence workflow;
+- `docs/final_freeze_runbook.md` for the operational clean-build procedure used to establish the freeze;
+- `docs/etl_redesign.md` for ETL architecture and design decisions.
+
 ## Local layout
 
 ```text
@@ -32,7 +44,7 @@ pytest
 
 ## Audited PCORnet-to-OMOP ETL
 
-The new ETL targets OMOP CDM v5.4.2 on SQL Server first. It keeps the prior OMOP database untouched and uses a separate target database (`OMOP_VALIDATED` in the example config).
+The ETL targets OMOP CDM v5.4.2 on SQL Server first. It keeps the prior OMOP database untouched and uses a separate validated target database.
 
 Create a local config:
 
@@ -84,13 +96,7 @@ Create the isolated target database if needed and apply the pinned official OHDS
 pcornet-omop-etl schema --config config/etl.yaml
 ```
 
-The schema command is non-destructive. If the OMOP schema is already present, it does not re-apply the DDL. Destructive reset behavior will require a separate explicit acknowledgement rather than being hidden inside a normal run.
-
-Current ETL architecture and design decisions are documented in `docs/etl_redesign.md`.
-
-The current validated-build status, completed work, remaining freeze steps, and publication plan are documented in `docs/current_status_and_publication_plan.md`.
-
-The operational checklist for the final code-frozen rebuild is in `docs/final_freeze_runbook.md`.
+The schema command is non-destructive. Destructive reset behavior is isolated behind the separately guarded clean-reset command and exact database/schema confirmations.
 
 ## Run the initial profile
 
@@ -123,10 +129,10 @@ The `results/` directory is ignored by Git. Zip aggregate results for review whe
 zip -r pcornet_omop_profile_results.zip results/
 ```
 
-## Validation stages
+## Validation and publication stages
 
-1. Audited ETL and structural fidelity.
-2. Patient-level semantic concordance.
+1. Audited ETL and structural fidelity — **frozen**.
+2. Structural/patient-level semantic concordance — **next**.
 3. Phenotype reproducibility.
 4. Analytical equivalence and sensitivity analyses.
 
