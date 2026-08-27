@@ -35,9 +35,11 @@ CANONICAL_STAGE_ORDER = (
     "procedure_remaining_domains",
     "condition_cross_domain_materialize",
     "death",
+    "visit_time_semantics_audit",
     "global_reconciliation",
     "semantic_freeze_audit",
     "freeze_decision_review",
+    "freeze_manifest",
 )
 
 CORE_TARGETS = (
@@ -85,6 +87,7 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
     database = str(sql_cfg.get("database") or "").strip()
     if not database:
         raise RuntimeError("sqlserver.database is empty")
+    source_schema = _schema(sql_cfg.get("source_schema", "dbo"), "source_schema")
     target_schema = _schema(sql_cfg.get("target_schema", "dbo"), "target_schema")
 
     configured_stages = tuple(config.stages)
@@ -118,7 +121,7 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
                 f"""
                 SELECT COUNT_BIG(*)
                 FROM INFORMATION_SCHEMA.TABLES
-                WHERE TABLE_SCHEMA = '{target_schema}'
+                WHERE TABLE_SCHEMA = '{source_schema}'
                   AND TABLE_NAME LIKE 'PCORnet[_]%'
                 """,
             )
@@ -165,7 +168,9 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
     if concept_rows == 0:
         blockers.append("Vocabulary concept table is absent or empty.")
     if staging_tables == 0:
-        blockers.append("No PCORnet staging tables were detected in the configured target schema.")
+        blockers.append(
+            f"No PCORnet staging tables were detected in configured source schema {source_schema!r}."
+        )
 
     if populated_core:
         warnings.append(
@@ -194,6 +199,7 @@ def audit_rebuild_readiness(config: EtlConfig) -> dict[str, object]:
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "status": status,
         "database": database,
+        "source_schema": source_schema,
         "target_schema": target_schema,
         "destructive_actions_performed": False,
         "etl_reset_flag": reset_flag,
@@ -238,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("status:", result["status"])
     print("database:", result["database"])
+    print("source_schema:", result["source_schema"])
     print("target_schema:", result["target_schema"])
     print("destructive_actions_performed:", result["destructive_actions_performed"])
     print("etl_reset_flag:", result["etl_reset_flag"])
