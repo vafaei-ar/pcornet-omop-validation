@@ -1,0 +1,89 @@
+{
+  "study_definition": "stage-b-v1",
+  "status": "locked_before_patient_level_comparison",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "objective": "Compare patient-level clinical semantics between native PCORnet representations and the frozen OMOP build without retuning ETL mappings from observed disagreement.",
+  "principles": {
+    "etl_immutable": true,
+    "historical_comparator_is_not_acceptance_target": true,
+    "primary_comparison_uses_native_cdm_queries": true,
+    "lineage_used_for_discordance_attribution_not_primary_outcome_definition": true,
+    "one_to_many_is_not_automatically_discordant": true,
+    "cross_domain_mapping_is_not_automatically_information_loss": true,
+    "concept_zero_is_reported_separately": true,
+    "no_post_hoc_matching_rule_changes_without_decision_log": true
+  },
+  "patient_linkage": {
+    "pcornet_key": "PATID",
+    "omop_key": "person_id",
+    "bridge": "person.person_source_value",
+    "rule": "Exact source-derived patient linkage established by the frozen ETL Person transformation; no probabilistic linkage."
+  },
+  "analysis_layers": {
+    "primary": "Independent CDM-native patient/event summaries using pre-specified semantic definitions.",
+    "secondary": "Lineage-aware reconciliation used to classify why patient/event representations differ."
+  },
+  "wave_1_domains": {
+    "encounter": {
+      "pcornet_source": "PCORnet_ENCOUNTER",
+      "omop_target": "visit_occurrence",
+      "event_date_rule": "Compare encounter start date to visit_start_date; preserve source encounter type as a separate characteristic rather than requiring one-to-one type equality.",
+      "strict_lineage_reference": "etl_visit_occurrence_xwalk",
+      "patient_metrics": ["patients_with_event", "intersection", "pcornet_only", "omop_only", "jaccard"],
+      "event_metrics": ["event_count_per_patient", "paired_count_difference", "date_agreement"],
+      "date_tolerance_days": 0
+    },
+    "condition": {
+      "pcornet_sources": ["PCORnet_DIAGNOSIS", "PCORnet_CONDITION"],
+      "omop_targets": ["condition_occurrence", "observation", "procedure_occurrence", "measurement", "drug_exposure", "device_exposure", "specimen"],
+      "semantic_reference": "Frozen canonical Condition route ledger defines defensible Standard semantic targets and cross-domain representation.",
+      "primary_rule": "Compare patient-level presence and event counts for pre-specified semantic target concepts/domains, not raw source-row equality.",
+      "one_to_many_rule": "A source event with multiple valid Standard targets may correspond to multiple OMOP events and remains represented if at least one pre-specified semantic target is present.",
+      "fallback_rule": "Condition concept 0 fallback is reported as represented-but-unresolved and is not treated as mapped semantic concordance.",
+      "patient_metrics": ["patients_with_semantic_event", "intersection", "pcornet_only", "omop_only", "jaccard", "positive_agreement"],
+      "event_metrics": ["event_count_per_patient", "paired_count_difference", "date_agreement"],
+      "date_tolerance_days": 0
+    },
+    "procedure": {
+      "pcornet_source": "PCORnet_PROCEDURES",
+      "omop_targets": ["procedure_occurrence", "condition_occurrence", "device_exposure", "specimen", "drug_exposure", "measurement", "observation"],
+      "semantic_reference": "Frozen Procedure route ledger defines direct Standard, Maps-to, unresolved, cross-domain, and one-to-many routes.",
+      "primary_rule": "Compare patient-level semantic target presence by concept/domain; do not require source-row to Procedure Occurrence row equality.",
+      "non_event_rule": "Non-event semantic components remain explanatory ledger records and are excluded from standalone patient-event concordance denominators.",
+      "unresolved_rule": "Concept 0 routes are reported separately from mapped semantic concordance.",
+      "patient_metrics": ["patients_with_semantic_event", "intersection", "pcornet_only", "omop_only", "jaccard", "positive_agreement"],
+      "event_metrics": ["event_count_per_patient", "paired_count_difference", "date_agreement"],
+      "date_tolerance_days": 0
+    },
+    "death": {
+      "pcornet_source": "PCORnet_DEATH",
+      "omop_target": "death",
+      "primary_rule": "Compare patient-level death presence and exact death date.",
+      "patient_metrics": ["patients_with_death", "intersection", "pcornet_only", "omop_only", "jaccard", "positive_agreement"],
+      "event_metrics": ["exact_date_agreement"],
+      "date_tolerance_days": 0
+    }
+  },
+  "wave_2_domains": {
+    "drug": "Specify medication semantic unit and treatment of RxNorm/NDC one-to-many mappings before patient comparison.",
+    "measurement_observation": "Specify LOINC/value/unit normalization and cross-domain Measurement/Observation handling before patient comparison."
+  },
+  "discordance_categories": [
+    "source_ineligible_by_preexisting_frozen_rule",
+    "unresolved_concept_zero",
+    "cross_domain_representation",
+    "one_to_many_standard_mapping",
+    "date_representation_difference",
+    "visit_linkage_difference",
+    "native_cdm_query_definition_difference",
+    "unexpected_unexplained_difference"
+  ],
+  "reporting": {
+    "primary_unit": "patient",
+    "secondary_unit": "event",
+    "required_denominators": true,
+    "report_absolute_counts": true,
+    "report_percentages": true,
+    "report_discordance_reason_breakdown": true
+  }
+}
