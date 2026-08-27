@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +17,7 @@ from .visit_time_semantics_audit import audit_visit_time_semantics
 
 
 # Auxiliary OMOP concept fields that have deterministic domain semantics and are
-# not fully covered by semantic_freeze_audit.py.  Type Concept fields are
+# not fully covered by semantic_freeze_audit.py. Type Concept fields are
 # intentionally validated there; these checks focus on remaining standardized
 # semantic fields that can be validated without inventing source meaning.
 AUXILIARY_CONCEPT_CHECKS = (
@@ -43,6 +44,13 @@ ACTIVE_STANDARD_ONLY = (
     ("observation", "qualifier_concept_id"),
     ("specimen", "disease_status_concept_id"),
 )
+
+
+def _schema(value: object, label: str) -> str:
+    schema = str(value or "dbo")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema) is None:
+        raise ValueError(f"Unsafe SQL Server {label}: {schema!r}")
+    return schema
 
 
 def _scalar(con, sql: str) -> int:
@@ -77,7 +85,9 @@ def _git_status(repo_root: Path) -> list[str]:
 
 
 def _concept_integrity(config: EtlConfig) -> dict[str, object]:
-    schema = str(config.raw["sqlserver"].get("target_schema", "dbo"))
+    schema = _schema(
+        config.raw["sqlserver"].get("target_schema", "dbo"), "target_schema"
+    )
     engine = make_engine(config)
     try:
         with engine.connect() as con:
@@ -195,13 +205,20 @@ def run_clean_build_phase14_freeze_manifest(config: EtlConfig) -> dict[str, obje
             except ValueError:
                 config_display = str(p)
 
+    source_schema = _schema(
+        config.raw["sqlserver"].get("source_schema", "dbo"), "source_schema"
+    )
+    target_schema = _schema(
+        config.raw["sqlserver"].get("target_schema", "dbo"), "target_schema"
+    )
+
     payload = {
         "stage": "clean_build_phase14_freeze_manifest",
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
         "status": "freeze_candidate_manifested",
         "database": str(config.raw["sqlserver"].get("database")),
-        "source_schema": str(config.raw["sqlserver"].get("source_schema", "dbo")),
-        "target_schema": str(config.raw["sqlserver"].get("target_schema", "dbo")),
+        "source_schema": source_schema,
+        "target_schema": target_schema,
         "phase13_status": review.get("status"),
         "unexplained_review_flags": review.get("unexplained_review_flags"),
         "visit_time_semantics_status": visit_time.get("status"),
