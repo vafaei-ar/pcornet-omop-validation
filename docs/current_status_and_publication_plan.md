@@ -2,37 +2,32 @@
 
 _Last updated: 2026-08-27_
 
+For the full historical record, methodological decisions, detailed Stage A findings, and Mermaid roadmap, see `docs/project_history_and_decisions.md`.
+
 ## Current status
 
-The audited PCORnet-to-OMOP ETL has completed its final clean, code-frozen rebuild and is now the publication ETL freeze for subsequent scientific analyses.
-
-The frozen ETL commit is:
+The audited PCORnet-to-OMOP ETL is frozen for publication at:
 
 `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
-The final rebuild was executed from an empty validated target against `OMOP_VALIDATED_A`, using `config/etl_A.yaml`, with the comparator/prior OMOP database left untouched. Phase 14 recorded a clean worktree (`dirty_worktree_entries: 0`) and hashed the ETL source files and audit JSON files used for the build.
+The final rebuild was executed from an empty isolated validated target, with the comparator/prior OMOP database left untouched. The freeze passed matched global reconciliation, matched visit-time semantics, zero duplicate primary-key groups, zero reversed audited intervals, zero hard semantic blockers, zero unexplained review flags, zero auxiliary concept blockers, and a clean Phase 14 worktree.
 
-This freeze is accepted on reconciliation, required-field/interval integrity, vocabulary-semantic validity, explicit ambiguity/exclusion policy, and documented review decisions. Row counts are outputs of the current source and vocabulary semantics, not acceptance thresholds.
+Publication analysis proceeds on `publication/analysis`. The frozen ETL is treated as immutable unless a new independently demonstrated ETL defect requires a documented new freeze.
 
-## Final freeze acceptance results
+```mermaid
+flowchart LR
+    A[PCORnet source] --> B[Frozen audited ETL]
+    B --> C[Frozen OMOP build]
+    B --> D[Route ledgers and lineage]
+    C --> E[Stage A]
+    D --> E
+    A --> F[Stage B]
+    C --> F
+    F --> G[Stage C]
+    G --> H[Stage D]
+```
 
-The final Phase 12-14 validation reported:
-
-- global reconciliation: **matched**;
-- visit-time semantics: **matched**;
-- materialized visit datetime mismatches: **0**;
-- duplicate primary-key groups: **0**;
-- reversed intervals in audited interval-bearing tables: **0**;
-- semantic hard blockers: **0**;
-- semantic review flags: **10**;
-- explained review flags: **10**;
-- unexplained review flags: **0**;
-- auxiliary concept blockers: **0**;
-- final manifest worktree dirtiness: **0**.
-
-The remaining semantic review flags are explicit concept-0/provenance decisions rather than hidden failures. They include type-concept zeros in several domains, unresolved standardized drug routes, and the explicit Death provenance policy.
-
-## Final frozen OMOP target counts
+## Frozen OMOP target counts
 
 | OMOP table | Rows |
 | --- | ---: |
@@ -48,138 +43,74 @@ The remaining semantic review flags are explicit concept-0/provenance decisions 
 | specimen | 93 |
 | death | 6,955 |
 
-## What was completed to reach the freeze
+These counts are recorded outcomes, not acceptance thresholds.
 
-### ETL architecture and auditability
+## Stage A status
 
-The conversion was redesigned or hardened so that clinically meaningful transformation decisions are explicit and reproducible. The implementation now uses configurable source/target schemas, quantified required-date exclusions, vocabulary-driven routing, route ledgers, lineage/xwalk tables, explicit concept-0 fallback, and clean-reset safeguards that operate only on the configured validated target.
+Stage A structural and semantic concordance is in progress and the core aggregate/manuscript-oriented summaries have been generated from the frozen audit bundle and route ledgers.
 
-Exact source-vocabulary mappings do not choose arbitrary `TOP(1)` candidates. Ambiguous mappings fail closed unless a unique defensible Standard mapping exists. Nonzero target concepts are validated against active OMOP concepts and expected domains where field semantics justify an expected domain.
+Current Stage A outputs include source eligibility/exclusions, route-to-target reconciliation, concept-0 summaries, visit/unit/route coverage, cross-domain routing, Procedure dispositions and target-domain summaries, Condition canonical routing, OBS_CLIN routing, mapping-mechanism summaries, and manuscript-oriented Markdown tables.
 
-### Person
+Key findings so far:
 
-Gender, race, and ethnicity candidate mappings are validated against the loaded OMOP vocabulary. Deprecated/non-Standard candidates are rejected to concept `0` while source values are preserved. The prior race-concept freeze blocker was removed. The existing-target idempotence validation path was also fixed and directly re-tested on the populated target, returning `already_loaded_matched` for all 27,089 Person rows.
+- PROCEDURES: 11,228,023 eligible source events produced 11,234,863 routes because one-to-many mappings were preserved; 111,660 routes were unresolved and 1,642 were non-event semantic components.
+- OBS_CLIN: 37,327,978 of 38,850,928 eligible records routed to Measurement (~96.08%); 12,737 records (~0.033%) remained unresolved and were retained as Observation concept `0`.
+- DIAGNOSIS + CONDITION: 8,674,973 eligible source events produced 9,045,157 canonical routes; 361,606 source events (~4.17%) had multiple core event routes and 60,148 (~0.69%) required Condition concept-0 fallback.
+- Drug: 17,469,480 routed Drug Exposure rows (~36.05%) had drug concept `0`; this is an explicit mapping-coverage result rather than a reconciliation failure.
 
-### Visit occurrence
+The main remaining Stage A cleanup is to decompose source exclusions by exact rule, especially DIAGNOSIS and PROCEDURES, before the eligibility/exclusion table is considered manuscript-ready.
 
-Encounter-type mapping is conservative and source-derived. Numeric PCORnet visit times were empirically profiled and validated as SAS seconds within a day. The final audit found zero materialized datetime mismatches.
+## Methodological decisions that remain fixed
 
-### Procedure routing
+- Do not use the comparator OMOP database as an ETL acceptance target.
+- Do not require row-count equality between PCORnet and OMOP.
+- Preserve one-to-many Standard mappings and cross-domain routes.
+- Do not choose arbitrary vocabulary candidates.
+- Use concept `0` when source semantics do not justify a unique Standard concept.
+- Retain non-event semantic targets in route ledgers rather than creating false standalone events.
+- Exclude missing required dates explicitly rather than inventing sentinel dates.
+- Do not retune ETL mappings from downstream concordance findings alone.
 
-PCORnet PROCEDURES are represented through a route ledger supporting direct Standard mappings, `Maps to`, one-to-many mappings, unresolved fallback, cross-domain event routing, and non-event semantic components. Non-event semantic components are retained in the route ledger rather than materialized as false standalone clinical events.
+## Publication roadmap
 
-### OBS_CLIN
-
-OBS_CLIN is routed according to validated Standard concept domain into Measurement, Observation, or Condition. Ambiguous/unresolved mappings are not forced into Measurement.
-
-### Condition
-
-DIAGNOSIS and CONDITION use a canonical event-route model. Multi-target `Maps to` routes are supported; `Maps to value` and other non-event targets do not independently create events. Source events with only non-event targets receive an explicit Condition concept-0 fallback. Condition type/status candidates are validated against the exact expected OMOP semantic domains; non-Standard or otherwise invalid candidates become `0` rather than being forced.
-
-### Measurement
-
-LAB, VITAL, Procedure-derived Measurement, and OBS_CLIN Measurement rows reconcile through lineage. LOINC/UCUM mapping is source-derived, and exact UCUM matching is case-sensitive. Unsupported/ambiguous units remain concept `0` rather than being guessed.
-
-### Observation
-
-Observation materialization combines routed OBS_CLIN, OBS_GEN, LAB, Procedure, and VITAL components with source-specific lineage and reconciliation.
-
-### Drug exposure
-
-Drug route construction covers PRESCRIBING, DISPENSING, MED_ADMIN, IMMUNIZATION, and Procedure-derived drug events. RxNorm/NDC handling is vocabulary-driven and supports one-to-many mappings. Route finalization maps only uniquely defensible active Standard Route concepts; unresolved standardized route values remain concept `0` and are explicitly reviewed.
-
-### Device, Specimen, and cross-domain events
-
-Procedure-derived and Condition-derived cross-domain routes are materialized into their corresponding OMOP domains with lineage and duplicate-route/target checks.
-
-### Death
-
-Death materialization is conservative: required fields are enforced, no sentinel date is invented, and the present source has no DEATH_CAUSE rows. Unsupported death type/cause semantics remain `0` under a documented provenance policy.
-
-## Final clean-build execution
-
-The publication freeze build was run after a guarded reset that left PCORnet staging and the vocabulary intact while emptying the 11 derived OMOP core targets and removing ETL route/xwalk tables.
-
-The build then completed all 14 phases:
-
-1. Person, Observation Period, Visit Occurrence
-2. Procedure, OBS_CLIN, and Condition route ledgers
-3. Primary Condition and Procedure events
-4. Base Measurement
-5. OBS_CLIN Measurement append
-6. Observation
-7. OBS_CLIN Condition append
-8. Drug routes, Drug Exposure, and Route finalization
-9. Remaining Procedure-routed Condition/Device/Specimen events
-10. Condition cross-domain events
-11. Death
-12. Visit-time, global reconciliation, and semantic validation
-13. Explicit review decisions
-14. Freeze manifest
-
-All materialization phases reported matched reconciliation for the components they own.
-
-## Frozen ETL versus ongoing publication work
-
-The ETL freeze is immutable for the scientific comparison unless a new, independently justified ETL defect is discovered. Publication-analysis code may continue to evolve, but it should treat the frozen ETL commit and frozen database build as fixed inputs. Downstream analyses must not change ETL semantics merely to improve PCORnet-versus-OMOP concordance.
-
-A dedicated publication-analysis branch, `publication/analysis`, starts from the frozen ETL commit so downstream study work can proceed without moving the ETL freeze point.
-
-## Publication analysis plan
+```mermaid
+flowchart TD
+    A[ETL freeze complete] --> B[Stage A: structural and semantic concordance]
+    B --> B1[Decompose exact exclusion reasons]
+    B1 --> B2[Freeze Stage A tables and figures]
+    B2 --> C[Stage B: patient-level semantic concordance]
+    C --> D[Stage C: phenotype reproducibility]
+    D --> E[Stage D: analytical equivalence]
+    E --> F[Manuscript tables and figures]
+    F --> G[Methods and Results drafting]
+    G --> H[Reproducibility and disclosure review]
+```
 
 ### Stage A — structural and semantic concordance
 
-Quantify what is preserved, expanded, routed to another OMOP domain, unresolved, or excluded during ETL. Planned outputs include source-event eligibility/exclusions, route and target distributions, one-to-many expansion, concept-0 rates and reasons, visit linkage, unit/route coverage, and cross-domain routing summaries.
+Finish exclusion-reason decomposition, perform disclosure review, freeze publication-safe aggregate tables/figure inputs, and draft the ETL/Stage A Results section from scripted outputs.
 
 ### Stage B — patient-level semantic concordance
 
-Define comparable patient-level clinical variables independently in PCORnet and the frozen OMOP build. Compare diagnosis, procedure, medication, measurement, encounter, and temporal representations using patient overlap and agreement metrics. Distinguish representational differences from actual information loss.
+Pre-specify patient/event matching rules, time tolerances, handling of one-to-many/cross-domain routes and concept `0`, then compare diagnoses, procedures, medications, measurements, encounters, observations, and death using patient overlap and agreement metrics.
 
 ### Stage C — phenotype reproducibility
 
-Implement selected phenotypes independently in both CDMs, then compare cohort size, overlap, positive/negative agreement, discordance mechanisms, and sensitivity to representation choices. Existing stroke-study modules provide a starting point for this stage, but phenotype definitions must be locked before outcome comparison.
+Lock phenotype specifications before viewing disagreement cases, implement them independently in PCORnet and frozen OMOP, and compare cohort size, overlap, Jaccard similarity, positive agreement, and classified discordance reasons. Existing stroke-oriented modules are the expected starting point.
 
 ### Stage D — analytical equivalence
 
-Run matched downstream analyses in both CDMs and compare estimates, uncertainty, and conclusions. Candidate analyses include descriptive rates, associations, time-to-event analyses, and pre-specified sensitivity analyses linked to documented ETL/CDM representation differences.
+Run matched pre-specified downstream analyses in both CDMs and compare estimates, uncertainty, and conclusions. Differences should be traced back to documented ETL/CDM representation effects where possible.
 
-## Immediate next steps
+## Manuscript framing
 
-1. Preserve the final Phase 14 manifest and associated audit bundle as the ETL reproducibility record.
-2. Build a publication-analysis manifest that records the frozen ETL SHA, analysis-code SHA, source/target identifiers, study-definition version, and output hashes.
-3. Produce Stage A structural/semantic concordance tables directly from the existing route ledgers, xwalks, and audit JSON files.
-4. Lock the first phenotype specification before inspecting PCORnet-versus-OMOP outcome differences.
-5. Run patient/cohort concordance and discordance decomposition.
-6. Generate manuscript-ready tables/figures from scripted aggregate outputs only.
-7. Draft Methods and Results with ETL-validation results separated from scientific PCORnet-versus-OMOP results.
+The paper should separate two questions:
 
-## Reproducibility bundle for publication
+1. **Did the audited ETL behave as specified?** The frozen rebuild answers this with matched reconciliation and zero hard/unexplained blockers.
+2. **How much do clinically meaningful and analytic results differ between PCORnet and OMOP after using a validated ETL?** Stages A-D answer this without further ETL tuning.
 
-The publication bundle should preserve, without committing protected data:
+This separation is central to the study because it prevents defects in a historical converter from being mistaken for intrinsic differences between the PCORnet and OMOP data models.
 
-- frozen ETL Git SHA;
-- analysis-code Git SHA;
-- publication ETL configuration with secrets removed;
-- source file inventory/hashes where permissible;
-- vocabulary version/provenance;
-- ETL source-file hashes;
-- final Phase 1-14 audit JSON files;
-- route/lineage reconciliation summaries;
-- exclusion and concept-0 summaries;
-- semantic review decisions;
-- final freeze manifest;
-- scripts producing manuscript tables/figures;
-- a concise analysis runbook.
+## Reproducibility rule
 
-Aggregate outputs must still be reviewed for disclosure risk before external sharing.
-
-## Manuscript framing supported by the freeze
-
-The Methods section can now describe the audited ETL as a fixed methodological foundation: mapping policy, ambiguity handling, domain routing, exclusions, lineage/reconciliation, vocabulary validation, clean-build protocol, and semantic review.
-
-The Results should explicitly separate two questions:
-
-1. **Did the audited ETL behave as specified?** The final frozen rebuild answers this with matched reconciliation and zero hard/unexplained blockers.
-2. **How much do clinically meaningful results differ between PCORnet and OMOP after using a validated ETL?** The publication-analysis stages will answer this independently of further ETL tuning.
-
-That separation is central to the study: it prevents defects in a historical converter from being mistaken for intrinsic differences between PCORnet and OMOP.
+Every publication analysis run should record the frozen ETL SHA, analysis-code SHA, configuration hash without secrets, study-definition version, input audit/freeze-manifest hashes, run timestamp, and output hashes/counts sufficient to regenerate tables and figures. Row-level data remain outside Git; aggregate outputs require disclosure review before external sharing.
