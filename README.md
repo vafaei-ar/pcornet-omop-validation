@@ -10,6 +10,7 @@ The audited ETL completed its final clean publication freeze at commit `887e6f4d
 
 See:
 
+- `docs/project_history_and_decisions.md` for the durable project history, decisions, Stage A findings, Mermaid roadmap, and publication plan;
 - `docs/current_status_and_publication_plan.md` for current project status and next steps;
 - `docs/publication_etl_freeze_record.md` for the final ETL freeze acceptance record;
 - `docs/publication_analysis_workflow.md` for the concordance, phenotype, and analytical-equivalence workflow;
@@ -132,9 +133,10 @@ zip -r pcornet_omop_profile_results.zip results/
 ## Validation and publication stages
 
 1. Audited ETL and structural fidelity — **frozen**.
-2. Structural/patient-level semantic concordance — **next**.
-3. Phenotype reproducibility.
-4. Analytical equivalence and sensitivity analyses.
+2. Stage A structural/semantic concordance — **in progress; core aggregate and manuscript-oriented summaries generated**.
+3. Stage B patient-level semantic concordance.
+4. Stage C phenotype reproducibility.
+5. Stage D analytical equivalence and sensitivity analyses.
 
 ## Data governance
 
