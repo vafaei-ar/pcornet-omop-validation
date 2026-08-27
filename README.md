@@ -90,6 +90,8 @@ Current ETL architecture and design decisions are documented in `docs/etl_redesi
 
 The current validated-build status, completed work, remaining freeze steps, and publication plan are documented in `docs/current_status_and_publication_plan.md`.
 
+The operational checklist for the final code-frozen rebuild is in `docs/final_freeze_runbook.md`.
+
 ## Run the initial profile
 
 ```bash
