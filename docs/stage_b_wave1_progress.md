@@ -66,6 +66,7 @@ Death type and cause concept equality are not Stage B concordance requirements b
 Implementation is now committed. The primary semantic comparison is pre-specified as follows:
 
 - the frozen canonical Condition route ledger supplies the source-side Standard concept/domain semantic reference for eligible DIAGNOSIS and CONDITION events;
+- this route ledger is being used as a vocabulary normalization reference, not as a target-event lineage lookup;
 - mapped nonzero routes are compared against native OMOP event tables in the appropriate target domain;
 - target lineage/xwalks are not used in primary metrics;
 - concept-0 fallback is reported separately as represented-but-unresolved;
@@ -73,7 +74,7 @@ Implementation is now committed. The primary semantic comparison is pre-specifie
 - cross-domain routes are evaluated in Condition, Observation, Procedure, Measurement, Drug, Device, or Specimen as appropriate;
 - exact event agreement is a multiset comparison on person, calendar date, OMOP domain, and Standard concept.
 
-This design avoids treating raw source-row equality or Condition Occurrence-only equality as the semantic target.
+This design avoids treating raw source-row equality or Condition Occurrence-only equality as the semantic target while still preventing target lineage from defining the primary concordance result.
 
 ## Remaining Wave 1 sequence
 
