@@ -247,26 +247,29 @@ def transform_person(config: EtlConfig) -> PersonTransformResult:
                 invalid_existing = _scalar(
                     connection,
                     f"""
-                    SELECT COUNT_BIG(*)
-                    FROM {target_table} p
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = p.gender_concept_id
-                    WHERE p.gender_concept_id <> 0
-                      AND (c.concept_id IS NULL OR c.domain_id <> 'Gender' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
-                    UNION ALL
-                    SELECT COUNT_BIG(*)
-                    FROM {target_table} p
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = p.race_concept_id
-                    WHERE p.race_concept_id <> 0
-                      AND (c.concept_id IS NULL OR c.domain_id <> 'Race' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
-                    UNION ALL
-                    SELECT COUNT_BIG(*)
-                    FROM {target_table} p
-                    LEFT JOIN [{target_schema}].[concept] c
-                      ON c.concept_id = p.ethnicity_concept_id
-                    WHERE p.ethnicity_concept_id <> 0
-                      AND (c.concept_id IS NULL OR c.domain_id <> 'Ethnicity' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
+                    SELECT COALESCE(SUM(invalid_rows), 0)
+                    FROM (
+                        SELECT COUNT_BIG(*) AS invalid_rows
+                        FROM {target_table} p
+                        LEFT JOIN [{target_schema}].[concept] c
+                          ON c.concept_id = p.gender_concept_id
+                        WHERE p.gender_concept_id <> 0
+                          AND (c.concept_id IS NULL OR c.domain_id <> 'Gender' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
+                        UNION ALL
+                        SELECT COUNT_BIG(*) AS invalid_rows
+                        FROM {target_table} p
+                        LEFT JOIN [{target_schema}].[concept] c
+                          ON c.concept_id = p.race_concept_id
+                        WHERE p.race_concept_id <> 0
+                          AND (c.concept_id IS NULL OR c.domain_id <> 'Race' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
+                        UNION ALL
+                        SELECT COUNT_BIG(*) AS invalid_rows
+                        FROM {target_table} p
+                        LEFT JOIN [{target_schema}].[concept] c
+                          ON c.concept_id = p.ethnicity_concept_id
+                        WHERE p.ethnicity_concept_id <> 0
+                          AND (c.concept_id IS NULL OR c.domain_id <> 'Ethnicity' OR c.standard_concept <> 'S' OR c.invalid_reason IS NOT NULL)
+                    ) q
                     """,
                 )
                 if invalid_existing:
