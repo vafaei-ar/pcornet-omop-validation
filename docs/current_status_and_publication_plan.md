@@ -2,7 +2,7 @@
 
 _Last updated: 2026-08-27_
 
-For the full historical record, methodological decisions, detailed Stage A findings, and Mermaid roadmap, see `docs/project_history_and_decisions.md`.
+For the full historical record and methodological decisions, see `docs/project_history_and_decisions.md`. For the completed Stage A findings, see `docs/stage_a_structural_semantic_results.md`.
 
 ## Current status
 
@@ -19,9 +19,9 @@ flowchart LR
     A[PCORnet source] --> B[Frozen audited ETL]
     B --> C[Frozen OMOP build]
     B --> D[Route ledgers and lineage]
-    C --> E[Stage A]
+    C --> E[Stage A complete]
     D --> E
-    A --> F[Stage B]
+    A --> F[Stage B next]
     C --> F
     F --> G[Stage C]
     G --> H[Stage D]
@@ -45,20 +45,21 @@ flowchart LR
 
 These counts are recorded outcomes, not acceptance thresholds.
 
-## Stage A status
+## Stage A status — structurally complete
 
-Stage A structural and semantic concordance is in progress and the core aggregate/manuscript-oriented summaries have been generated from the frozen audit bundle and route ledgers.
+Stage A structural and semantic concordance is complete for progression to Stage B. The final Stage A package includes source eligibility and exact exclusion reasons, source-to-route and route-to-target reconciliation, concept-0 summaries, visit/unit/route coverage, cross-domain routing, Procedure dispositions and target-domain summaries, Condition canonical routing, OBS_CLIN routing, mapping-mechanism summaries, and manuscript-oriented Markdown/CSV outputs.
 
-Current Stage A outputs include source eligibility/exclusions, route-to-target reconciliation, concept-0 summaries, visit/unit/route coverage, cross-domain routing, Procedure dispositions and target-domain summaries, Condition canonical routing, OBS_CLIN routing, mapping-mechanism summaries, and manuscript-oriented Markdown tables.
+Key findings:
 
-Key findings so far:
+- PROCEDURES: 11,244,947 source rows; 11,228,023 eligible; 16,924 excluded, all for missing `PX_DATE`. Eligible events produced 11,234,863 route rows because one-to-many mappings were preserved.
+- OBS_CLIN: 38,850,928 source and eligible rows; 37,327,978 (~96.08%) routed to Measurement; only 12,737 (~0.033%) remained unresolved as Observation concept `0`.
+- DIAGNOSIS: 11,484,577 source rows; 8,024,792 eligible; 3,459,785 excluded, all due to missing `DX_DATE`.
+- CONDITION: 650,181 source and eligible rows with no recorded eligibility exclusions.
+- DIAGNOSIS + CONDITION together produced 9,045,157 canonical routes from 8,674,973 eligible events; 361,606 source events (~4.17%) had multiple core event routes and 60,148 (~0.69%) required Condition concept-0 fallback.
+- Drug: 17,469,480 routed Drug Exposure rows (~36.05%) had drug concept `0`; this remains an explicit source/vocabulary mapping-coverage result rather than a reconciliation failure.
+- Death: 6,955 source and eligible rows with zero missing-PATID, missing-date, or unlinked-person exclusions.
 
-- PROCEDURES: 11,228,023 eligible source events produced 11,234,863 routes because one-to-many mappings were preserved; 111,660 routes were unresolved and 1,642 were non-event semantic components.
-- OBS_CLIN: 37,327,978 of 38,850,928 eligible records routed to Measurement (~96.08%); 12,737 records (~0.033%) remained unresolved and were retained as Observation concept `0`.
-- DIAGNOSIS + CONDITION: 8,674,973 eligible source events produced 9,045,157 canonical routes; 361,606 source events (~4.17%) had multiple core event routes and 60,148 (~0.69%) required Condition concept-0 fallback.
-- Drug: 17,469,480 routed Drug Exposure rows (~36.05%) had drug concept `0`; this is an explicit mapping-coverage result rather than a reconciliation failure.
-
-The main remaining Stage A cleanup is to decompose source exclusions by exact rule, especially DIAGNOSIS and PROCEDURES, before the eligibility/exclusion table is considered manuscript-ready.
+Stage A is considered complete because routed source families reconcile to the frozen route ledgers, exact exclusions are decomposed by reason, one-to-many/cross-domain behavior is quantified, unresolved mappings are explicit, and analysis remains anchored to the frozen ETL SHA.
 
 ## Methodological decisions that remain fixed
 
@@ -75,39 +76,44 @@ The main remaining Stage A cleanup is to decompose source exclusions by exact ru
 
 ```mermaid
 flowchart TD
-    A[ETL freeze complete] --> B[Stage A: structural and semantic concordance]
-    B --> B1[Decompose exact exclusion reasons]
-    B1 --> B2[Freeze Stage A tables and figures]
-    B2 --> C[Stage B: patient-level semantic concordance]
-    C --> D[Stage C: phenotype reproducibility]
-    D --> E[Stage D: analytical equivalence]
+    A[ETL freeze complete] --> B[Stage A structural and semantic concordance complete]
+    B --> C[Stage B patient-level semantic concordance]
+    C --> D[Stage C phenotype reproducibility]
+    D --> E[Stage D analytical equivalence]
     E --> F[Manuscript tables and figures]
     F --> G[Methods and Results drafting]
     G --> H[Reproducibility and disclosure review]
 ```
 
-### Stage A — structural and semantic concordance
-
-Finish exclusion-reason decomposition, perform disclosure review, freeze publication-safe aggregate tables/figure inputs, and draft the ETL/Stage A Results section from scripted outputs.
-
 ### Stage B — patient-level semantic concordance
 
-Pre-specify patient/event matching rules, time tolerances, handling of one-to-many/cross-domain routes and concept `0`, then compare diagnoses, procedures, medications, measurements, encounters, observations, and death using patient overlap and agreement metrics.
+Before running comparisons, pre-specify domain-level matching rules: patient linkage, event identity, date/time tolerances, one-to-many handling, cross-domain handling, and concept-0 treatment. Then compare encounters, diagnoses/conditions, procedures, medications, measurements, observations, and death using overlap and agreement metrics.
+
+Recommended primary metrics include patient prevalence in each CDM, intersection/union counts, Jaccard similarity, positive agreement, event-count differences where meaningful, temporal agreement for matched events, and discordance decomposition by ETL route reason.
 
 ### Stage C — phenotype reproducibility
 
-Lock phenotype specifications before viewing disagreement cases, implement them independently in PCORnet and frozen OMOP, and compare cohort size, overlap, Jaccard similarity, positive agreement, and classified discordance reasons. Existing stroke-oriented modules are the expected starting point.
+Lock phenotype specifications before viewing disagreement cases, implement them independently in PCORnet and frozen OMOP, and compare cohort size, overlap, Jaccard similarity, positive agreement, and classified discordance reasons. Existing stroke-oriented modules remain the intended starting point.
 
 ### Stage D — analytical equivalence
 
 Run matched pre-specified downstream analyses in both CDMs and compare estimates, uncertainty, and conclusions. Differences should be traced back to documented ETL/CDM representation effects where possible.
 
+## Immediate next steps
+
+1. Define and document the Stage B matching specification before querying patient-level concordance.
+2. Implement a read-only Stage B manifest and domain-level concordance framework.
+3. Start with a small set of high-value domains where semantics are well defined: encounters, diagnoses/conditions, procedures, and death.
+4. Add medications and measurement/observation families after the matching rules for one-to-many and cross-domain events are validated.
+5. Lock the first phenotype specification before inspecting phenotype disagreement cases.
+6. Keep all patient-level outputs outside Git; only aggregate disclosure-reviewed summaries should be committed.
+
 ## Manuscript framing
 
 The paper should separate two questions:
 
-1. **Did the audited ETL behave as specified?** The frozen rebuild answers this with matched reconciliation and zero hard/unexplained blockers.
-2. **How much do clinically meaningful and analytic results differ between PCORnet and OMOP after using a validated ETL?** Stages A-D answer this without further ETL tuning.
+1. **Did the audited ETL behave as specified?** The frozen rebuild and completed Stage A answer this with matched reconciliation, zero hard/unexplained blockers, explicit exclusions, and quantified routing/mapping behavior.
+2. **How much do clinically meaningful and analytic results differ between PCORnet and OMOP after using a validated ETL?** Stages B-D answer this without further ETL tuning.
 
 This separation is central to the study because it prevents defects in a historical converter from being mistaken for intrinsic differences between the PCORnet and OMOP data models.
 
