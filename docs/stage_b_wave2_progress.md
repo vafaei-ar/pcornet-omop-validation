@@ -90,7 +90,7 @@ Target characterization:
 - Observation rows: 7,319,081; concept-zero rows: 366,367.
 - Active Standard UCUM duplicate code groups under the frozen case-sensitive rule: 0.
 
-These are coverage and provenance denominators, not agreement thresholds. The next analysis uses the locked primary identity of person + calendar date + target domain + Standard concept. Concept-zero families remain separate, and target lineage is reserved for secondary attribution.
+These are coverage and provenance denominators, not agreement thresholds. Concept-zero families remain separate, and target lineage is reserved for secondary attribution.
 
 ## Measurement / Observation semantic presence
 
@@ -117,18 +117,41 @@ By target domain:
 
 The four Measurement concept-zero Procedure rows are excluded from the mapped semantic denominator. Observation unresolved/descriptive coverage is also separated: 12,737 OBS_CLIN concept-zero rows, 44 Procedure concept-zero rows, and 353,586 OBS_GEN descriptive concept-zero rows. LAB has no unresolved mapped-concept rows in this frozen build.
 
-Secondary provenance attribution is complete for the entire mapped M/O concept space: all 92,668,145 target rows are attributed to CONDITION, LAB_RESULT_CM, OBS_CLIN, PROCEDURES, or VITAL, with **0 unattributed rows**. This attribution is downstream of the primary comparison and does not define the agreement result.
+Secondary provenance attribution is complete for the entire mapped M/O concept space: all 92,668,145 target rows are attributed to CONDITION, LAB_RESULT_CM, OBS_CLIN, PROCEDURES, or VITAL, with **0 unattributed rows**.
 
 ## Measurement / Observation value layers
 
-`stage_b_wave2_measurement_observation_values.py` implements the remaining locked secondary layers after semantic presence:
+The locked secondary value/unit analysis completed.
 
-- exact numeric source-to-`value_as_number` comparison for directly comparable LAB, OBS_CLIN, and numeric VITAL events, with absolute differences reported and no post-hoc tolerance;
-- case-sensitive active Standard UCUM coverage and exact unit-concept agreement for LAB, OBS_CLIN Measurement, and fixed-semantics VITAL units;
-- exact categorical value-concept agreement for the prespecified SMOKING and TOBACCO_TYPE Standard mappings, while TOBACCO and unsupported categorical values remain concept zero by policy.
+Numeric values:
 
-Frozen xwalks are used only to align already-reconciled source and target rows for these secondary value/unit checks. They do not define the primary event identity or mapped semantic denominator.
+- directly comparable rows: **75,769,622**
+- exact matches: **75,644,000 (99.8342%)**
+- mismatches: **125,622**
+- maximum absolute difference: **2.5**
+- LAB Measurement, LAB Observation, OBS_CLIN Measurement, and OBS_CLIN Observation were all **100% exact**.
+- all numeric mismatches occurred in VITAL Measurement: 11,547,928 exact of 11,673,550, with 125,622 mismatches.
+
+Because the frozen Measurement ETL expands the five VITAL fields through one SQL `CROSS APPLY (VALUES ...)` expression before `TRY_CONVERT(float, source_value)`, while the independent value analysis converts each native field directly, the VITAL mismatch population requires a read-only expression-level diagnostic before it can be interpreted as transformation error. `stage_b_wave2_vital_numeric_diagnostic.py` was added for that purpose; it compares direct native-field conversion, the exact frozen ETL expanded expression, and stored `value_as_number`, by field and aggregate difference bins. No ETL changes are authorized by this diagnostic.
+
+UCUM units:
+
+- rows with unit semantics: **82,054,878**
+- uniquely resolved active Standard UCUM rows: **58,916,347 (71.8012%)**
+- unresolved under frozen case-sensitive UCUM policy: **23,138,531**
+- exact agreement among resolved units: **58,916,347 / 58,916,347 (100%)**
+- resolved disagreements: **0**
+
+Categorical values:
+
+- categorical VITAL rows: **2,170,885**
+- prespecified mapped Standard values: **809,630 (37.2949%)**
+- concept-zero policy rows: **1,361,255**
+- exact mapped agreement: **809,630 / 809,630 (100%)**
+- mapped disagreements: **0**
+- unexpected nonzero targets where policy requires value concept 0: **0**
+- SMOKING mapped coverage: 556,143 / 728,427 (76.3485%); TOBACCO remains entirely value concept 0 by policy; TOBACCO_TYPE mapped coverage: 253,487 / 721,229 (35.1465%).
 
 ## Next Wave 2 step
 
-Run the combined numeric-value, UCUM-unit, and categorical-value layer analysis. After those results are reviewed, the remaining Wave 2 work is aggregate manuscript tables/invariant checks and disclosure review.
+Run the aggregate VITAL numeric expression diagnostic. If it explains the 125,622 direct-source exact-value differences as deterministic SQL expression coercion, record that representation mechanism explicitly. If any residual mismatch remains after reproducing the frozen ETL expression, treat it as an independently demonstrated ETL defect candidate before proceeding to the Wave 2 manuscript/invariant bundle and disclosure review.
