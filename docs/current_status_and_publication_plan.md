@@ -2,7 +2,7 @@
 
 _Last updated: 2026-08-28_
 
-For the full historical record and methodological decisions, see `docs/project_history_and_decisions.md`. For completed Stage A findings, see `docs/stage_a_structural_semantic_results.md`. For locked Stage B results, see `docs/stage_b_wave1_lock_record.md`, `docs/stage_b_wave2_lock_record.md`, and `docs/publication_stage_b_manuscript_draft.md`.
+For the full historical record and methodological decisions, see `docs/project_history_and_decisions.md`. For completed Stage A findings, see `docs/stage_a_structural_semantic_results.md`. For locked Stage B results, see `docs/stage_b_wave1_lock_record.md`, `docs/stage_b_wave2_lock_record.md`, and `docs/publication_stage_b_manuscript_draft.md`. For the first Stage C phenotype specification, see `docs/stage_c_stroke_d0_spec.md`.
 
 ## Current status
 
@@ -24,8 +24,9 @@ flowchart LR
     A --> F[Stage B complete]
     C --> F
     F --> G[Cross-wave manuscript synthesis complete]
-    G --> H[Stage C next]
-    H --> I[Stage D]
+    G --> H[Stage C D0 definition locked]
+    H --> I[Stage C D0 preflight next]
+    I --> J[Stage D after Stage C]
 ```
 
 ## Frozen OMOP target counts
@@ -62,6 +63,16 @@ Wave 2 covered Drug and Measurement/Observation semantics plus numeric, UCUM, an
 
 The cross-wave Stage B synthesis is implemented in `stage_b_cross_wave_manuscript_bundle.py`, and manuscript-oriented Methods/Results text is drafted in `docs/publication_stage_b_manuscript_draft.md`.
 
+## Stage C status — first phenotype definition locked
+
+The first Stage C phenotype is the PSU PROMIS EHR-only ischemic-stroke D0 phenotype. Its publication definition is now locked in `study_definitions/stage_c_stroke_d0_v1.json` before any Stage C D0 outcome comparison.
+
+The source reference preserves the explicit stroke code list, `PDX == P`, EI/IP encounters, calendar-day overnight stay, first qualifying index-event ordering, and the post-index `floor(days/365.0) >= 18` adult rule. `DX_TYPE` is diagnostic only and is not part of the primary cohort.
+
+Stage C explicitly separates two OMOP estimands. The primary transformation-fidelity D0 uses native transformed OMOP events plus frozen lineage only for source phenotype semantics that OMOP core does not natively represent, especially `PDX`. A secondary native-OMOP portable sensitivity resolves the locked code list to Standard Condition concepts and uses Standard EI/IP Visit concepts while intentionally omitting `PDX`; that sensitivity cannot replace the primary fidelity comparison.
+
+D1/D3 are deliberately deferred until the exact external lipid LOINC whitelist is versioned or hashed as a reproducible study artifact before outcome queries.
+
 ## Methodological decisions that remain fixed
 
 - Do not use the comparator OMOP database as an ETL acceptance target.
@@ -72,8 +83,9 @@ The cross-wave Stage B synthesis is implemented in `stage_b_cross_wave_manuscrip
 - Retain non-event semantic targets in route ledgers rather than creating false standalone events.
 - Exclude missing required dates explicitly rather than inventing sentinel dates.
 - Do not retune ETL mappings from downstream concordance findings alone.
-- Use target lineage only for secondary attribution after primary native-CDM semantic comparison.
+- Use target lineage only for secondary attribution after primary native-CDM semantic comparison in Stage B; in Stage C, lineage may additionally support the prespecified transformation-fidelity phenotype when the source phenotype requires a semantic field not represented in OMOP core.
 - Keep unresolved vocabulary/unit/value mappings separate from mapped semantic agreement.
+- Do not change locked phenotype rules after outcome inspection merely to improve concordance.
 
 ## Publication roadmap
 
@@ -82,15 +94,17 @@ flowchart TD
     A[ETL freeze complete] --> B[Stage A structural/semantic validation complete]
     B --> C[Stage B patient-level semantic concordance complete]
     C --> D[Stage B manuscript synthesis complete]
-    D --> E[Stage C phenotype reproducibility]
-    E --> F[Stage D analytical equivalence]
-    F --> G[Final manuscript integration]
-    G --> H[Reproducibility and disclosure review]
+    D --> E[Stage C D0 specification locked]
+    E --> F[Stage C D0 preflight and phenotype comparison]
+    F --> G[Later Stage C phenotypes]
+    G --> H[Stage D analytical equivalence]
+    H --> I[Final manuscript integration]
+    I --> J[Reproducibility and disclosure review]
 ```
 
 ### Stage C — phenotype reproducibility
 
-Stage C is now the next analytical phase. Phenotype specifications must be locked before viewing cross-CDM disagreement cases. Existing stroke-oriented modules remain the intended starting point. The first phenotype package should explicitly lock inclusion/exclusion criteria, code sets, index-event rules, encounter setting, age definition, temporal windows, follow-up rules, missing/unmapped handling, and the patient-level reconciliation metrics before source-versus-target outcome comparison.
+Stage C is active. Phenotype specifications must be locked before viewing cross-CDM disagreement cases. The first phenotype package is D0 ischemic stroke. Its source-reference, transformation-fidelity, native-portability, index-event, age, representability, comparison, and discordance rules are fixed in `stage_c_stroke_d0_v1.json`.
 
 ### Stage D — analytical equivalence
 
@@ -98,10 +112,10 @@ After phenotype reproducibility is locked, run matched prespecified downstream a
 
 ## Immediate next steps
 
-1. Run the aggregate-only Stage B cross-wave manuscript bundle and confirm its invariant checks locally.
-2. Treat the resulting Stage B tables and `docs/publication_stage_b_manuscript_draft.md` as the locked patient-level concordance manuscript source.
-3. Lock the first Stage C phenotype specification before running any new source-versus-OMOP phenotype comparison.
-4. Use the existing stroke modules as the starting phenotype family, but review their definitions against the publication study question before execution.
+1. Run `stage_c_stroke_d0_preflight.py` locally against the frozen build; it validates tables/columns, patient linkage, vocabulary resolution, Standard EI/IP Visit concepts, and `PDX` representability without computing D0 cohort outcomes.
+2. Review the preflight aggregate output before implementing the publication D0 cohort comparison.
+3. Implement source-reference and lineage-faithful OMOP D0 exactly from the locked definition, then compute cohort overlap/Jaccard/index-date agreement and predefined discordance categories.
+4. Run the native-OMOP portable D0 only as the separately labeled representability sensitivity.
 5. Keep all row-level outputs outside Git; only aggregate disclosure-reviewed summaries should be committed.
 
 ## Manuscript framing
@@ -112,7 +126,7 @@ The paper should preserve a clear separation among three questions:
 2. **Were mapped patient-level clinical semantics preserved after transformation?** Stage B answers this with exact mapped-event concordance across Encounter, Death, Condition, Procedure, Drug, and Measurement/Observation, while separately quantifying provenance overlap and unresolved coverage.
 3. **Do full phenotypes and downstream scientific analyses remain reproducible across CDMs?** Stages C and D address this without further ETL tuning.
 
-This separation prevents defects in a historical converter, vocabulary coverage limitations, and legitimate multi-source OMOP representation from being mistaken for intrinsic differences between the PCORnet and OMOP data models.
+This separation prevents defects in a historical converter, vocabulary coverage limitations, legitimate multi-source OMOP representation, and phenotype-field representability limitations from being mistaken for one another.
 
 ## Reproducibility rule
 
