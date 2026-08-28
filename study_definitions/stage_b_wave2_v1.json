@@ -1,0 +1,149 @@
+{
+  "study_definition": "stage-b-wave2-v1",
+  "status": "prespecified_before_wave2_outcome_queries",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "objective": "Evaluate patient- and event-level concordance for medications and measurement/observation semantics in the frozen OMOP build without changing ETL mappings based on observed disagreement.",
+  "principles": {
+    "etl_immutable": true,
+    "wave1_results_immutable": true,
+    "historical_comparator_is_not_acceptance_target": true,
+    "primary_comparison_uses_prespecified_native_or_source_semantic_queries": true,
+    "lineage_is_secondary_attribution_only": true,
+    "concept_zero_reported_separately": true,
+    "one_to_many_standard_mapping_is_not_automatically_discordant": true,
+    "cross_domain_representation_is_not_automatically_information_loss": true,
+    "no_post_hoc_rule_changes_without_decision_log": true
+  },
+  "patient_linkage": {
+    "pcornet_key": "PATID",
+    "omop_key": "person_id",
+    "bridge": "person.person_source_value",
+    "rule": "Use the exact source-derived patient linkage established by the frozen ETL Person transformation."
+  },
+  "drug": {
+    "source_families": [
+      "PCORnet_PRESCRIBING",
+      "PCORnet_DISPENSING",
+      "PCORnet_MED_ADMIN",
+      "PCORnet_IMMUNIZATION",
+      "PROCEDURES-derived Drug routes"
+    ],
+    "omop_target": "drug_exposure",
+    "semantic_reference": "Frozen etl_drug_event_route nonzero Standard Drug targets.",
+    "primary_unit": "patient",
+    "event_signature": [
+      "person_id",
+      "event_start_date",
+      "drug_concept_id"
+    ],
+    "date_rules": {
+      "PRESCRIBING": "COALESCE(RX_START_DATE, RX_ORDER_DATE)",
+      "DISPENSING": "DISPENSE_DATE",
+      "MED_ADMIN": "MEDADMIN_START_DATE",
+      "IMMUNIZATION": "VX_ADMIN_DATE",
+      "PROCEDURES": "PX_DATE"
+    },
+    "mapped_denominator": "Only nonzero Standard Drug targets from the frozen drug route ledger enter mapped semantic concordance denominators.",
+    "unresolved_rule": "target_concept_id=0 rows are reported separately as unresolved coverage and are excluded from mapped semantic match percentages.",
+    "one_to_many_rule": "Distinct valid Standard Drug targets are preserved as distinct semantic routes and compared as multisets rather than collapsed.",
+    "route_rule": "Route concept agreement is a secondary characterization metric because a large explicit route-concept-zero population remains under the frozen source-derived policy; absence of an exact Route mapping must not invalidate otherwise matched Drug semantics.",
+    "quantity_days_supply_rule": "Quantity, days supply, dose, and route-related fields are descriptive secondary comparisons only where source semantics and units are directly comparable; they are not primary event identity keys.",
+    "primary_metrics": [
+      "patients_with_mapped_drug_event",
+      "patient_intersection",
+      "source_only_patients",
+      "target_only_patients",
+      "patient_jaccard",
+      "patient_positive_agreement",
+      "exact_person_date_concept_multiset_matches",
+      "source_unmatched_mapped_events",
+      "target_unmatched_rows_in_source_concept_space",
+      "source_exact_signature_match_percent"
+    ],
+    "secondary_attribution": [
+      "target excess by source provenance",
+      "unresolved concept-zero by source family and mapping basis",
+      "route concept mapped versus zero",
+      "one-to-many mapping multiplicity",
+      "visit linkage coverage"
+    ]
+  },
+  "measurement_observation": {
+    "source_families": [
+      "PCORnet_LAB_RESULT_CM",
+      "PCORnet_VITAL",
+      "PCORnet_OBS_CLIN",
+      "PCORnet_OBS_GEN",
+      "PROCEDURES-derived Measurement/Observation routes",
+      "Condition-derived cross-domain Measurement/Observation routes"
+    ],
+    "omop_targets": [
+      "measurement",
+      "observation"
+    ],
+    "semantic_reference": "Frozen vocabulary-driven LOINC/UCUM mappings plus frozen route ledgers for OBS_CLIN and cross-domain Procedure/Condition semantics.",
+    "primary_unit": "patient",
+    "mapped_event_signature": [
+      "person_id",
+      "event_date",
+      "target_domain",
+      "standard_concept_id"
+    ],
+    "value_analysis_layers": {
+      "layer_1_semantic_presence": "Compare mapped nonzero concept/domain event multisets independent of values or units.",
+      "layer_2_numeric_value": "For events with directly comparable numeric values, compare value_as_number using exact source-derived numeric conversion first and report absolute differences; no tolerance is introduced post hoc.",
+      "layer_3_unit": "Compare units only when source unit text resolves uniquely to an active Standard UCUM concept under the frozen case-sensitive mapping rule.",
+      "layer_4_text_categorical": "For categorical/text observations, compare mapped value concepts where a frozen exact Standard mapping exists; otherwise retain source text descriptively and report concept-zero separately."
+    },
+    "lab_rule": "LAB_RESULT_CM rows with RESULT_DATE are eligible under the frozen transformation. LOINC events routed to Standard Measurement concepts are compared in Measurement; active Standard LOINC concepts in Observation are compared in Observation. Unresolved or ambiguous concepts remain concept zero and are reported separately.",
+    "vital_rule": "Numeric VITAL fields HT, WT, SYSTOLIC, DIASTOLIC, and ORIGINAL_BMI are expanded into prespecified LOINC Measurement semantics. Categorical SMOKING, TOBACCO, and TOBACCO_TYPE are Observation semantics under the frozen mappings.",
+    "obs_clin_rule": "Use the frozen etl_obs_clin_route target domain and target concept as the prespecified source-side semantic reference; concept-zero Observation routes are unresolved coverage and are not mapped semantic matches.",
+    "obs_gen_rule": "OBS_GEN has no validated Standard concept mapping in the frozen ETL and is therefore characterized as source-preserved Observation concept zero rather than forced into mapped semantic concordance.",
+    "unit_rule": "UCUM exact matching is case-sensitive using the frozen binary-collation policy. Unit concept zero is reported as unit coverage, not event-level semantic failure when the measurement concept/date/person match.",
+    "primary_metrics": [
+      "patients_with_mapped_measurement_or_observation",
+      "patient_intersection",
+      "source_only_patients",
+      "target_only_patients",
+      "patient_jaccard",
+      "patient_positive_agreement",
+      "exact_person_date_domain_concept_multiset_matches",
+      "source_unmatched_mapped_events",
+      "target_unmatched_rows_in_source_concept_space",
+      "source_exact_signature_match_percent"
+    ],
+    "secondary_metrics": [
+      "numeric_value_exact_match_count",
+      "numeric_value_difference_distribution",
+      "unit_standard_concept_coverage",
+      "unit_exact_match_among_resolved_units",
+      "categorical_value_concept_coverage",
+      "text_overflow_count",
+      "visit_linkage_coverage",
+      "target excess by provenance"
+    ]
+  },
+  "discordance_categories": [
+    "source_ineligible_by_frozen_rule",
+    "unresolved_concept_zero",
+    "unit_unresolved_under_frozen_ucum_rule",
+    "cross_domain_representation",
+    "one_to_many_standard_mapping",
+    "date_representation_difference",
+    "value_representation_difference",
+    "visit_linkage_difference",
+    "other_audited_source_provenance_in_same_concept_space",
+    "native_cdm_query_definition_difference",
+    "unexpected_unexplained_difference"
+  ],
+  "reporting": {
+    "primary_unit": "patient",
+    "secondary_unit": "event",
+    "report_absolute_counts": true,
+    "report_percentages": true,
+    "report_denominators": true,
+    "report_discordance_reason_breakdown": true,
+    "aggregate_only_for_manuscript_outputs": true,
+    "no_row_level_phi_outputs": true
+  }
+}
