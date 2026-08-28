@@ -92,12 +92,43 @@ Target characterization:
 
 These are coverage and provenance denominators, not agreement thresholds. The next analysis uses the locked primary identity of person + calendar date + target domain + Standard concept. Concept-zero families remain separate, and target lineage is reserved for secondary attribution.
 
-## Measurement / Observation semantic-presence implementation
+## Measurement / Observation semantic presence
 
-`stage_b_wave2_measurement_observation_concordance.py` implements the first M/O outcome layer. It independently recomputes LAB LOINC semantics from the frozen vocabulary policy, resolves VITAL LOINC concepts from the active Standard vocabulary, and uses the prespecified OBS_CLIN, Procedure, and Condition route ledgers as source-side semantic references. Native Measurement and Observation are then queried in the resulting concept space. Target xwalks are used only after the primary multiset comparison to classify provenance overlap.
+The primary semantic-presence comparison completed successfully under the locked person + calendar date + target domain + active Standard concept multiset definition.
 
-To keep the query tractable, source families are aggregated into temporary person/date/domain/concept signatures before the native target scan. No persistent source, OMOP, route, or lineage table is modified.
+Primary result:
+
+- mapped source semantic rows: **92,668,145**
+- native target rows in the same source-derived concept space: **92,668,145**
+- mapped source patients: **27,025**
+- mapped target patients: **27,025**
+- patient Jaccard: **1.0**
+- exact person/date/domain/concept matched events: **92,668,145**
+- source unmatched mapped semantic events: **0**
+- target unmatched mapped semantic events: **0**
+- source exact-signature match percent: **100.0%**
+
+By target domain:
+
+| Target domain | Source mapped rows | Target rows in source concept space | Exact matched | Source unmatched | Target unmatched |
+|---|---:|---:|---:|---:|---:|
+| Measurement | 85,715,431 | 85,715,431 | 85,715,431 | 0 | 0 |
+| Observation | 6,952,714 | 6,952,714 | 6,952,714 | 0 | 0 |
+
+The four Measurement concept-zero Procedure rows are excluded from the mapped semantic denominator. Observation unresolved/descriptive coverage is also separated: 12,737 OBS_CLIN concept-zero rows, 44 Procedure concept-zero rows, and 353,586 OBS_GEN descriptive concept-zero rows. LAB has no unresolved mapped-concept rows in this frozen build.
+
+Secondary provenance attribution is complete for the entire mapped M/O concept space: all 92,668,145 target rows are attributed to CONDITION, LAB_RESULT_CM, OBS_CLIN, PROCEDURES, or VITAL, with **0 unattributed rows**. This attribution is downstream of the primary comparison and does not define the agreement result.
+
+## Measurement / Observation value layers
+
+`stage_b_wave2_measurement_observation_values.py` implements the remaining locked secondary layers after semantic presence:
+
+- exact numeric source-to-`value_as_number` comparison for directly comparable LAB, OBS_CLIN, and numeric VITAL events, with absolute differences reported and no post-hoc tolerance;
+- case-sensitive active Standard UCUM coverage and exact unit-concept agreement for LAB, OBS_CLIN Measurement, and fixed-semantics VITAL units;
+- exact categorical value-concept agreement for the prespecified SMOKING and TOBACCO_TYPE Standard mappings, while TOBACCO and unsupported categorical values remain concept zero by policy.
+
+Frozen xwalks are used only to align already-reconciled source and target rows for these secondary value/unit checks. They do not define the primary event identity or mapped semantic denominator.
 
 ## Next Wave 2 step
 
-Run the Measurement/Observation semantic-presence comparison and provenance attribution. After those results are reviewed, the remaining locked layers are numeric-value equality/differences, UCUM-resolved unit agreement, and categorical value-concept coverage.
+Run the combined numeric-value, UCUM-unit, and categorical-value layer analysis. After those results are reviewed, the remaining Wave 2 work is aggregate manuscript tables/invariant checks and disclosure review.
