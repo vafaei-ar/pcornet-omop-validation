@@ -21,90 +21,94 @@ Stage B Wave 1 preflight completed successfully on 2026-08-27.
 
 The first native-CDM patient-level comparison completed successfully.
 
-Primary results:
-
 - PCORnet eligible encounters: **1,510,957**
 - OMOP visit rows: **1,510,957**
-- source patients with encounters: **27,087**
-- OMOP patients with visits: **27,087**
-- shared patients: **27,087**
-- source-only patients: **0**
-- OMOP-only patients: **0**
+- source and OMOP patients: **27,087** each
 - patient Jaccard: **1.0**
 - patients with unequal event counts: **0**
 - exact person + start-date matched events: **1,510,957**
-- source unmatched date events: **0**
-- OMOP unmatched date events: **0**
+- unmatched date events: **0** on both sides
 
-Interpretation: under the pre-specified Stage B encounter definition, patient presence, per-patient encounter counts, and exact calendar start-date event multisets are fully concordant between native PCORnet ENCOUNTER and frozen OMOP Visit Occurrence. This result was computed without using the encounter-to-visit xwalk in the primary metrics.
-
-Encounter type is descriptive rather than an exact-equality acceptance criterion because PCORnet encounter categories and OMOP Standard Visit concepts are representationally different semantic systems. Source encounter type and OMOP visit concept/source value distributions are retained as secondary characterization outputs.
+Interpretation: under the pre-specified Stage B encounter definition, patient presence, per-patient encounter counts, and exact calendar start-date event multisets are fully concordant. The visit xwalk was not used in the primary metrics.
 
 ## Death concordance
 
 The native-CDM death comparison completed successfully.
 
-Primary results:
-
-- PCORnet eligible death events: **6,955**
-- OMOP death rows: **6,955**
-- source patients with death: **6,955**
-- OMOP patients with death: **6,955**
-- shared patients: **6,955**
-- source-only patients: **0**
-- OMOP-only patients: **0**
+- PCORnet eligible death events and OMOP death rows: **6,955** each
+- source and OMOP patients: **6,955** each
 - patient Jaccard: **1.0**
 - exact death-date matches: **6,955**
 - discordant date pairs: **0**
 
-Interpretation: patient-level death presence and exact calendar death date are fully concordant between native PCORnet DEATH and frozen OMOP Death under the locked Stage B v1 definition. The death xwalk was not used to define the primary result.
-
-Death type and cause concept equality are not Stage B concordance requirements because the frozen ETL explicitly retains concept `0` where source provenance/cause semantics do not justify an exact OMOP concept.
+Interpretation: patient-level death presence and exact calendar death date are fully concordant. Death type and cause concept equality are not Stage B concordance requirements because the frozen ETL explicitly retains concept `0` where source provenance/cause semantics do not justify an exact OMOP concept.
 
 ## Condition semantic concordance
 
 The optimized Condition comparison completed successfully.
 
-Primary results:
-
-- eligible DIAGNOSIS + CONDITION source events represented in the canonical route ledger: **8,674,973**
-- core semantic route rows: **9,043,769**
-- mapped nonzero Standard route rows: **8,983,621**
-- unresolved concept-0 fallback rows: **60,148**
-- source events with multiple core routes: **361,606**
+- eligible DIAGNOSIS + CONDITION events: **8,674,973**
+- core semantic routes: **9,043,769**
+- mapped nonzero Standard routes: **8,983,621**
+- unresolved concept-0 fallback: **60,148**
+- multi-route source events: **361,606**
 - source mapped patients: **25,614**
-- native OMOP patients in the same mapped concept space: **26,388**
-- shared mapped patients: **25,614**
-- source-only mapped patients: **0**
-- target-only patients in the same concept space: **774**
-- patient Jaccard before provenance attribution: **0.9706684857**
-- exact person/date/domain/concept matched mapped events: **8,983,621**
-- source unmatched mapped semantic events: **0**
-- target unmatched rows in the same semantic concept space: **756,113**
+- native OMOP patients in the same concept space: **26,388**
+- patient Jaccard before attribution: **0.9706684857**
+- exact person/date/domain/concept matched events: **8,983,621**
+- source unmatched mapped events: **0**
+- target unmatched rows in the same concept space: **756,113**
 
-The primary result therefore shows complete preservation of every mapped nonzero Condition semantic route: all 8,983,621 mapped source semantic events were found exactly in native OMOP using the pre-specified person + calendar date + OMOP domain + Standard concept multiset comparison. No target lineage was used to obtain that primary result.
-
-Secondary lineage attribution then classified the apparent OMOP excess:
+Secondary lineage attribution showed:
 
 - native OMOP rows in Condition semantic concept space: **9,739,734**
 - Condition-derived rows: **8,983,621**
-- rows from other audited source provenance: **756,113**
-- target-only patients relative to the Condition-derived patient set: **774**
+- other audited provenance: **756,113**
 
-Thus the entire target-side excess is explained by other source families populating the same OMOP Standard concept/domain space. It is not evidence of loss or duplication of mapped DIAGNOSIS/CONDITION semantics. This is a substantive study finding: native OMOP concept-space queries can legitimately include clinically equivalent events originating from multiple PCORnet source domains, so lineage-aware attribution is required to distinguish semantic overlap from ETL discordance.
+Thus every mapped Condition semantic route was present exactly, and the entire target-side excess was explained by other source families populating the same OMOP Standard concept/domain space. Concept `0` fallback remains a separate unresolved-coverage result.
 
-Concept-0 fallback remains a separate unresolved-coverage result and is not counted as mapped semantic concordance.
+## Procedure semantic concordance
 
-## Remaining Wave 1 sequence
+The optimized Procedure comparison also completed successfully.
+
+- eligible source events: **11,228,023**
+- all route rows: **11,234,863**
+- mapped nonzero event routes: **11,121,561**
+- unresolved routes: **111,660**
+- non-event semantic components: **1,642**
+- source events with multiple mapped event routes: **6,769**
+- source mapped patients: **26,951**
+- native OMOP patients in the same mapped concept space: **27,074**
+- source-only patients: **0**
+- target-only patients: **123**
+- patient Jaccard before attribution: **0.9954568959**
+- exact person/date/domain/concept matched mapped events: **11,121,561**
+- source unmatched mapped events: **0**
+- target unmatched rows in the same concept space: **1,537,643**
+
+Every mapped Procedure semantic event was therefore found exactly in native OMOP. The target-side excess is concentrated in shared semantic spaces, especially Condition (**469,596** extra rows), Drug (**516,168**), Observation (**381,904**), Measurement (**136,881**), Procedure (**32,773**), Device (**292**), and Specimen (**29**). These rows are not treated as ETL discordance until secondary provenance attribution is completed, because OMOP domains can legitimately receive events from several PCORnet source families.
+
+A secondary Procedure attribution module is now implemented and will classify those target-side rows using frozen lineage only after this primary result. No primary matching rule is changed by that attribution.
+
+## Current Wave 1 interpretation
+
+The completed primary comparisons show a consistent pattern:
+
+1. Encounter and Death have exact native-CDM concordance.
+2. Condition and Procedure have **100% exact mapped-source semantic event recall** under person + date + OMOP domain + Standard concept multiset matching.
+3. Native OMOP target queries can return additional rows in the same semantic concept space because multiple PCORnet source families converge on common OMOP domains and concepts.
+4. Secondary lineage attribution is therefore needed to distinguish legitimate multi-source semantic overlap from unexplained transformation discordance.
 
 ```mermaid
 flowchart LR
-    A[Preflight complete] --> B[Encounter complete]
-    B --> C[Death complete]
-    C --> D[Condition complete]
-    D --> E[Procedure semantics]
-    E --> F[Wave 1 aggregate manuscript tables]
-    F --> G[Disclosure review]
+    A[Preflight complete] --> B[Encounter exact]
+    B --> C[Death exact]
+    C --> D[Condition primary exact]
+    D --> E[Condition excess fully attributed]
+    E --> F[Procedure primary exact]
+    F --> G[Procedure attribution]
+    G --> H[Wave 1 manuscript tables]
+    H --> I[Disclosure review]
 ```
 
-Condition and Procedure comparisons preserve the locked rule that one-to-many and cross-domain Standard mappings are not automatically discordant. Target lineage is used only after primary semantic results are computed to classify disagreement.
+The frozen ETL remains unchanged. Counts in this document are analysis outcomes, not acceptance thresholds.
