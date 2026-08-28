@@ -132,7 +132,7 @@ Numeric values:
 - LAB Measurement, LAB Observation, OBS_CLIN Measurement, and OBS_CLIN Observation were all **100% exact**.
 - all numeric mismatches occurred in VITAL Measurement: 11,547,928 exact of 11,673,550, with 125,622 mismatches.
 
-Because the frozen Measurement ETL expands the five VITAL fields through one SQL `CROSS APPLY (VALUES ...)` expression before `TRY_CONVERT(float, source_value)`, while the independent value analysis converts each native field directly, the VITAL mismatch population requires a read-only expression-level diagnostic before it can be interpreted as transformation error. `stage_b_wave2_vital_numeric_diagnostic.py` was added for that purpose; it compares direct native-field conversion, the exact frozen ETL expanded expression, and stored `value_as_number`, by field and aggregate difference bins. No ETL changes are authorized by this diagnostic.
+Because the frozen Measurement ETL expands the five VITAL fields through one SQL `CROSS APPLY (VALUES ...)` expression before `TRY_CONVERT(float, source_value)`, while the independent value analysis converts each native field directly, the VITAL mismatch population requires a read-only expression-level diagnostic before it can be interpreted as transformation error. `stage_b_wave2_vital_numeric_diagnostic.py` (commit `73821c82a8cf7c69b4ed7f791eb9416320fb0663`) was added for that purpose; it compares direct native-field conversion, the exact frozen ETL expanded expression, and stored `value_as_number`, by field and aggregate difference bins. No ETL changes are authorized by this diagnostic.
 
 UCUM units:
 
