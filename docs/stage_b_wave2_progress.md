@@ -45,8 +45,6 @@ Primary result:
 
 Secondary provenance attribution classified the 48 target-side excess rows as other audited provenance. All 48 have Drug Type concept 0 and Route concept 0. The base Drug-derived mapped rows therefore reconcile exactly to the 30,988,400 mapped source Drug routes.
 
-This supports the same interpretation established in Wave 1: native OMOP concept-space excess must be attributed before being labeled discordant. In this case the excess is extremely small and fully explained by other audited source provenance.
-
 ## Drug mapping coverage
 
 The unresolved Drug population remains an important coverage result rather than a mapped-concordance failure. The largest unresolved components are missing or unresolved medication coding in PRESCRIBING and MED_ADMIN. No arbitrary concept assignment is introduced for those rows.
@@ -126,13 +124,11 @@ The locked secondary value/unit analysis completed.
 Numeric values:
 
 - directly comparable rows: **75,769,622**
-- exact matches: **75,644,000 (99.8342%)**
-- mismatches: **125,622**
-- maximum absolute difference: **2.5**
+- exact direct-source matches: **75,644,000 (99.8342%)**
+- direct-source differences: **125,622**
+- maximum absolute direct-source difference: **2.5**
 - LAB Measurement, LAB Observation, OBS_CLIN Measurement, and OBS_CLIN Observation were all **100% exact**.
-- all numeric mismatches occurred in VITAL Measurement: 11,547,928 exact of 11,673,550, with 125,622 mismatches.
-
-Because the frozen Measurement ETL expands the five VITAL fields through one SQL `CROSS APPLY (VALUES ...)` expression before `TRY_CONVERT(float, source_value)`, while the independent value analysis converts each native field directly, the VITAL mismatch population requires a read-only expression-level diagnostic before it can be interpreted as transformation error. `stage_b_wave2_vital_numeric_diagnostic.py` (commit `73821c82a8cf7c69b4ed7f791eb9416320fb0663`) was added for that purpose; it compares direct native-field conversion, the exact frozen ETL expanded expression, and stored `value_as_number`, by field and aggregate difference bins. No ETL changes are authorized by this diagnostic.
+- all direct-source differences occurred in VITAL Measurement.
 
 UCUM units:
 
@@ -150,8 +146,28 @@ Categorical values:
 - exact mapped agreement: **809,630 / 809,630 (100%)**
 - mapped disagreements: **0**
 - unexpected nonzero targets where policy requires value concept 0: **0**
-- SMOKING mapped coverage: 556,143 / 728,427 (76.3485%); TOBACCO remains entirely value concept 0 by policy; TOBACCO_TYPE mapped coverage: 253,487 / 721,229 (35.1465%).
+
+## VITAL numeric expression diagnostic
+
+The read-only diagnostic reproduced both the direct native-field expression and the exact frozen ETL `CROSS APPLY (VALUES ...)` expansion before comparison with stored `measurement.value_as_number`.
+
+Results:
+
+- VITAL numeric rows: **11,673,550**
+- direct native-field versus target differences: **125,622**
+- frozen ETL expanded-expression versus target differences: **0**
+- direct native-field versus expanded-expression differences: **125,622**
+- direct-source differences explained by the frozen ETL expression: **125,622**
+- unexplained differences after reproducing the frozen ETL expression: **0**
+
+By field, the explained direct-source differences were HT 39,025, WT 39,745, and ORIGINAL_BMI 46,852; SYSTOLIC and DIASTOLIC had none. The maximum direct-source absolute difference was 2.5. Most differences were floating-point scale effects at <=1e-12, with a small number of larger WT/BMI differences.
+
+Interpretation: the frozen OMOP target exactly reproduces the numeric value yielded by the frozen ETL SQL expression. Therefore these 125,622 rows are a deterministic value-representation/coercion effect of the frozen `VALUES` expression, not unexplained target divergence. No post-hoc tolerance was introduced and no ETL code was changed after observing this result.
+
+## Manuscript and invariant bundle
+
+`stage_b_wave2_manuscript_tables.py` was added in commit `5efbd1106d914fcf2570d3c1113ae58b6e695925`. It consumes only the already-produced aggregate Wave 2 outputs and fails if the prespecified reconciliation invariants do not hold. It also emits aggregate manuscript CSV/Markdown/JSON and an explicit disclosure review asserting that no row-level patient identifiers, source-record identifiers, PHI, or free-text clinical values are exported by the manuscript bundle.
 
 ## Next Wave 2 step
 
-Run the aggregate VITAL numeric expression diagnostic. If it explains the 125,622 direct-source exact-value differences as deterministic SQL expression coercion, record that representation mechanism explicitly. If any residual mismatch remains after reproducing the frozen ETL expression, treat it as an independently demonstrated ETL defect candidate before proceeding to the Wave 2 manuscript/invariant bundle and disclosure review.
+Run the Wave 2 manuscript/invariant bundle locally. If all invariants and the disclosure review pass, Wave 2 can be documented as analytically complete and Issue #4 can be closed without modifying the frozen ETL.
