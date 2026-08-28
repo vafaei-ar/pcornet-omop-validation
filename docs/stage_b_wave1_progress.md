@@ -63,18 +63,37 @@ Death type and cause concept equality are not Stage B concordance requirements b
 
 ## Condition semantic concordance
 
-Implementation is now committed. The primary semantic comparison is pre-specified as follows:
+The optimized Condition comparison completed successfully.
 
-- the frozen canonical Condition route ledger supplies the source-side Standard concept/domain semantic reference for eligible DIAGNOSIS and CONDITION events;
-- this route ledger is being used as a vocabulary normalization reference, not as a target-event lineage lookup;
-- mapped nonzero routes are compared against native OMOP event tables in the appropriate target domain;
-- target lineage/xwalks are not used in primary metrics;
-- concept-0 fallback is reported separately as represented-but-unresolved;
-- one-to-many Standard routes are preserved rather than collapsed;
-- cross-domain routes are evaluated in Condition, Observation, Procedure, Measurement, Drug, Device, or Specimen as appropriate;
-- exact event agreement is a multiset comparison on person, calendar date, OMOP domain, and Standard concept.
+Primary results:
 
-This design avoids treating raw source-row equality or Condition Occurrence-only equality as the semantic target while still preventing target lineage from defining the primary concordance result.
+- eligible DIAGNOSIS + CONDITION source events represented in the canonical route ledger: **8,674,973**
+- core semantic route rows: **9,043,769**
+- mapped nonzero Standard route rows: **8,983,621**
+- unresolved concept-0 fallback rows: **60,148**
+- source events with multiple core routes: **361,606**
+- source mapped patients: **25,614**
+- native OMOP patients in the same mapped concept space: **26,388**
+- shared mapped patients: **25,614**
+- source-only mapped patients: **0**
+- target-only patients in the same concept space: **774**
+- patient Jaccard before provenance attribution: **0.9706684857**
+- exact person/date/domain/concept matched mapped events: **8,983,621**
+- source unmatched mapped semantic events: **0**
+- target unmatched rows in the same semantic concept space: **756,113**
+
+The primary result therefore shows complete preservation of every mapped nonzero Condition semantic route: all 8,983,621 mapped source semantic events were found exactly in native OMOP using the pre-specified person + calendar date + OMOP domain + Standard concept multiset comparison. No target lineage was used to obtain that primary result.
+
+Secondary lineage attribution then classified the apparent OMOP excess:
+
+- native OMOP rows in Condition semantic concept space: **9,739,734**
+- Condition-derived rows: **8,983,621**
+- rows from other audited source provenance: **756,113**
+- target-only patients relative to the Condition-derived patient set: **774**
+
+Thus the entire target-side excess is explained by other source families populating the same OMOP Standard concept/domain space. It is not evidence of loss or duplication of mapped DIAGNOSIS/CONDITION semantics. This is a substantive study finding: native OMOP concept-space queries can legitimately include clinically equivalent events originating from multiple PCORnet source domains, so lineage-aware attribution is required to distinguish semantic overlap from ETL discordance.
+
+Concept-0 fallback remains a separate unresolved-coverage result and is not counted as mapped semantic concordance.
 
 ## Remaining Wave 1 sequence
 
@@ -82,10 +101,10 @@ This design avoids treating raw source-row equality or Condition Occurrence-only
 flowchart LR
     A[Preflight complete] --> B[Encounter complete]
     B --> C[Death complete]
-    C --> D[Condition semantics]
+    C --> D[Condition complete]
     D --> E[Procedure semantics]
     E --> F[Wave 1 aggregate manuscript tables]
     F --> G[Disclosure review]
 ```
 
-Condition and Procedure comparisons preserve the locked rule that one-to-many and cross-domain Standard mappings are not automatically discordant. Target lineage will be used only after primary semantic results are computed to classify disagreement.
+Condition and Procedure comparisons preserve the locked rule that one-to-many and cross-domain Standard mappings are not automatically discordant. Target lineage is used only after primary semantic results are computed to classify disagreement.
