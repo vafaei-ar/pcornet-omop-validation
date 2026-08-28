@@ -4,13 +4,13 @@ Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
 Locked definition: `study_definitions/stage_c_stroke_d0_v1.json`
 
-Status: **prespecified before Stage C D0 outcome queries**
+Status: **outcome analysis complete; manuscript/invariant lock pending**
 
 ## Objective
 
 Stage C asks a different question from Stage B. Stage B established that mapped source semantics are present in the frozen OMOP build under prespecified event-level rules. Stage C now asks whether a complete computable phenotype selects the same patients after transformation.
 
-The first phenotype is the PSU PROMIS EHR-only ischemic-stroke D0 definition already represented in `stroke_codes.py` and `pcornet_stroke_phenotypes.py`. This specification freezes the D0 rules before running the publication D0 comparison.
+The first phenotype is the PSU PROMIS EHR-only ischemic-stroke D0 definition already represented in `stroke_codes.py` and `pcornet_stroke_phenotypes.py`. This specification froze the D0 rules before the publication D0 comparison.
 
 ## Source-reference D0
 
@@ -30,7 +30,7 @@ A recognized-`DX_TYPE` restriction is not part of the primary D0 phenotype. It m
 
 ## Why Stage C has two OMOP estimands
 
-A critical representation issue is fixed before outcome comparison: the source phenotype requires `PDX`, but the frozen OMOP core representation does not encode the PCORnet `PDX` field as a native OMOP phenotype attribute. Treating this as though it had a native one-to-one OMOP equivalent would silently change the phenotype.
+A critical representation issue was fixed before outcome comparison: the source phenotype requires `PDX`, but the frozen OMOP core representation does not encode the PCORnet `PDX` field as a native OMOP phenotype attribute. Treating this as though it had a native one-to-one OMOP equivalent would silently change the phenotype.
 
 Therefore Stage C D0 has two distinct estimands.
 
@@ -50,6 +50,47 @@ A separate sensitivity analysis expresses a D0-like phenotype using OMOP-native 
 - `PDX == 'P'` is intentionally omitted because it is not natively representable in the frozen OMOP core.
 
 This portable phenotype is not allowed to replace the primary transformation-fidelity comparison. Its difference from the source cohort is itself a model-representability result.
+
+## Completed preflight
+
+The read-only preflight completed successfully before D0 outcome comparison.
+
+- all 27,089 distinct source PATIDs linked uniquely to `person.person_source_value`;
+- no duplicate source PATID groups and no duplicate target `person_source_value` groups;
+- all 118 locked ICD-10-CM and all 9 locked ICD-9-CM codes resolved to active source concepts and at least one Standard Condition target;
+- the frozen EI/IP Standard Visit concepts were valid active Standard concepts (`262` and `9201`);
+- no native OMOP core column representing PCORnet `PDX` was present;
+- required source and target columns were present;
+- no D0 cohort outcome query was performed by the preflight.
+
+## D0 concordance result
+
+The locked D0 outcome analysis was run without changing the frozen ETL or the prespecified phenotype.
+
+Primary transformation-fidelity result:
+
+- PCORnet source D0 patients: **9,815**;
+- lineage-faithful OMOP D0 patients: **6,001**;
+- shared patients: **6,001**;
+- source-only patients: **3,814**;
+- OMOP-only patients: **0**;
+- patient Jaccard: **0.6114111055**;
+- positive agreement: **75.8852%**;
+- exact index-date agreement among shared patients: **100% (6,001 / 6,001)**;
+- within-one-day agreement among shared patients: **100%**.
+
+All **3,814** primary source-only patients were assigned to the prespecified `required_source_date_missing_or_etl_excluded` category. The source D0 definition permits the encounter index date to fall back to `ADMIT_DATE` or `DISCHARGE_DATE` when `DX_DATE` is null, whereas the frozen ETL excludes diagnoses that lack the required diagnosis date. Thus the observed primary attrition is a direct consequence of a locked source-phenotype fallback interacting with the frozen ETL required-date policy, not an unexplained loss of a transformed eligible diagnosis.
+
+The secondary native-OMOP portability sensitivity produced:
+
+- native OMOP patients: **7,667**;
+- shared with source D0: **6,312**;
+- source-only: **3,503**;
+- native-OMOP-only: **1,355**;
+- Jaccard: **0.5650850492**;
+- positive agreement: **72.2114%**.
+
+Because this sensitivity intentionally omits `PDX == 'P'`, it is a model-portability result and does not replace the primary transformation-fidelity estimand.
 
 ## Metrics
 
