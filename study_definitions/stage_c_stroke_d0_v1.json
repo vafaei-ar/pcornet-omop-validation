@@ -1,0 +1,81 @@
+{
+  "study_definition": "stage-c-stroke-d0-v1",
+  "status": "prespecified_before_stage_c_outcome_queries",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Evaluate ischemic-stroke D0 phenotype reproducibility between PCORnet and the frozen audited OMOP build without retuning the ETL or phenotype after observing disagreement.",
+  "source_reference": {
+    "name": "PSU PROMIS EHR-only D0",
+    "code_source": "src/pcornet_omop_validation/study/stroke_codes.py",
+    "diagnosis_rule": "DX normalized by uppercasing, trimming, and removing decimal points must be in the explicit locked ischemic-stroke ICD-9-CM/ICD-10-CM code lists. DX_TYPE is not part of the primary exact-code matcher.",
+    "primary_diagnosis_rule": "PDX == P",
+    "encounter_rule": "ENC_TYPE in {EI, IP}",
+    "overnight_rule": "calendar-day difference between ADMIT_DATE and DISCHARGE_DATE is at least 1 day; this is not a >24-hour timestamp rule",
+    "index_date_rule": "for each qualifying encounter choose the first primary stroke diagnosis ordered by DX_DATE with nulls last then normalized DX; encounter index date is COALESCE(DX_DATE, ADMIT_DATE, DISCHARGE_DATE)",
+    "patient_index_rule": "select the first qualifying encounter per PATID ordered by index date then ENCOUNTERID",
+    "age_rule": "after first qualifying encounter selection, require floor(date_difference_days(BIRTH_DATE, INDEX_DATE) / 365.0) >= 18",
+    "registry_rule": "no registry gating or registry augmentation",
+    "dx_type_sensitivity": "recognized DX_TYPE restriction may be reported only as a sensitivity/diagnostic and must not define the primary D0 cohort"
+  },
+  "patient_linkage": {
+    "pcornet": "PATID",
+    "omop": "person.person_source_value",
+    "rule": "exact source-derived bridge after the same trimming/string normalization used by the frozen ETL"
+  },
+  "estimands": {
+    "primary_transformation_fidelity": {
+      "name": "lineage-faithful D0",
+      "purpose": "Test whether the frozen OMOP representation preserves the exact source-defined D0 phenotype.",
+      "omop_representation": "Use native OMOP person/visit/condition rows for transformed events and dates, with frozen lineage only where the source phenotype requires a field not represented natively in OMOP core, especially PDX == P and the exact source diagnosis code identity.",
+      "lineage_policy": "Lineage may classify source-only phenotype semantics but must not be used to alter the frozen ETL or phenotype definition.",
+      "expected_interpretation": "Discordance is decomposed into source ineligibility, ETL exclusion, missing lineage/materialization, index-date representation, or other unexplained causes. No category is assumed to be an ETL defect until demonstrated."
+    },
+    "secondary_native_portability": {
+      "name": "native-OMOP portable D0 sensitivity",
+      "purpose": "Quantify how a D0-like phenotype behaves when expressed using OMOP-native Standard concepts only.",
+      "stroke_rule": "Resolve the locked explicit ICD code list through the frozen vocabulary to active Standard Condition concepts using exact source concepts plus Maps to semantics; preserve one-to-many mappings.",
+      "visit_rule": "use OMOP visit concepts corresponding to the frozen EI/IP mappings (EI=262, IP=9201)",
+      "overnight_rule": "visit_end_date - visit_start_date is at least 1 calendar day",
+      "age_rule": "apply the same post-index floor(days/365.0) adult rule using OMOP person birth date",
+      "primary_diagnosis_limitation": "PDX has no native OMOP core equivalent in this frozen ETL. Therefore PDX == P is intentionally absent from this secondary portable phenotype and the resulting cohort is not treated as the primary transformation-fidelity estimand."
+    }
+  },
+  "comparison_metrics": {
+    "primary": [
+      "PCORnet cohort patients",
+      "OMOP lineage-faithful cohort patients",
+      "intersection patients",
+      "PCORnet-only patients",
+      "OMOP-only patients",
+      "Jaccard similarity",
+      "positive agreement",
+      "exact index-date agreement among shared patients"
+    ],
+    "secondary": [
+      "index-date agreement within 1 day",
+      "native-OMOP portable cohort size and overlap",
+      "discordance reason counts"
+    ]
+  },
+  "discordance_categories": [
+    "source_not_eligible",
+    "required_source_date_missing_or_etl_excluded",
+    "visit_not_materialized_or_unlinked",
+    "stroke_diagnosis_not_materialized_or_unlinked",
+    "primary_diagnosis_semantic_not_natively_representable",
+    "index_date_representation_difference",
+    "age_boundary_difference",
+    "multiple_qualifying_event_ordering_difference",
+    "unexpected_or_unexplained"
+  ],
+  "reporting_policy": {
+    "counts_are_outputs_not_acceptance_thresholds": true,
+    "patient_level_outputs_outside_git": true,
+    "committed_outputs_aggregate_only": true,
+    "no_post_hoc_phenotype_changes_to_improve_agreement": true,
+    "no_etl_changes_from_stage_c_disagreement_without_independent_defect_evidence": true
+  },
+  "scope": {
+    "current": "D0 only",
+    "deferred": "D1 and D3 are not yet locked because their lipid LOINC whitelist must first be imported or otherwise versioned and hashed as a reproducible study artifact; imaging and lipid evidence windows will be locked before those outcome queries."
+  }
+}
