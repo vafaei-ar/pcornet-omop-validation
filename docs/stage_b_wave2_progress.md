@@ -70,6 +70,34 @@ Secondary target characterization among the mapped Drug concept space:
 
 Route-concept zero is not treated as Drug semantic failure under the locked Wave 2 definition.
 
+## Measurement / Observation preflight
+
+The family-specific Measurement/Observation preflight completed successfully before event-level semantic comparison.
+
+Source and lineage structure:
+
+- LAB_RESULT_CM: 33,115,308 source rows; all have RESULT_DATE, nonblank LOINC, and nonblank unit text; 26,769,840 have numeric result values.
+- LAB lineage: 33,053,350 rows to Measurement and 61,958 rows to Observation, accounting for all LAB rows.
+- VITAL: 6,537,020 source rows, all with MEASURE_DATE; 11,673,550 expanded numeric Measurement values and 2,170,885 categorical Observation values.
+- OBS_CLIN: 37,327,978 mapped Measurement routes; 1,471,098 mapped Observation routes plus 12,737 unresolved Observation concept-zero routes; 39,115 Condition routes are outside the M/O denominator.
+- PROCEDURES: 3,491,072 mapped Measurement routes plus 4 unresolved; 1,836,895 mapped Observation routes plus 44 unresolved.
+- CONDITION cross-domain: 169,481 Measurement rows and 1,411,878 Observation rows.
+- OBS_GEN: 353,586 source-preserved Observation concept-zero rows; descriptive only and excluded from mapped semantic concordance.
+
+Target characterization:
+
+- Measurement rows: 85,715,435; concept-zero rows: 4; unit-concept-zero rows: 26,799,088.
+- Observation rows: 7,319,081; concept-zero rows: 366,367.
+- Active Standard UCUM duplicate code groups under the frozen case-sensitive rule: 0.
+
+These are coverage and provenance denominators, not agreement thresholds. The next analysis uses the locked primary identity of person + calendar date + target domain + Standard concept. Concept-zero families remain separate, and target lineage is reserved for secondary attribution.
+
+## Measurement / Observation semantic-presence implementation
+
+`stage_b_wave2_measurement_observation_concordance.py` implements the first M/O outcome layer. It independently recomputes LAB LOINC semantics from the frozen vocabulary policy, resolves VITAL LOINC concepts from the active Standard vocabulary, and uses the prespecified OBS_CLIN, Procedure, and Condition route ledgers as source-side semantic references. Native Measurement and Observation are then queried in the resulting concept space. Target xwalks are used only after the primary multiset comparison to classify provenance overlap.
+
+To keep the query tractable, source families are aggregated into temporary person/date/domain/concept signatures before the native target scan. No persistent source, OMOP, route, or lineage table is modified.
+
 ## Next Wave 2 step
 
-The next step is Measurement/Observation preflight and denominator decomposition before event-level outcome comparison. It must confirm source-family lineage structure for LAB, VITAL, OBS_CLIN, OBS_GEN, Procedure-derived Measurement/Observation, and Condition-derived cross-domain Measurement/Observation, and lock which subsets enter semantic-presence, numeric-value, unit, and categorical-value layers.
+Run the Measurement/Observation semantic-presence comparison and provenance attribution. After those results are reviewed, the remaining locked layers are numeric-value equality/differences, UCUM-resolved unit agreement, and categorical value-concept coverage.
