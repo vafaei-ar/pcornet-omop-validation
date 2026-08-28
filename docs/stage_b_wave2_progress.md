@@ -4,6 +4,8 @@ Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
 Locked Wave 2 definition: `study_definitions/stage_b_wave2_v1.json`
 
+Status: **analytically complete**. Final lock record: `docs/stage_b_wave2_lock_record.md`.
+
 ## Wave 2 preflight
 
 The Wave 2 preflight completed successfully against the frozen build.
@@ -164,10 +166,23 @@ By field, the explained direct-source differences were HT 39,025, WT 39,745, and
 
 Interpretation: the frozen OMOP target exactly reproduces the numeric value yielded by the frozen ETL SQL expression. Therefore these 125,622 rows are a deterministic value-representation/coercion effect of the frozen `VALUES` expression, not unexplained target divergence. No post-hoc tolerance was introduced and no ETL code was changed after observing this result.
 
-## Manuscript and invariant bundle
+## Final manuscript and invariant bundle
 
-`stage_b_wave2_manuscript_tables.py` was added in commit `5efbd1106d914fcf2570d3c1113ae58b6e695925`. It consumes only the already-produced aggregate Wave 2 outputs and fails if the prespecified reconciliation invariants do not hold. It also emits aggregate manuscript CSV/Markdown/JSON and an explicit disclosure review asserting that no row-level patient identifiers, source-record identifiers, PHI, or free-text clinical values are exported by the manuscript bundle.
+The final bundle completed locally with:
 
-## Next Wave 2 step
+- `all_invariants_matched: true`
+- `disclosure_review_status: passed`
+- Drug source unmatched rows: **0**
+- Measurement/Observation source unmatched rows: **0**
+- Measurement/Observation target unmatched rows: **0**
+- VITAL direct-target differences: **125,622**, all explained by the frozen ETL expression
+- VITAL expanded-expression target mismatches: **0**
+- VITAL unexplained numeric mismatches: **0**
 
-Run the Wave 2 manuscript/invariant bundle locally. If all invariants and the disclosure review pass, Wave 2 can be documented as analytically complete and Issue #4 can be closed without modifying the frozen ETL.
+The aggregate primary table reports Drug 30,988,400/30,988,400 exact mapped routes with 48 target-native rows fully explained by other audited provenance, and Measurement/Observation 92,668,145/92,668,145 exact mapped semantic rows with no target excess.
+
+The disclosure review passed: the manuscript bundle writes no patient identifiers, source-record identifiers, row-level PHI, or free-text clinical values.
+
+## Lock
+
+Stage B Wave 2 is analytically complete. The immutable record is `docs/stage_b_wave2_lock_record.md`. No ETL changes were made to obtain these results, and the frozen ETL SHA remains `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
