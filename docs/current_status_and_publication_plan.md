@@ -67,7 +67,7 @@ The locked source-reference D0 cohort contained 9,815 patients; the lineage-fait
 
 ### D1/D3 — prespecified and active
 
-D1/D3 are locked under `study_definitions/stage_c_stroke_d1_d3_v1.json` before any outcome query. The exact PROMIS lipid LOINC whitelist is versioned at `study_definitions/artifacts/stage_c_lipid_loinc_whitelist_v1.csv` with provenance recorded separately.
+D1/D3 are locked under `study_definitions/stage_c_stroke_d1_d3_v1.json` before any outcome query. The exact PROMIS lipid LOINC whitelist is versioned at `study_definitions/artifacts/stage_c_lipid_loinc_whitelist_v1.csv` with provenance recorded separately, including the upstream PROMIS Git blob SHA.
 
 The corrected outcome-free preflight established 214 locked source-reference lipid LOINCs, 194 active source concepts, and 192 active Standard Measurement/Observation targets (187 Measurement and 5 Observation), leaving 22 frozen-vocabulary coverage gaps for the secondary native-portability analysis. All 9 locked imaging CPT codes resolve to active Standard Procedure concepts. `SPECIMEN_DATE` is the selected source lipid date under the prespecified field priority; `RESULT_DATE` is also available but lower priority.
 
