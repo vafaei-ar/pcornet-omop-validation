@@ -12,9 +12,10 @@
     "imaging_window": "Procedure date must be between ADMIT_DATE minus 2 calendar days and DISCHARGE_DATE inclusive.",
     "lipid_loinc_artifact": "study_definitions/artifacts/stage_c_lipid_loinc_whitelist_v1.csv",
     "lipid_loinc_provenance": "study_definitions/artifacts/stage_c_lipid_loinc_whitelist_v1.provenance.json",
-    "lipid_code_policy": "Exact trimmed uppercase LOINC membership in the versioned artifact; no prefix, hierarchy, or post-hoc expansion.",
+    "lipid_code_policy": "Exact trimmed uppercase LOINC membership in the versioned artifact; no prefix, hierarchy, or post-hoc expansion. The primary source-reference phenotype retains all locked codes even when absent or deprecated in the frozen OMOP vocabulary; unresolved codes are a native-portability coverage limitation rather than a reason to alter the source phenotype.",
     "lipid_date_field_policy": "Use the first available source-reference field in the pre-specified order LAB_TKN_DTTM, SPECIMEN_DATE, LAB_DATE, RESULT_DATE, matching the existing PROMIS verification implementation. The preflight records which field is actually available before outcome queries.",
     "lipid_window": "Lipid evidence date must be between ADMIT_DATE and DISCHARGE_DATE inclusive.",
+    "target_date_policy": "For transformation-fidelity OMOP evidence, apply the same windows to the frozen target dates actually materialized by the ETL (Procedure.procedure_date for imaging; Measurement.measurement_date or Observation.observation_date for lipid evidence). If a lineage-linked source event crosses a phenotype window solely because source and target date fields differ, report that explicitly as an evidence-date representation difference rather than silently harmonizing the dates.",
     "evidence_ordering": "Imaging and lipid evidence are evaluated for each D0-eligible encounter before patient-level first-event ranking; age is applied after first qualifying D1/D3 encounter selection, matching the existing PROMIS verification implementation."
   },
   "phenotypes": {
@@ -25,14 +26,13 @@
     "purpose": "Test whether the exact source-defined D1/D3 patient cohorts are preserved in frozen OMOP.",
     "policy": "Use native OMOP person/visit/condition/procedure/measurement-or-observation rows for transformed facts and dates, with frozen lineage only where exact source-only semantics are required, including PDX and exact source code identity.",
     "one_to_many_policy": "A source evidence event is preserved if any of its audited mapped target routes supplies the required phenotype evidence; one-to-many mappings are not treated as duplication failures.",
-    "concept_zero_policy": "Source evidence that cannot be represented with the required mapped target semantic remains a coverage/representation limitation and is not silently remapped.",
-    "source_vocabulary_independence": "Exact source-reference lipid eligibility is determined by membership in the locked LOINC artifact, not by whether that LOINC is present and active in the frozen OMOP vocabulary. Frozen-vocabulary absence or deprecation is reported as coverage and must not remove the code from the source-reference phenotype."
+    "concept_zero_policy": "Source evidence that cannot be represented with the required mapped target semantic remains a coverage/representation limitation and is not silently remapped."
   },
   "secondary_native_portability": {
     "purpose": "Evaluate D1/D3-like phenotypes expressed with native OMOP Standard concepts only.",
     "stroke_policy": "Use the same Standard Condition concept resolution as the D0 portability sensitivity.",
     "imaging_policy": "Resolve the locked CPT imaging codes through the frozen vocabulary to active Standard target concepts and preserve valid one-to-many/cross-domain routes.",
-    "lipid_policy": "Resolve the versioned lipid LOINCs through the frozen vocabulary to active Standard Measurement/Observation concepts; preserve valid one-to-many/cross-domain routes. Locked LOINCs that are absent, deprecated, or lack an allowed active Standard target remain explicit portability-coverage gaps and are not silently remapped.",
+    "lipid_policy": "Resolve the versioned lipid LOINCs through the frozen vocabulary to active Standard Measurement/Observation concepts; preserve valid one-to-many/cross-domain routes. Locked source codes without active Standard target resolution remain quantified coverage gaps and are not dropped from the primary source-reference phenotype.",
     "pdx_limitation": "PDX is intentionally absent because it has no native OMOP core equivalent in the frozen build; this sensitivity cannot replace the primary transformation-fidelity estimand."
   },
   "comparison_metrics": [
@@ -53,8 +53,10 @@
     "stroke_diagnosis_not_materialized_or_unlinked",
     "imaging_source_event_missing_or_etl_excluded",
     "imaging_target_semantic_not_materialized_or_unlinked",
+    "imaging_date_representation_difference",
     "lipid_source_event_missing_or_etl_excluded",
     "lipid_target_semantic_not_materialized_or_unlinked",
+    "lipid_date_representation_difference",
     "primary_diagnosis_semantic_not_natively_representable",
     "index_date_representation_difference",
     "age_boundary_difference",
