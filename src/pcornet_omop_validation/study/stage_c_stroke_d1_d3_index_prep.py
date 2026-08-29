@@ -84,13 +84,15 @@ def run(config_path: str) -> None:
 
     engine = make_engine(cfg)
     try:
-        with engine.begin() as con:
-            print("status: stage_c_stroke_d1_d3_index_prep_start")
-            for table, index_name, columns in specs:
-                print(f"progress: ensuring {index_name} on {target_schema}.{table}", flush=True)
+        print("status: stage_c_stroke_d1_d3_index_prep_start")
+        for table, index_name, columns in specs:
+            print(f"progress: ensuring {index_name} on {target_schema}.{table}", flush=True)
+            # Commit each index separately so an interrupted preparation can resume
+            # without rebuilding indexes that already completed.
+            with engine.begin() as con:
                 status = _ensure_index(con, target_schema, table, index_name, columns)
-                print(f"  {status}")
-            print("status: stage_c_stroke_d1_d3_index_prep_complete")
+            print(f"  {status}", flush=True)
+        print("status: stage_c_stroke_d1_d3_index_prep_complete")
     finally:
         engine.dispose()
 
