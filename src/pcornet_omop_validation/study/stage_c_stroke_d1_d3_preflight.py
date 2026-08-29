@@ -121,6 +121,8 @@ def _resolution(con, target_schema: str, temp_table: str, allowed_domains: tuple
         )
     ).mappings().one()
     out = {k: int(v or 0) for k, v in dict(row).items()}
+    out["codes_without_active_source_concept"] = out["locked_codes"] - out["codes_with_active_source_concept"]
+    out["codes_without_standard_target"] = out["locked_codes"] - out["codes_with_standard_target"]
     by_domain = [
         {"target_domain": str(r[0]), "distinct_targets": int(r[1] or 0), "codes": int(r[2] or 0)}
         for r in con.execute(
@@ -230,10 +232,19 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
                 raise RuntimeError(f"Not all locked imaging CPT codes resolve to active source concepts: {imaging_resolution}")
             if imaging_resolution["codes_with_standard_target"] != len(CT_CODES | MRI_CODES):
                 raise RuntimeError(f"Not all locked imaging CPT codes resolve to allowed active Standard targets: {imaging_resolution}")
-            if lipid_resolution["codes_with_active_source_concept"] != len(lipid_loincs):
-                raise RuntimeError(f"Not all locked lipid LOINCs resolve to active source concepts: {lipid_resolution}")
-            if lipid_resolution["codes_with_standard_target"] != len(lipid_loincs):
-                raise RuntimeError(f"Not all locked lipid LOINCs resolve to Measurement/Observation Standard targets: {lipid_resolution}")
+
+            # The locked source phenotype uses exact LOINC string membership, not vocabulary
+            # resolvability. Therefore missing/deprecated LOINCs in the frozen OMOP vocabulary
+            # are a prespecified coverage/portability result, not a preflight failure. Primary
+            # transformation fidelity can still use source identity plus frozen lineage; the
+            # native-OMOP portability sensitivity is restricted to the Standard-resolved subset.
+            lipid_resolution["source_exact_membership_codes"] = len(lipid_loincs)
+            lipid_resolution["native_portability_standard_resolved_codes"] = lipid_resolution["codes_with_standard_target"]
+            lipid_resolution["native_portability_unresolved_codes"] = lipid_resolution["codes_without_standard_target"]
+            lipid_resolution["coverage_policy"] = (
+                "Report unresolved/deprecated locked LOINCs as frozen-vocabulary coverage limitations; "
+                "do not drop them from the source-reference phenotype and do not silently remap them."
+            )
     finally:
         engine.dispose()
 
@@ -266,7 +277,11 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
         "vocabulary_resolution": {"imaging_cpt": imaging_resolution, "lipid_loinc": lipid_resolution},
         "required_column_checks": column_checks,
         "outcome_query_performed": False,
-        "note": "Preflight only: validates locked evidence artifacts, source/target prerequisites, selected source date field, and frozen vocabulary representability. It does not compute D1/D3 cohort membership or concordance outcomes.",
+        "note": (
+            "Preflight only: validates locked evidence artifacts, source/target prerequisites, selected source date field, "
+            "and frozen vocabulary representability. Exact source LOINC membership remains authoritative for the primary "
+            "source-reference phenotype even when some locked LOINCs are absent/deprecated in the frozen vocabulary."
+        ),
     }
     out_json = out / "stage_c_stroke_d1_d3_preflight.json"
     out_json.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str), encoding="utf-8")
