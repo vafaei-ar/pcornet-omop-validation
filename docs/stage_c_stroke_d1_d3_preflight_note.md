@@ -1,15 +1,11 @@
-# Stage C D1/D3 preflight vocabulary coverage note
+# Stage C D1/D3 preflight vocabulary and date-representation note
 
-The first local D1/D3 preflight run on 2026-08-28 stopped because the preflight incorrectly required every locked lipid LOINC to resolve to an active source concept and an allowed active Standard OMOP target.
+The first local D1/D3 preflight stopped because the preflight incorrectly required every locked lipid LOINC to resolve to an active source concept and an allowed active Standard OMOP target.
 
-Observed frozen-vocabulary coverage from that run was:
+Observed frozen-vocabulary coverage was 214 locked lipid LOINCs, 194 active source concepts, and 192 active Standard Measurement/Observation targets: 187 Measurement and 5 Observation, leaving 22 native-portability coverage gaps. This was a preflight-policy defect, not a phenotype or ETL defect. Exact membership in the versioned PROMIS LOINC artifact remains authoritative for the primary source-reference phenotype; unresolved/deprecated codes are reported as native-portability coverage limitations and are not silently remapped.
 
-- locked lipid LOINCs: 214
-- active source concepts: 194
-- active Standard Measurement/Observation targets: 192
-- unresolved for native portability: 22
-- Standard target domains: 187 Measurement codes and 5 Observation codes
+After that correction, the local preflight passed cleanly on 2026-08-29. It selected `SPECIMEN_DATE` from the prespecified lipid date priority because `LAB_TKN_DTTM` and `LAB_DATE` were unavailable; `RESULT_DATE` was also available but lower priority. All 9 locked imaging CPT codes resolved to active Standard Procedure concepts. No D1/D3 cohort membership or outcome comparison was queried by the preflight.
 
-This was a preflight-policy defect, not a phenotype or ETL defect. The locked source-reference phenotype defines lipid evidence by exact membership in the versioned PROMIS LOINC artifact. Therefore frozen-vocabulary absence or deprecation cannot remove a locked source code from the primary source-reference phenotype. For the primary transformation-fidelity estimand, exact source identity plus frozen lineage remains authoritative. For the secondary native-OMOP portability sensitivity, only the active Standard-resolved subset is natively representable; unresolved/deprecated codes are reported as coverage limitations and are not silently remapped.
+Before the first D1/D3 outcome query, the study definition was further clarified to make evidence-date transformation behavior explicit. The source phenotype uses the prespecified source lipid date field (`SPECIMEN_DATE` in this build), while the transformation-fidelity OMOP phenotype applies the same windows to the dates actually materialized by the frozen ETL (`measurement_date` / `observation_date`). If a lineage-linked event crosses a phenotype window solely because source and target evidence dates differ, the discordance is reported explicitly as an evidence-date representation difference rather than harmonizing dates post hoc.
 
-The corrected preflight keeps full resolution of the locked imaging CPT set as a hard prerequisite, but treats incomplete lipid vocabulary resolution as an explicit coverage result rather than a failure. No D1/D3 outcome query had been performed before this correction.
+Because this clarification changes the locked study-definition hash, the D1/D3 preflight must be rerun once more before executing the concordance module. The concordance code is implemented but refuses to run if the recorded preflight hash differs from the current locked definition.
