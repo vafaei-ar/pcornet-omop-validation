@@ -1,0 +1,102 @@
+{
+  "study_definition": "stage-d-stroke-analytical-equivalence-v1",
+  "status": "prespecified_before_stage_d_cross_cdm_outcome_queries",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Test whether downstream post-stroke outcome labels and risk estimates are materially equivalent after PCORnet-to-OMOP transformation, while separating outcome-event transformation from previously observed phenotype-cohort attrition.",
+  "index_phenotype": {
+    "name": "Stage C D0 ischemic-stroke index cohort",
+    "definition_path": "study_definitions/stage_c_stroke_d0_v1.json",
+    "inheritance_rule": "Stage D must reproduce the locked Stage C D0 rules exactly and may not redefine diagnosis codes, PDX, encounter type, overnight rule, index ordering, age rule, or patient linkage.",
+    "source_rule_summary": "Locked explicit stroke ICD list; PDX=P; ENC_TYPE in {EI,IP}; ADMIT_DATE and DISCHARGE_DATE differ by at least one calendar day; first qualifying encounter per patient; adult rule applied after index selection.",
+    "primary_omop_index": "lineage-faithful D0 from the frozen ETL",
+    "native_omop_index": "not a primary Stage D analytical-equivalence cohort; native portability remains a Stage C sensitivity"
+  },
+  "outcomes": {
+    "primary": {
+      "name": "90-day acute-care reutilization",
+      "time_zero": "index encounter discharge date",
+      "window": "day 1 through day 90 after index discharge, inclusive",
+      "pcornet_event": "first subsequent PCORnet ENCOUNTER with ENC_TYPE in {ED,EI,IP}",
+      "omop_event": "first subsequent visit_occurrence with visit_concept_id in the frozen ED/EI/IP visit concept set, using visit_start_date",
+      "event_type": "binary any-event outcome",
+      "observability": "require source ENROLLMENT / target observation_period to cover index discharge through day 90",
+      "same_day_policy": "encounters or visits beginning on the index discharge date are not outcomes"
+    },
+    "secondary": {
+      "name": "30-day acute-care reutilization",
+      "time_zero": "index encounter discharge date",
+      "window": "day 1 through day 30 after index discharge, inclusive",
+      "event_definition": "same acute-care event definition as the primary outcome",
+      "observability": "require continuous representation-specific coverage through day 30"
+    },
+    "exploratory_epidemiologic": {
+      "name": "hospitalized recurrent ischemic stroke",
+      "window": "days 31 through 365 after index discharge, inclusive",
+      "event_definition": "subsequent acute-care encounter/visit satisfying the locked ischemic-stroke diagnosis definition",
+      "role": "secondary epidemiologic reproducibility only; not a prediction endpoint",
+      "observability": "require continuous representation-specific coverage through day 365"
+    }
+  },
+  "estimands": {
+    "primary_fixed_index_outcome_fidelity": {
+      "population": "patients shared by source D0 and lineage-faithful OMOP D0 with the same selected index date",
+      "purpose": "Hold patient and index date fixed so differences primarily measure post-index acute-care event representation.",
+      "metrics": [
+        "eligible patients in each representation",
+        "binary outcome label agreement",
+        "both-positive",
+        "source-only positive",
+        "OMOP-only positive",
+        "both-negative",
+        "positive agreement",
+        "outcome risk in each representation",
+        "absolute risk difference",
+        "relative risk ratio"
+      ]
+    },
+    "secondary_end_to_end_analytical_reproducibility": {
+      "population": "independently selected source D0 and lineage-faithful OMOP D0 cohorts",
+      "purpose": "Measure the combined scientific consequence of phenotype transformation plus post-index outcome representation.",
+      "metrics": [
+        "representation-specific eligible cohort size",
+        "outcome events",
+        "outcome risk",
+        "absolute risk difference",
+        "relative risk ratio"
+      ]
+    },
+    "secondary_time_to_event": {
+      "population": "fixed-index primary population with 90-day observability",
+      "purpose": "Compare time from discharge to first acute-care reutilization without fitting an exposure-effect model.",
+      "metrics": [
+        "median days to event among event-positive patients",
+        "exact first-event-date agreement among patients positive in both representations",
+        "within-1-day first-event-date agreement"
+      ]
+    }
+  },
+  "equivalence_margins": {
+    "primary_90d_absolute_risk_difference_percentage_points": 0.5,
+    "primary_90d_relative_risk_ratio_lower": 0.95,
+    "primary_90d_relative_risk_ratio_upper": 1.05,
+    "secondary_30d_absolute_risk_difference_percentage_points": 0.5,
+    "secondary_30d_relative_risk_ratio_lower": 0.95,
+    "secondary_30d_relative_risk_ratio_upper": 1.05,
+    "effect_estimate_ratio_general_lower": 0.90,
+    "effect_estimate_ratio_general_upper": 1.10,
+    "interpretation": "Equivalence requires meeting the prespecified margin; a nonsignificant difference is not evidence of equivalence. Absolute and relative risk criteria are reported separately and jointly."
+  },
+  "comparison_priority": {
+    "primary": "PCORnet source versus frozen validated lineage-faithful OMOP",
+    "secondary": "prior OMOP implementation may be added later as an implementation sensitivity but must not alter primary definitions or margins"
+  },
+  "guardrails": {
+    "no_stage_d_outcome_query_before_preflight": true,
+    "no_etl_change_after_stage_d_results_without_independent_defect_evidence": true,
+    "no_outcome_definition_change_after_cross_cdm_results": true,
+    "no_equivalence_margin_change_after_cross_cdm_results": true,
+    "stage_c_post_outcome_audits_do_not_redefine_stage_d_index_cohort": true,
+    "patient_level_outputs_outside_git": true,
+    "committed_outputs_aggregate_only": true
+  }
+}
