@@ -25,13 +25,14 @@
     "purpose": "Test whether the exact source-defined D1/D3 patient cohorts are preserved in frozen OMOP.",
     "policy": "Use native OMOP person/visit/condition/procedure/measurement-or-observation rows for transformed facts and dates, with frozen lineage only where exact source-only semantics are required, including PDX and exact source code identity.",
     "one_to_many_policy": "A source evidence event is preserved if any of its audited mapped target routes supplies the required phenotype evidence; one-to-many mappings are not treated as duplication failures.",
-    "concept_zero_policy": "Source evidence that cannot be represented with the required mapped target semantic remains a coverage/representation limitation and is not silently remapped."
+    "concept_zero_policy": "Source evidence that cannot be represented with the required mapped target semantic remains a coverage/representation limitation and is not silently remapped.",
+    "source_vocabulary_independence": "Exact source-reference lipid eligibility is determined by membership in the locked LOINC artifact, not by whether that LOINC is present and active in the frozen OMOP vocabulary. Frozen-vocabulary absence or deprecation is reported as coverage and must not remove the code from the source-reference phenotype."
   },
   "secondary_native_portability": {
     "purpose": "Evaluate D1/D3-like phenotypes expressed with native OMOP Standard concepts only.",
     "stroke_policy": "Use the same Standard Condition concept resolution as the D0 portability sensitivity.",
     "imaging_policy": "Resolve the locked CPT imaging codes through the frozen vocabulary to active Standard target concepts and preserve valid one-to-many/cross-domain routes.",
-    "lipid_policy": "Resolve the versioned lipid LOINCs through the frozen vocabulary to active Standard Measurement/Observation concepts; preserve valid one-to-many/cross-domain routes.",
+    "lipid_policy": "Resolve the versioned lipid LOINCs through the frozen vocabulary to active Standard Measurement/Observation concepts; preserve valid one-to-many/cross-domain routes. Locked LOINCs that are absent, deprecated, or lack an allowed active Standard target remain explicit portability-coverage gaps and are not silently remapped.",
     "pdx_limitation": "PDX is intentionally absent because it has no native OMOP core equivalent in the frozen build; this sensitivity cannot replace the primary transformation-fidelity estimand."
   },
   "comparison_metrics": [
