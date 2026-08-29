@@ -274,8 +274,8 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
                           WHEN m.source_encounterid=m.omop_encounterid THEN 'same_encounter_index_date_representation_difference'
                           WHEN b.patid IS NULL AND m.dx_date IS NULL THEN 'different_episode_source_selected_diagnosis_missing_lineage_with_null_dx_date'
                           WHEN b.patid IS NULL THEN 'different_episode_source_selected_episode_missing_lineage_other'
-                          WHEN NOT ({target_imaging_col}=1 AND target_lipid=1 AND target_index_date IS NOT NULL AND target_birth_date IS NOT NULL
-                                    AND FLOOR(DATEDIFF(day,target_birth_date,target_index_date)/365.0)>=18)
+                          WHEN NOT (e.{target_imaging_col}=1 AND e.target_lipid=1 AND e.target_index_date IS NOT NULL AND e.target_birth_date IS NOT NULL
+                                    AND FLOOR(DATEDIFF(day,e.target_birth_date,e.target_index_date)/365.0)>=18)
                             THEN 'different_episode_source_selected_episode_not_target_qualifying'
                           ELSE 'different_episode_both_target_qualifying_ordering_difference'
                         END AS category
