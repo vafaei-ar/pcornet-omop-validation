@@ -5,6 +5,7 @@
   "source_branch": "master",
   "source_path": "external_data/lipid_corrected_by_harold.csv",
   "source_git_blob_sha": "c9a0a609b8b8c2e56520d50a3587b3476e053648",
+  "upstream_git_blob_sha": "c9a0a609b8b8c2e56520d50a3587b3476e053648",
   "copy_policy": "Exact UTF-8 copy of the upstream CSV as retrieved from GitHub before any D1/D3 outcome query.",
   "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
   "created_before_stage_c_d1_d3_outcomes": true
