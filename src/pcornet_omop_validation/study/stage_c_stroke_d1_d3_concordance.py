@@ -72,10 +72,6 @@ def _sql_list(values: set[str] | frozenset[str] | list[str]) -> str:
     return ",".join("'" + str(v).replace("'", "''") + "'" for v in sorted(values))
 
 
-def _scalar(con, sql: str) -> int:
-    return int(con.execute(text(sql)).scalar_one() or 0)
-
-
 def _pct(n: int, d: int) -> float | None:
     return None if d == 0 else 100.0 * n / d
 
@@ -447,6 +443,12 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
             for phenotype in ("d1", "d3"):
                 primary = _cohort_metrics(con, f"#src_{phenotype}", f"#omop_{phenotype}")
                 portable = _portable_metrics(con, f"#src_{phenotype}", f"#native_{phenotype}")
+                target_img_pred = "e.target_d1_imaging=1" if phenotype == "d1" else "e.target_d3_imaging=1"
+                omop_img_vs_source_pred = (
+                    "e.target_d1_imaging=1 AND s.source_d1_imaging=0"
+                    if phenotype == "d1"
+                    else "e.target_d3_imaging=1 AND s.source_d3_imaging=0"
+                )
 
                 source_only = [dict(r) for r in con.execute(text(f"""
                     WITH s AS (SELECT * FROM #src_{phenotype} WHERE patid NOT IN (SELECT patid FROM #omop_{phenotype}))
@@ -460,8 +462,7 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
                               ELSE 'stroke_diagnosis_not_materialized_or_unlinked'
                             END
                           WHEN NOT EXISTS (
-                            SELECT 1 FROM #omop_enc e WHERE e.patid=s.patid AND e.encounterid=s.encounterid AND
-                              CASE WHEN :ph='d1' THEN e.target_d1_imaging ELSE e.target_d3_imaging END=1
+                            SELECT 1 FROM #omop_enc e WHERE e.patid=s.patid AND e.encounterid=s.encounterid AND {target_img_pred}
                           ) THEN 'imaging_target_semantic_not_materialized_or_unlinked'
                           WHEN EXISTS (
                             SELECT 1 FROM [{source_schema}].[PCORnet_LAB_RESULT_CM] l
@@ -494,7 +495,7 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
                         END AS category
                       FROM s
                     ) q GROUP BY category ORDER BY category
-                """), {"ph": phenotype}).mappings().all()]
+                """)).mappings().all()]
                 for r in source_only:
                     r["patients"] = int(r["patients"] or 0)
 
@@ -506,20 +507,18 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, Any]:
                           WHEN EXISTS (
                             SELECT 1 FROM #omop_enc e
                             JOIN #src_enc s ON s.patid=e.patid AND s.encounterid=e.encounterid
-                            WHERE e.patid=o.patid
-                              AND e.target_lipid=1 AND s.source_lipid=0
+                            WHERE e.patid=o.patid AND e.target_lipid=1 AND s.source_lipid=0
                           ) THEN 'lipid_date_representation_difference'
                           WHEN EXISTS (
                             SELECT 1 FROM #omop_enc e
                             JOIN #src_enc s ON s.patid=e.patid AND s.encounterid=e.encounterid
-                            WHERE e.patid=o.patid AND
-                              ((:ph='d1' AND e.target_d1_imaging=1 AND s.source_d1_imaging=0) OR (:ph='d3' AND e.target_d3_imaging=1 AND s.source_d3_imaging=0))
+                            WHERE e.patid=o.patid AND {omop_img_vs_source_pred}
                           ) THEN 'imaging_date_representation_difference'
                           ELSE 'multiple_qualifying_event_ordering_difference'
                         END AS category
                       FROM o
                     ) q GROUP BY category ORDER BY category
-                """), {"ph": phenotype}).mappings().all()]
+                """)).mappings().all()]
                 for r in omop_only:
                     r["patients"] = int(r["patients"] or 0)
 
