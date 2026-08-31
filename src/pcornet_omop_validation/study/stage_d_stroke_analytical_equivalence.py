@@ -263,8 +263,8 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
             SELECT COUNT_BIG(*) both_positive,
                    SUM(CASE WHEN sd=od THEN 1 ELSE 0 END) exact_date,
                    SUM(CASE WHEN ABS(DATEDIFF(day,sd,od))<=1 THEN 1 ELSE 0 END) within1_date,
-                   AVG(CAST(DATEDIFF(day,(SELECT CAST('19000101' AS date)),sd) AS float)) avg_source_serial,
-                   AVG(CAST(DATEDIFF(day,(SELECT CAST('19000101' AS date)),od) AS float)) avg_omop_serial
+                   AVG(CAST(DATEDIFF(day, CAST('19000101' AS date), sd) AS float)) AS avg_source_serial,
+                   AVG(CAST(DATEDIFF(day, CAST('19000101' AS date), od) AS float)) AS avg_omop_serial
             FROM x
             """)).mappings().one()
             date_metrics = {"both_positive":int(date_row["both_positive"] or 0),"exact_first_event_date":int(date_row["exact_date"] or 0),"within1_first_event_date":int(date_row["within1_date"] or 0)}
