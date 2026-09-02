@@ -35,13 +35,14 @@ flowchart LR
 
 The plotting defaults are aligned with the current Nature research-figure guidance checked on 2026-09-02:
 
-- two-column figure width: **183 mm**;
+- main figures: **89 mm** single-column or **183 mm** double-column width;
+- Extended Data figures: maximum **180 mm** page width;
 - maximum figure height: **170 mm**;
 - body/axis/legend text: **5–7 pt** at final physical size;
 - panel letters: **8 pt bold lowercase**;
 - sans-serif font, preferably **Arial or Helvetica**;
 - editable vector text, not outlined; Matplotlib PDF font type **42**;
-- line/stroke widths kept within approximately **0.25–1 pt**;
+- line/stroke widths enforced within **0.25–1 pt**;
 - RGB, colour-vision-deficiency-friendly palette;
 - no background gridlines, drop shadows, decorative effects, or coloured annotation text;
 - axis lines, tick marks, labels, and units are retained;
@@ -61,7 +62,7 @@ Figure inputs are stored in:
 
 `study_definitions/artifacts/publication_figure_data_v1.json`
 
-This file contains **aggregate values only** and is intentionally versioned. It does not contain patient identifiers, row-level predictions, or protected health information.
+This file contains **aggregate values only** and is intentionally versioned. It does not contain patient identifiers, row-level predictions, or protected health information. Scientific values used in the plots live in this versioned data artifact rather than being hard-coded into panel code.
 
 Figure code is split into:
 
@@ -70,7 +71,7 @@ Figure code is split into:
 - `publication_figure_panels_extended.py` — Extended Data figures;
 - `publication_figures.py` — command-line generation, scientific invariant checks, export, and manifest generation.
 
-The figure runner verifies locked scientific invariants before rendering. For example, it fails if the harmonized Stage C phenotypes are not exactly concordant, if fixed Stage D events/risks are not identical, or if Stage B numeric reconciliation no longer sums correctly.
+The figure runner verifies locked scientific invariants before rendering. For example, it fails if the harmonized Stage C phenotypes are not exactly concordant, if fixed Stage D events/risks are not identical, or if Stage B numeric reconciliation no longer sums correctly. Artwork validation also fails when final-size text or visible line weights fall outside the configured Nature ranges.
 
 ## Installation
 
@@ -100,10 +101,12 @@ python -m pcornet_omop_validation.study.publication_figures
 
 Default outputs are written to `figures/generated/` in:
 
-- PDF — editable vector artwork;
-- EPS — vector format suitable for final/Extended Data workflows;
+- PDF — editable vector artwork for main-figure submission/authoring;
+- EPS — vector artwork and an accepted Nature Extended Data format;
 - SVG — convenient editable/review format;
-- PNG — 600-dpi review/raster preview.
+- PNG — 600-dpi **review preview only**, not the intended Nature submission file.
+
+Nature's current main-figure guidance prefers editable vector PDF/EPS/AI; its current Extended Data guidance accepts JPEG/TIFF/EPS and specifies a 180-mm maximum page width. For this all-vector figure set, use the generated **EPS** files for Extended Data submission rather than the PNG review previews.
 
 Generated files are ignored by Git. The code and versioned aggregate inputs are the reproducible source of truth.
 
@@ -158,7 +161,7 @@ The manifest records:
 - Git SHA of the plotting code;
 - Matplotlib version;
 - actual font used;
-- expected Nature dimensions/typography;
+- main and Extended Data size targets, typography and line-weight constraints;
 - every generated filename, byte size, and SHA-256;
 - aggregate-only status.
 
