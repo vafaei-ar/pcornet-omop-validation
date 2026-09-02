@@ -67,6 +67,7 @@ ENV/
 # PCORnet/OMOP local data and generated results
 results/
 outputs/
+figures/generated/
 *.parquet
 *.zip
 config/local.yaml
