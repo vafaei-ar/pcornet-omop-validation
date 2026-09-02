@@ -2,7 +2,7 @@
 
 Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
-This document supersedes the prior manuscript draft through Stage C by integrating the completed Stage D analytical-equivalence analysis. It preserves the staged interpretation: structural transformation, mapped semantic preservation, phenotype reproducibility, and downstream analytical equivalence are distinct estimands.
+This document supersedes the prior manuscript draft through Stage C by integrating the completed Stage D analytical-equivalence analysis and its protocol-completion supplement. Structural transformation, mapped semantic preservation, phenotype reproducibility, and downstream analytical equivalence are treated as distinct estimands.
 
 ## Working title
 
@@ -38,15 +38,15 @@ D0 selected the earliest qualifying adult inpatient/emergency-to-inpatient ische
 
 Stage D inherited the exact locked Stage C D0 index definition. Outcomes and equivalence margins were frozen before the first cross-CDM outcome query.
 
-The primary endpoint was any ED, emergency-to-inpatient, or inpatient acute-care encounter/visit beginning after index discharge and within 90 days, inclusive, with representation-specific continuous observability through day 90. The secondary endpoint used the same event definition through day 30. An exploratory recurrent ischemic-stroke outcome required an acute-care encounter/visit plus the locked stroke diagnosis semantics during days 31 through 365.
+The primary endpoint was any ED, emergency-to-inpatient, or inpatient acute-care encounter/visit beginning after index discharge and within 90 days, inclusive, with representation-specific continuous observability through day 90. The secondary endpoint used the same event definition through day 30. An exploratory recurrent ischemic-stroke endpoint used the locked stroke code set in qualifying acute-care encounters/visits during days 31 through 365. The implemented recurrent endpoint did not apply a recurrent-diagnosis `PDX=P` filter; a post-outcome `PDX=P` sensitivity was therefore reported separately rather than retroactively redefining the exploratory endpoint.
 
 The primary fixed-index estimand restricted to patients shared by source D0 and lineage-faithful OMOP D0 with the same selected index date and follow-up observability in both representations. This holds cohort membership and index date fixed so differences primarily reflect post-index event representation.
 
 The secondary end-to-end estimand independently used the source D0 and lineage-faithful OMOP D0 cohorts. This intentionally allows upstream phenotype attrition to propagate into the downstream estimate.
 
-Prespecified equivalence required both an absolute risk difference within ±0.5 percentage points and an OMOP/source risk ratio between 0.95 and 1.05. A nonsignificant difference was not treated as evidence of equivalence.
+Prespecified equivalence required both an absolute risk difference within ±0.5 percentage points and an OMOP/source risk ratio between 0.95 and 1.05. A nonsignificant difference was not treated as evidence of equivalence. The locked Stage D definition also prespecified median days to first 90-day event. Because this metric was inadvertently omitted from the original completed JSON, an aggregate-only completion supplement reported it after reproducing the locked denominator and event counts; no cohort or endpoint definition was changed.
 
-A post-outcome recurrent-stroke mechanism diagnostic was conducted only after the exploratory discordance was observed. It reproduced the locked recurrent endpoint and decomposed discordance into visit lineage, condition lineage, temporal-window, and boundary mechanisms without writing patient identifiers.
+A post-outcome recurrent-stroke mechanism diagnostic was conducted only after the exploratory discordance was observed. It reproduced the implemented recurrent endpoint and decomposed discordance into visit lineage, condition lineage, temporal-window, and boundary mechanisms without writing patient identifiers. The recurrent `PDX=P` analysis is also explicitly post-outcome sensitivity analysis.
 
 ## Reproducibility and disclosure
 
@@ -82,7 +82,7 @@ Stage D reproduced the D0 anchors: 9,815 source D0 patients, 6,001 lineage-faith
 
 Among 3,822 patients observable through 90 days in both representations, PCORnet and OMOP each identified 1,132 acute-care events. Risk was 29.6180% in both representations. The absolute risk difference was 0.0000 percentage points and the OMOP/source risk ratio was 1.0000. There were no source-only or OMOP-only positive labels. Both prespecified equivalence margins were met.
 
-Among all 1,132 patients positive in both representations, first-event dates matched exactly for all 1,132 and were within one day for all 1,132.
+Among all 1,132 patients positive in both representations, first-event dates matched exactly for all 1,132 and were within one day for all 1,132. The prespecified median time to first event was 26.0 days in PCORnet and 26.0 days in OMOP. This median was reported in a protocol-completion supplement after the supplement reproduced the locked 3,822-patient denominator and 1,132 events per representation.
 
 ### Secondary fixed-index 30-day outcome
 
@@ -100,11 +100,13 @@ The contrast between exact fixed-index equivalence and failed end-to-end equival
 
 ### Exploratory recurrent ischemic stroke
 
-Among 2,531 fixed-index patients observable through 365 days, PCORnet identified 263 recurrent ischemic-stroke events and OMOP identified 258. Labels agreed for 2,526 patients, or 99.80%. Five patients were source-only positive and none were OMOP-only positive.
+For the implemented exploratory endpoint, among 2,531 fixed-index patients observable through 365 days, PCORnet identified 263 recurrent ischemic-stroke events and OMOP identified 258. Labels agreed for 2,526 patients, or 99.80%. Five patients were source-only positive and none were OMOP-only positive.
 
 The post-outcome mechanism diagnostic showed that all five discordant patients retained the encounter-to-visit crosswalk, an OMOP visit, an acute-care OMOP visit concept, and a visit within the locked day-31 through day-365 window. All five lacked a DIAGNOSIS-to-condition crosswalk for the qualifying recurrent stroke diagnosis and therefore lacked a linked OMOP condition. None occurred at the day-31 or day-365 boundary. Their source recurrent events occurred between days 60 and 345. Index discharge dates were exactly concordant for all 2,531 eligible patients.
 
 Across 2,144 source recurrent-stroke candidate diagnosis rows, all 2,144 retained visit lineage and temporal qualification, whereas 1,978 retained diagnosis-to-condition lineage. Thus, recurrent-stroke discordance arose from diagnosis materialization/condition-lineage loss rather than encounter representation or temporal-window drift.
+
+In the post-outcome `PDX=P` sensitivity, the same 2,531 eligible patients yielded 170 recurrent events in PCORnet and 170 in OMOP, with complete label agreement (2,531/2,531), zero source-only positives, and zero OMOP-only positives. This sensitivity resolves the ambiguity in the phrase "locked ischemic-stroke diagnosis semantics" but is not the originally implemented recurrent endpoint.
 
 # Integrated interpretation
 
@@ -129,18 +131,21 @@ This distinction is the main scientific contribution of the staged design. The t
 | End-to-end 90 d | 6,508 | 3,822 | 1,798 | 1,132 | 27.628% | 29.618% | +1.990 | 1.072 | Not met |
 | End-to-end 30 d | 7,277 | 4,374 | 1,178 | 753 | 16.188% | 17.215% | +1.027 | 1.063 | Not met |
 
+Additional primary time-to-event result: median days to first 90-day event was 26.0 in both PCORnet and OMOP, with exact first-event-date agreement in all 1,132 both-positive patients.
+
 # Limitations
 
 1. The study evaluates one source dataset and one audited PCORnet-to-OMOP implementation. External generalizability remains unknown.
 2. Native OMOP cannot reproduce all source-model semantics, including PCORnet `PDX`, without lineage or additional representation.
 3. Vocabulary coverage remains incomplete for some drug codes, units, categorical values, and a subset of locked lipid LOINCs.
-4. Stage C mechanism audits and the recurrent-stroke Stage D diagnostic were designed after observing the primary results and are explanatory, not prespecified confirmatory analyses.
-5. Stage D demonstrates analytical equivalence for prespecified acute-care risk endpoints conditional on a fixed index cohort. It does not establish universal equivalence for all future outcomes, exposures, models, or effect estimates.
-6. End-to-end risk differences should not be interpreted as an intrinsic OMOP CDM effect. They reflect this specific interaction between source phenotype semantics and the frozen ETL eligibility policy.
+4. Stage C mechanism audits, the recurrent-stroke Stage D diagnostic, and the recurrent `PDX=P` sensitivity were designed after observing the primary results and are explanatory/sensitivity analyses, not prespecified confirmatory analyses.
+5. The median time-to-first-event metric was prespecified but omitted from the original Stage D JSON; it was subsequently completed without changing the locked population or event definition.
+6. Stage D demonstrates analytical equivalence for prespecified acute-care risk endpoints conditional on a fixed index cohort. It does not establish universal equivalence for all future outcomes, exposures, models, or effect estimates.
+7. End-to-end risk differences should not be interpreted as an intrinsic OMOP CDM effect. They reflect this specific interaction between source phenotype semantics and the frozen ETL eligibility policy.
 
 # Suggested abstract results paragraph through Stage D
 
-In structural validation, the main explicit source exclusions were 3,459,785 diagnoses missing `DX_DATE` and 16,924 procedures missing `PX_DATE`; one-to-many and cross-domain vocabulary routes were preserved rather than forced into one-to-one row correspondence. All mapped clinical semantic events in the prespecified Stage B denominators were found in OMOP, with no unexplained residual discordance after provenance and value-expression audits. Ischemic-stroke phenotype Jaccard was 0.611 for D0, 0.608 for D1, and 0.622 for D3; all D1/D3 source-only patients were explained by diagnosis records with null `DX_DATE` that the source phenotype could use through encounter-date fallback but the frozen ETL excluded. In Stage D, fixed-index 90-day and 30-day acute-care risks were identical between PCORnet and OMOP, with risk ratios of 1.000 and absolute differences of 0.000 percentage points, meeting both prespecified equivalence margins. In contrast, end-to-end equivalence failed at 90 and 30 days because the earlier phenotype attrition changed the eligible OMOP cohort. Exploratory recurrent-stroke labels agreed in 99.80% of fixed-index patients; all five source-only recurrent events lacked diagnosis-to-condition lineage while retaining visit lineage and correct temporal placement.
+In structural validation, the main explicit source exclusions were 3,459,785 diagnoses missing `DX_DATE` and 16,924 procedures missing `PX_DATE`; one-to-many and cross-domain vocabulary routes were preserved rather than forced into one-to-one row correspondence. All mapped clinical semantic events in the prespecified Stage B denominators were found in OMOP, with no unexplained residual discordance after provenance and value-expression audits. Ischemic-stroke phenotype Jaccard was 0.611 for D0, 0.608 for D1, and 0.622 for D3; all D1/D3 source-only patients were explained by diagnosis records with null `DX_DATE` that the source phenotype could use through encounter-date fallback but the frozen ETL excluded. In Stage D, fixed-index 90-day and 30-day acute-care risks were identical between PCORnet and OMOP, with risk ratios of 1.000 and absolute differences of 0.000 percentage points, meeting both prespecified equivalence margins; median time to first 90-day event was 26 days in both representations and all 1,132 both-positive patients had exactly matching first-event dates. In contrast, end-to-end equivalence failed at 90 and 30 days because the earlier phenotype attrition changed the eligible OMOP cohort. The implemented exploratory recurrent-stroke endpoint showed 99.80% label agreement with five source-only events attributable to absent diagnosis-to-condition lineage, whereas a post-outcome `PDX=P` sensitivity was perfectly concordant at 170 events in each representation.
 
 # Suggested conclusion through Stage D
 
