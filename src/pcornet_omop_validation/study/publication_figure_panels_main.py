@@ -70,11 +70,11 @@ def figure2_phenotype_reproducibility(data: dict) -> plt.Figure:
     steps = [
         (0.00, 0.63, 0.25, "Selected stroke diagnosis\nhas null DX_DATE", COLORS["light_orange"], 5.0),
         (0.34, 0.63, 0.32, "Source uses encounter-date\nfallback; frozen ETL\nexcludes diagnosis", "white", 5.0),
-        (0.75, 0.63, 0.25, "No diagnosis lineage\nfor selected episode", COLORS["light_orange"], 5.0),
+        (0.74, 0.63, 0.24, "No diagnosis lineage\nfor selected episode", COLORS["light_orange"], 5.0),
     ]
     for x, yy, w, text, fc, fs in steps:
         add_box(ax, (x, yy), w, 0.20, text, facecolor=fc, fontsize=fs, weight="bold" if fc != "white" else "normal")
-    arrow(ax, (0.25, 0.73), (0.34, 0.73), COLORS["mid_gray"]); arrow(ax, (0.66, 0.73), (0.75, 0.73), COLORS["mid_gray"])
+    arrow(ax, (0.25, 0.73), (0.34, 0.73), COLORS["mid_gray"]); arrow(ax, (0.66, 0.73), (0.74, 0.73), COLORS["mid_gray"])
     add_box(ax, (0.12, 0.20), 0.76, 0.26, "Symmetric nonmissing-DX_DATE eligibility\nD0/D1/D3: Jaccard = 1.000\nIndex dates: 100% exact", facecolor=COLORS["light_green"], fontsize=5.2, weight="bold"); arrow(ax, (0.50, 0.63), (0.50, 0.47), COLORS["harmonized"])
     return fig
 
