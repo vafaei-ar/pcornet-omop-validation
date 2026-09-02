@@ -16,6 +16,7 @@ Collaborators and students should read the numbered documentation in order:
 4. [`docs/04_REPRODUCIBILITY_AND_RERUN.md`](docs/04_REPRODUCIBILITY_AND_RERUN.md)
 5. [`docs/05_CODE_REVIEW_GUIDE.md`](docs/05_CODE_REVIEW_GUIDE.md)
 6. [`docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md`](docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md)
+7. [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md)
 
 Older development notes, lock records, and superseded manuscript fragments are retained under `docs/archive/` for provenance but are not required reading.
 
@@ -37,7 +38,8 @@ flowchart LR
 - Canonical branch: `main`
 - Frozen publication ETL commit: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 - Stages A–E: complete for routine publication work
-- Generated `results/`: intentionally gitignored
+- Publication figures: reproducible Python pipeline with versioned aggregate inputs
+- Generated `results/` and `figures/generated/`: intentionally gitignored
 - Patient-level outputs and credentials: must not be committed
 
 The key empirical finding is that conditional fidelity was extremely high when the same patients and index dates were held fixed, while end-to-end estimates differed because an upstream diagnosis-date eligibility policy changed cohort membership.
@@ -48,7 +50,7 @@ The key empirical finding is that conditional fidelity was extremely high when t
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e '.[etl,analysis,dev]'
+python -m pip install -e '.[etl,analysis,figures,dev]'
 ```
 
 Create a local configuration from the tracked example and keep secrets out of Git:
@@ -58,12 +60,21 @@ cp config/etl.example.yaml config/etl.yaml
 export OMOP_SQL_PASSWORD='your-password'
 ```
 
+## Generate publication figures
+
+```bash
+pcornet-omop-figures
+```
+
+The plotting pipeline produces vector PDF/EPS/SVG plus 600-dpi PNG review files from the frozen aggregate figure input. See [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md) for final-size typography, Nature-oriented artwork checks, figure guardrails, font requirements, and the reproducibility manifest.
+
 ## Code orientation
 
 - ETL implementation: `src/pcornet_omop_validation/etl/`
 - Study analyses: `src/pcornet_omop_validation/study/`
 - Locked scientific definitions: `study_definitions/`
-- Current documentation: `docs/01_...` through `docs/06_...`
+- Publication figure code: `src/pcornet_omop_validation/study/publication_figure*.py`
+- Current documentation: `docs/01_...` through `docs/07_...`
 - Historical provenance: `docs/archive/`
 
 Each ETL/study code directory also contains a README explaining scientific conventions and how to review the modules.
