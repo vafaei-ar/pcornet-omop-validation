@@ -169,13 +169,15 @@ This allows a collaborator or reviewer to determine exactly which code/data/font
 
 ## Figure-specific interpretation guardrails
 
-**Figure 2:** the harmonized `DX_DATE` result is a post-freeze sensitivity. It demonstrates residual representation concordance after symmetric eligibility; it does not replace the source-faithful primary phenotype result.
+**Figure 2:** the harmonized `DX_DATE` result is a post-freeze sensitivity. It demonstrates residual representation concordance after symmetric eligibility; it does not replace the source-faithful primary phenotype result. Panels **b** and **c** intentionally use restricted x-axis ranges to resolve differences near complete agreement; the manuscript figure legend must disclose this magnification explicitly.
 
 **Figure 3:** shaded areas are the prespecified Stage D equivalence margins (absolute risk difference ±0.5 percentage points; risk ratio 0.95–1.05). The fixed and end-to-end rows answer different scientific questions.
 
 **Figure 4:** the dashed line in panel a marks the prespecified Stage E negligible SMD threshold of 0.10. End-to-end prediction differences combine cohort selection and feature-distribution differences; they are not a pure intrinsic OMOP model effect.
 
 **Extended Data Fig. 1:** exact mapped semantic agreement and vocabulary/coverage limitations are deliberately shown separately. A concept-zero or unresolved route is not counted as a mapped-event disagreement.
+
+**Extended Data Fig. 2:** panels **a** and **b** intentionally use restricted x-axis ranges to resolve near-exact odds-ratio and probability-correlation agreement. The Extended Data legend must state that these axes are restricted.
 
 **Extended Data Fig. 3:** ideal calibration is slope = 1 and intercept = 0. Calibration differences are descriptive reproducibility results; no calibration-equivalence margin was prespecified for Stage E v1.
 
