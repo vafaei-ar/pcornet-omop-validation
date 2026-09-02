@@ -11,8 +11,8 @@ import matplotlib
 from .publication_figure_panels_extended import EXTENDED_FIGURE_BUILDERS
 from .publication_figure_panels_main import MAIN_FIGURE_BUILDERS
 from .publication_figure_style import (
-    DOUBLE_COLUMN_MM, SINGLE_COLUMN_MM, apply_nature_style, git_sha, resolve_font,
-    save_figure, sha256_file,
+    DOUBLE_COLUMN_MM, EXTENDED_DATA_WIDTH_MM, MAX_FIGURE_HEIGHT_MM, SINGLE_COLUMN_MM,
+    apply_nature_style, git_sha, resolve_font, save_figure, sha256_file,
 )
 
 BUILDERS = {**MAIN_FIGURE_BUILDERS, **EXTENDED_FIGURE_BUILDERS}
@@ -49,7 +49,16 @@ def write_manifest(output_dir: Path, data_path: Path, font_name: str, files: lis
         "script_git_sha": git_sha(),
         "matplotlib_version": matplotlib.__version__,
         "font_used": font_name,
-        "nature_target": {"double_column_width_mm": DOUBLE_COLUMN_MM, "single_column_width_mm": SINGLE_COLUMN_MM, "body_font_pt": "5-7", "panel_label_pt": 8, "vector_text_editable": True},
+        "nature_target": {
+            "main_single_column_width_mm": SINGLE_COLUMN_MM,
+            "main_double_column_width_mm": DOUBLE_COLUMN_MM,
+            "extended_data_max_width_mm": EXTENDED_DATA_WIDTH_MM,
+            "max_height_mm": MAX_FIGURE_HEIGHT_MM,
+            "body_font_pt": "5-7",
+            "panel_label_pt": 8,
+            "line_weight_pt": "0.25-1",
+            "vector_text_editable": True,
+        },
         "files": [{"path": p.name, "sha256": sha256_file(p), "bytes": p.stat().st_size} for p in files],
         "aggregate_only": True,
     }
