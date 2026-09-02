@@ -1,0 +1,86 @@
+{
+  "study_definition": "stage-e-statistical-model-reproducibility-v1",
+  "status": "prespecified_before_stage_e_outcome_model_queries",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Test whether descriptive population characteristics, covariate distributions, association estimates, and prediction-model performance are reproducible between PCORnet and the frozen lineage-faithful OMOP representation, separating fixed-cohort representation effects from end-to-end cohort-selection effects.",
+  "index_cohort": {
+    "definition": "Locked Stage C D0 ischemic-stroke cohort",
+    "source_path": "study_definitions/stage_c_stroke_d0_v1.json",
+    "primary_fixed_population": "Patients shared by source and lineage-faithful OMOP D0 with identical index dates and 90-day observability in both representations.",
+    "secondary_end_to_end_population": "Representation-specific source D0 and lineage-faithful OMOP D0 patients with 90-day observability in that representation."
+  },
+  "outcome": {
+    "name": "90-day acute-care reutilization",
+    "definition": "Same locked Stage D primary binary outcome: any ED, EI, or IP encounter/visit beginning after index discharge through day 90 inclusive.",
+    "observability": "Continuous source ENROLLMENT or target observation_period through day 90, as appropriate to the representation."
+  },
+  "features": {
+    "core_model_features": [
+      "age_at_index_years",
+      "female_indicator",
+      "index_length_of_stay_days",
+      "prior_365d_acute_care_encounter_count",
+      "prior_365d_all_encounter_count",
+      "prior_365d_ischemic_stroke_indicator"
+    ],
+    "feature_rule": "Construct each feature independently from native PCORnet and lineage-faithful/native OMOP tables using matched conceptual definitions. Do not use target lineage to force feature equality in the primary representation-level feature comparison, except for cohort linkage and the lineage-faithful index definition inherited from Stage D.",
+    "missingness": "Report missingness by feature and representation. Continuous model features use training-set median imputation; binary features use training-set mode imputation. Missingness indicators are not added in v1.",
+    "scaling": "For logistic models, continuous predictors are standardized using training-set mean and standard deviation within each representation."
+  },
+  "descriptive_reproducibility": {
+    "continuous_metrics": ["n", "missing_n", "mean", "sd", "median", "q1", "q3", "min", "max", "standardized_mean_difference"],
+    "binary_metrics": ["n", "missing_n", "count_1", "proportion_1", "standardized_mean_difference"],
+    "fixed_cohort_patient_level_metrics": ["exact_agreement_count", "mean_absolute_difference", "median_absolute_difference", "spearman_correlation_when_defined"],
+    "interpretation_thresholds": {
+      "standardized_mean_difference_negligible": 0.1,
+      "standardized_mean_difference_moderate": 0.2
+    }
+  },
+  "association_model": {
+    "model": "multivariable logistic regression",
+    "outcome": "90-day acute-care reutilization",
+    "predictors": "all core_model_features",
+    "reported_metrics": ["coefficient", "odds_ratio", "95_percent_confidence_interval", "coefficient_difference", "odds_ratio_ratio_omop_over_source"]
+  },
+  "prediction_models": [
+    {
+      "name": "logistic_regression",
+      "implementation": "scikit-learn LogisticRegression with effectively unpenalized or very weak L2 regularization if solver requires a finite penalty",
+      "random_state": 20260902
+    },
+    {
+      "name": "ridge_logistic_regression",
+      "implementation": "scikit-learn LogisticRegression with L2 penalty and C=1.0",
+      "random_state": 20260902
+    },
+    {
+      "name": "hist_gradient_boosting",
+      "implementation": "scikit-learn HistGradientBoostingClassifier with fixed random_state and otherwise documented defaults",
+      "random_state": 20260902
+    }
+  ],
+  "prediction_evaluation": {
+    "split": "Deterministic 70/30 patient-level train/test split based on a stable SHA-256 hash of the source patient identifier. The hash is used transiently and patient identifiers are not written to aggregate outputs.",
+    "fixed_cohort_rule": "Use the same hashed patient split in PCORnet and OMOP for shared fixed-index patients.",
+    "end_to_end_rule": "Apply the same hash rule independently to representation-specific cohorts.",
+    "metrics": ["AUROC", "AUPRC", "Brier_score", "calibration_intercept", "calibration_slope", "test_prevalence"],
+    "fixed_cohort_probability_agreement": ["pearson_correlation", "spearman_correlation", "mean_absolute_difference", "median_absolute_difference", "max_absolute_difference"]
+  },
+  "comparison_hierarchy": {
+    "primary": "Fixed-cohort representation-level reproducibility: same patients, index dates, and outcome observability; features are constructed independently in each CDM.",
+    "secondary": "End-to-end reproducibility: independently selected source and OMOP cohorts, allowing cohort attrition and feature availability to affect results."
+  },
+  "interpretation_guardrails": [
+    "Model-performance similarity does not prove feature-level semantic equivalence.",
+    "Model-performance difference does not by itself identify an ETL defect.",
+    "Fixed-cohort differences primarily assess representation/feature construction effects; end-to-end differences combine cohort selection and representation effects.",
+    "Stage E is an extension beyond the analytically closed Stages A-D and must be reported as such.",
+    "No prediction-model tuning may use cross-CDM agreement as an optimization target."
+  ],
+  "disclosure": {
+    "aggregate_outputs_only": true,
+    "patient_identifiers_written": false,
+    "row_level_predictions_written": false,
+    "row_level_phi_written": false
+  }
+}
