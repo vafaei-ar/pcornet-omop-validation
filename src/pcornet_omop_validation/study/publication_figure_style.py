@@ -15,6 +15,8 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 MM_PER_INCH = 25.4
 DOUBLE_COLUMN_MM = 183.0
 SINGLE_COLUMN_MM = 89.0
+EXTENDED_DATA_WIDTH_MM = 180.0
+MAX_FIGURE_HEIGHT_MM = 170.0
 
 # Okabe-Ito color-vision-deficiency-friendly palette.
 COLORS = {
@@ -117,7 +119,7 @@ def clean_axis(ax: plt.Axes, grid_axis: str | None = None) -> None:
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     # Nature explicitly advises against background gridlines. ``grid_axis`` is kept in
-    # the signature so older panel code remains readable, but grids are always disabled.
+    # the signature so panel code remains readable, but grids are always disabled.
     ax.grid(False)
 
 
@@ -180,8 +182,11 @@ def arrow(
 def validate_figure_artwork(fig: plt.Figure) -> None:
     """Enforce final-size Nature constraints before export."""
     width_mm, height_mm = [v * MM_PER_INCH for v in fig.get_size_inches()]
-    if width_mm > DOUBLE_COLUMN_MM + 0.2 or height_mm > 170.2:
-        raise ValueError(f"Figure exceeds 183 x 170 mm envelope: {width_mm:.1f} x {height_mm:.1f} mm")
+    if width_mm > DOUBLE_COLUMN_MM + 0.2 or height_mm > MAX_FIGURE_HEIGHT_MM + 0.2:
+        raise ValueError(
+            f"Figure exceeds 183 x 170 mm main-figure envelope: "
+            f"{width_mm:.1f} x {height_mm:.1f} mm"
+        )
     for text in fig.findobj(match=lambda x: isinstance(x, matplotlib.text.Text)):
         if not text.get_text().strip():
             continue
@@ -191,6 +196,12 @@ def validate_figure_artwork(fig: plt.Figure) -> None:
                 raise ValueError(f"Panel label must be 8 pt: {text.get_text()!r}")
         elif not (5.0 <= size <= 7.0):
             raise ValueError(f"Non-panel text outside 5-7 pt ({size}): {text.get_text()!r}")
+    for line in fig.findobj(match=lambda x: isinstance(x, matplotlib.lines.Line2D)):
+        if not line.get_visible() or line.get_linestyle() in {"None", "", " ", None}:
+            continue
+        width = float(line.get_linewidth())
+        if not (0.25 <= width <= 1.0):
+            raise ValueError(f"Visible line width outside 0.25-1 pt: {width}")
     if any(ax.images for ax in fig.axes):
         raise ValueError("Unexpected raster image embedded in vector publication figure")
 
