@@ -21,64 +21,87 @@ def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
     b = data["stage_b"]
     components = list(b["mapped_exact_counts"])
     counts = [b["mapped_exact_counts"][c] for c in components]
+    component_labels = [
+        "Encounter",
+        "Death",
+        "Condition",
+        "Procedure",
+        "Drug",
+        "Measurement/\nObservation",
+    ]
     y = np.arange(len(components))[::-1]
 
-    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(102)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(88)))
     gs = fig.add_gridspec(
-        1, 3, left=0.155, right=0.985, top=0.925, bottom=0.17,
-        wspace=0.46, width_ratios=[1.05, 0.82, 1.08],
+        1,
+        3,
+        left=0.17,
+        right=0.985,
+        top=0.91,
+        bottom=0.20,
+        wspace=0.42,
+        width_ratios=[1.16, 0.68, 1.16],
     )
 
     ax = fig.add_subplot(gs[0, 0])
-    ax.scatter(counts, y, s=27, color=COLORS["fixed"], zorder=3)
+    ax.scatter(counts, y, s=31, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(counts, y):
-        direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], 4)
+        direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], 5)
     ax.set_xscale("log")
-    ax.set(yticks=y, yticklabels=components, xlabel="Exact mapped rows (log scale)")
+    ax.set(yticks=y, yticklabels=component_labels, xlabel="Exact mapped rows\n(log scale)")
     ax.set_xlim(min(counts) / 1.7, max(counts) * 1.7)
     ax.set_title("Mapped semantic fidelity", loc="left")
-    clean_axis(ax, "x")
-    ax.text(0, -0.14, "100% agreement in each locked mapped denominator", transform=ax.transAxes, fontsize=5.8, va="top")
-    panel_label(ax, "a", -0.34)
+    clean_axis(ax)
+    ax.text(
+        0,
+        -0.18,
+        "100% agreement in each locked\nmapped denominator",
+        transform=ax.transAxes,
+        fontsize=6.5,
+        va="top",
+        linespacing=1.05,
+    )
+    panel_label(ax, "a", -0.38)
 
     ax = fig.add_subplot(gs[0, 1])
     n = b["numeric"]
     exact = 100 * n["direct_exact"] / n["comparable"]
-    ax.barh([1], [exact], color=COLORS["fixed"], height=0.38)
-    ax.barh([1], [100 - exact], left=[exact], color=COLORS["light_gray"], height=0.38)
-    ax.barh([0], [100], color=COLORS["accent"], height=0.38)
+    ax.barh([1], [exact], color=COLORS["fixed"], height=0.42)
+    ax.barh([1], [100 - exact], left=[exact], color=COLORS["light_gray"], height=0.42)
+    ax.barh([0], [100], color=COLORS["accent"], height=0.42)
     ax.set(
         xlim=(0, 103),
         yticks=[1, 0],
         yticklabels=["Directly exact\namong comparable", "Explained among\ninitial differences"],
         xlabel="Rows (%)",
     )
-    ax.set_title("Numeric reconciliation", loc="left")
-    clean_axis(ax, "x")
+    ax.set_title("Numeric\nreconciliation", loc="left")
+    clean_axis(ax)
     direct_value(ax, exact, 1, f"{exact:.3f}%", COLORS["dark"], 4)
     direct_value(ax, 100, 0, "100%", COLORS["dark"], 4)
-    panel_label(ax, "b", -0.32)
+    panel_label(ax, "b", -0.36)
 
     ax = fig.add_subplot(gs[0, 2])
     lim = b["coverage_limitations"]
     label_map = {
-        "Condition concept-zero fallback": "Condition concept-0",
-        "Procedure unresolved routes": "Procedure unresolved",
-        "Drug concept-zero routes": "Drug concept-0",
-        "Measurement/Observation unresolved": "Meas./obs. unresolved",
+        "Condition concept-zero fallback": "Condition\nconcept-0",
+        "Procedure unresolved routes": "Procedure\nunresolved",
+        "Drug concept-zero routes": "Drug\nconcept-0",
+        "Measurement/Observation unresolved": "Meas./obs.\nunresolved",
     }
     names = [label_map[k] for k in lim]
     vals = list(lim.values())
     yy = np.arange(len(names))[::-1]
-    ax.scatter(vals, yy, s=27, color=COLORS["end"], zorder=3)
+    ax.scatter(vals, yy, s=31, color=COLORS["end"], zorder=3)
     for x, yi in zip(vals, yy):
-        direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], -4 if x > 1e7 else 4)
+        dx = -5 if x == max(vals) else 5
+        direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], dx)
     ax.set_xscale("log")
-    ax.set(yticks=yy, yticklabels=names, xlabel="Rows/routes (log scale)")
+    ax.set(yticks=yy, yticklabels=names, xlabel="Rows/routes\n(log scale)")
     ax.set_xlim(min(vals) / 1.7, max(vals) * 1.7)
-    ax.set_title("Coverage limitations kept separate", loc="left")
-    clean_axis(ax, "x")
-    panel_label(ax, "c", -0.32)
+    ax.set_title("Coverage limitations\nkept separate", loc="left")
+    clean_axis(ax)
+    panel_label(ax, "c", -0.35)
     return fig
 
 
@@ -87,6 +110,14 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     d = data["stage_d"]["recurrent"]
     ratios = e["fixed_association_or_ratio_omop_over_source"]
     features = list(ratios)
+    feature_labels = [
+        "Age",
+        "Female",
+        "Index length\nof stay",
+        "Prior acute-care\nencounters",
+        "Prior all\nencounters",
+        "Prior ischemic\nstroke",
+    ]
     vals = list(ratios.values())
     y = np.arange(len(features))[::-1]
     models = list(e["models"])
@@ -94,32 +125,39 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     corr = [e["models"][m]["fixed_probability_pearson"] for m in models]
     ym = np.arange(3)[::-1]
 
-    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(94)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(88)))
     gs = fig.add_gridspec(
-        1, 3, left=0.15, right=0.985, top=0.925, bottom=0.17,
-        wspace=0.42, width_ratios=[1.05, 0.92, 1.05],
+        1,
+        3,
+        left=0.18,
+        right=0.985,
+        top=0.91,
+        bottom=0.20,
+        wspace=0.38,
+        width_ratios=[1.02, 0.92, 1.06],
     )
 
     ax = fig.add_subplot(gs[0, 0])
     ax.axvline(1, color=COLORS["dark"], linewidth=0.6)
-    ax.scatter(vals, y, s=27, color=COLORS["fixed"], zorder=3)
-    ax.set(yticks=y, yticklabels=features, xlabel="OMOP / PCORnet odds-ratio ratio")
+    ax.scatter(vals, y, s=31, color=COLORS["fixed"], zorder=3)
+    ax.set(yticks=y, yticklabels=feature_labels, xlabel="OMOP / PCORnet\nodds-ratio ratio")
     ax.set_xlim(*padded_limits(vals, pad_frac=0.14, min_pad=0.00006, include=[1.0]))
     ax.ticklabel_format(axis="x", style="plain", useOffset=False)
     ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f"))
     ax.set_title("Fixed-cohort associations", loc="left")
-    clean_axis(ax, "x")
-    panel_label(ax, "a", -0.34)
+    clean_axis(ax)
+    panel_label(ax, "a", -0.42)
 
     ax = fig.add_subplot(gs[0, 1])
-    ax.scatter(corr, ym, s=27, color=COLORS["fixed"], zorder=3)
+    ax.scatter(corr, ym, s=31, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(corr, ym):
-        direct_value(ax, x, yi, f"{x:.6f}", COLORS["dark"], -4)
+        dx = 5 if x < 0.98 else -5
+        direct_value(ax, x, yi, f"{x:.6f}", COLORS["dark"], dx)
     ax.set(yticks=ym, yticklabels=short, xlabel="Pearson correlation")
-    ax.set_xlim(*padded_limits(corr, pad_frac=0.14, min_pad=0.008, include=[1.0]))
-    ax.set_title("Fixed prediction agreement", loc="left")
-    clean_axis(ax, "x")
-    panel_label(ax, "b", -0.28)
+    ax.set_xlim(*padded_limits(corr, pad_frac=0.18, min_pad=0.008, include=[1.0]))
+    ax.set_title("Fixed prediction\nagreement", loc="left")
+    clean_axis(ax)
+    panel_label(ax, "b", -0.30)
 
     ax = fig.add_subplot(gs[0, 2])
     groups = ["Primary recurrent\nstroke-code endpoint", "Post-outcome\nPDX=P sensitivity"]
@@ -128,18 +166,21 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     om = [d["primary_omop_events"], d["pdx_primary_sensitivity_omop_events"]]
     for yi, a, b in zip(yy, pc, om):
         ax.plot([a, b], [yi, yi], color=COLORS["mid_gray"])
-        ax.scatter(a, yi + 0.035, s=27, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, zorder=3)
-        ax.scatter(b, yi - 0.035, s=23, color=COLORS["omop"], zorder=4)
-        direct_value(ax, a, yi + 0.13, f"{a}", COLORS["pcornet"], 0)
-        direct_value(ax, b, yi - 0.13, f"{b}", COLORS["omop"], 0)
-    ax.set(yticks=yy, yticklabels=groups, xlabel="Patients with recurrent event")
-    ax.set_xlim(*padded_limits(pc + om, pad_frac=0.14, min_pad=6))
-    ax.set_title("Recurrent-stroke sensitivity", loc="left")
-    clean_axis(ax, "x")
+        ax.scatter(a, yi + 0.035, s=31, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, zorder=3)
+        ax.scatter(b, yi - 0.035, s=26, color=COLORS["omop"], zorder=4)
+        if a == b:
+            direct_value(ax, a, yi + 0.16, f"{a}", COLORS["dark"], 0)
+        else:
+            direct_value(ax, a, yi + 0.16, f"{a}", COLORS["dark"], 0)
+            direct_value(ax, b, yi - 0.16, f"{b}", COLORS["dark"], 0)
+    ax.set(yticks=yy, yticklabels=groups, xlabel="Patients with\nrecurrent event")
+    ax.set_xlim(*padded_limits(pc + om, pad_frac=0.16, min_pad=8))
+    ax.set_title("Recurrent-stroke\nsensitivity", loc="left")
+    clean_axis(ax)
     ax.scatter([], [], facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, label="PCORnet")
     ax.scatter([], [], color=COLORS["omop"], label="OMOP")
-    ax.legend(loc="upper left", ncols=2, handletextpad=0.4, columnspacing=0.8)
-    panel_label(ax, "c", -0.30)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.52, 1.02), ncols=2, handletextpad=0.4, columnspacing=0.7)
+    panel_label(ax, "c", -0.34)
     return fig
 
 
@@ -156,10 +197,15 @@ def extended_data_figure3_calibration(data: dict) -> plt.Figure:
     labels = ["Logistic", "Ridge logistic", "Gradient boosting"]
     y = np.arange(len(models))[::-1]
 
-    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(82)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(78)))
     gs = fig.add_gridspec(
-        1, 2, left=0.12, right=0.985, top=0.90, bottom=0.22,
-        wspace=0.30,
+        1,
+        2,
+        left=0.13,
+        right=0.985,
+        top=0.88,
+        bottom=0.25,
+        wspace=0.28,
     )
 
     slope_values: list[float] = []
@@ -175,23 +221,23 @@ def extended_data_figure3_calibration(data: dict) -> plt.Figure:
         fixed = cal[m]["fixed"]
         end = cal[m]["end_to_end"]
         ax.plot([fixed["pcornet_slope"], fixed["omop_slope"]], [yi + 0.13, yi + 0.13], color=COLORS["mid_gray"], linewidth=0.55)
-        ax.scatter(fixed["pcornet_slope"], yi + 0.16, s=26, facecolor="white", edgecolor=COLORS["fixed"], linewidth=0.8, zorder=4)
-        ax.scatter(fixed["omop_slope"], yi + 0.10, s=21, color=COLORS["fixed"], zorder=5)
+        ax.scatter(fixed["pcornet_slope"], yi + 0.16, s=30, facecolor="white", edgecolor=COLORS["fixed"], linewidth=0.8, zorder=4)
+        ax.scatter(fixed["omop_slope"], yi + 0.10, s=24, color=COLORS["fixed"], zorder=5)
         ax.plot([end["pcornet_slope"], end["omop_slope"]], [yi - 0.13, yi - 0.13], color=COLORS["mid_gray"], linewidth=0.55)
-        ax.scatter(end["pcornet_slope"], yi - 0.10, s=26, facecolor="white", edgecolor=COLORS["end"], linewidth=0.8, zorder=4)
-        ax.scatter(end["omop_slope"], yi - 0.16, s=21, color=COLORS["end"], zorder=5)
+        ax.scatter(end["pcornet_slope"], yi - 0.10, s=30, facecolor="white", edgecolor=COLORS["end"], linewidth=0.8, zorder=4)
+        ax.scatter(end["omop_slope"], yi - 0.16, s=24, color=COLORS["end"], zorder=5)
     ax.set(yticks=y, yticklabels=labels, xlabel="Calibration slope")
     ax.set_xlim(*padded_limits(slope_values, pad_frac=0.12, min_pad=0.04, include=[1.0]))
     ax.set_title("Calibration slope", loc="left")
-    clean_axis(ax, "x")
+    clean_axis(ax)
     key = [
         matplotlib.lines.Line2D([], [], marker="o", linestyle="none", markerfacecolor="white", markeredgecolor=COLORS["dark"], markeredgewidth=0.8, label="PCORnet"),
         matplotlib.lines.Line2D([], [], marker="o", linestyle="none", markerfacecolor=COLORS["dark"], markeredgecolor=COLORS["dark"], label="OMOP"),
         matplotlib.lines.Line2D([], [], color=COLORS["fixed"], linewidth=1.0, label="Fixed cohort"),
         matplotlib.lines.Line2D([], [], color=COLORS["end"], linewidth=1.0, label="End-to-end"),
     ]
-    ax.legend(handles=key, loc="upper left", bbox_to_anchor=(0.00, -0.12), ncols=2, handlelength=1.2, handletextpad=0.4, columnspacing=0.8)
-    panel_label(ax, "a", -0.22)
+    ax.legend(handles=key, loc="upper left", bbox_to_anchor=(0.00, -0.14), ncols=2, handlelength=1.2, handletextpad=0.4, columnspacing=0.8)
+    panel_label(ax, "a", -0.24)
 
     ax = fig.add_subplot(gs[0, 1])
     ax.axvline(0.0, color=COLORS["dark"], linewidth=0.55, linestyle=(0, (2, 2)))
@@ -199,17 +245,25 @@ def extended_data_figure3_calibration(data: dict) -> plt.Figure:
         fixed = cal[m]["fixed"]
         end = cal[m]["end_to_end"]
         ax.plot([fixed["pcornet_intercept"], fixed["omop_intercept"]], [yi + 0.13, yi + 0.13], color=COLORS["mid_gray"], linewidth=0.55)
-        ax.scatter(fixed["pcornet_intercept"], yi + 0.16, s=26, facecolor="white", edgecolor=COLORS["fixed"], linewidth=0.8, zorder=4)
-        ax.scatter(fixed["omop_intercept"], yi + 0.10, s=21, color=COLORS["fixed"], zorder=5)
+        ax.scatter(fixed["pcornet_intercept"], yi + 0.16, s=30, facecolor="white", edgecolor=COLORS["fixed"], linewidth=0.8, zorder=4)
+        ax.scatter(fixed["omop_intercept"], yi + 0.10, s=24, color=COLORS["fixed"], zorder=5)
         ax.plot([end["pcornet_intercept"], end["omop_intercept"]], [yi - 0.13, yi - 0.13], color=COLORS["mid_gray"], linewidth=0.55)
-        ax.scatter(end["pcornet_intercept"], yi - 0.10, s=26, facecolor="white", edgecolor=COLORS["end"], linewidth=0.8, zorder=4)
-        ax.scatter(end["omop_intercept"], yi - 0.16, s=21, color=COLORS["end"], zorder=5)
+        ax.scatter(end["pcornet_intercept"], yi - 0.10, s=30, facecolor="white", edgecolor=COLORS["end"], linewidth=0.8, zorder=4)
+        ax.scatter(end["omop_intercept"], yi - 0.16, s=24, color=COLORS["end"], zorder=5)
     ax.set(yticks=y, yticklabels=labels, xlabel="Calibration intercept")
     ax.set_xlim(*padded_limits(intercept_values, pad_frac=0.12, min_pad=0.04, include=[0.0]))
     ax.set_title("Calibration intercept", loc="left")
-    clean_axis(ax, "x")
-    ax.text(0.02, -0.22, "Ideal calibration: slope = 1, intercept = 0", transform=ax.transAxes, fontsize=5.8, va="top")
+    clean_axis(ax)
     panel_label(ax, "b", -0.22)
+
+    fig.text(
+        0.50,
+        0.055,
+        "Ideal calibration: slope = 1; intercept = 0",
+        ha="center",
+        va="bottom",
+        fontsize=6.7,
+    )
     return fig
 
 
