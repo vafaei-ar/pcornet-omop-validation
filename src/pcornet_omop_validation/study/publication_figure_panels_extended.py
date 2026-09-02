@@ -18,6 +18,13 @@ from .publication_figure_style import (
 
 
 def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
+    """Show mapped fidelity, numeric reconciliation, and unresolved coverage separately.
+
+    The three panels intentionally use unequal widths. The prior compact layout forced
+    y-axis labels from the center and right panels into neighboring panels. Here we
+    reserve explicit label gutters and keep the center bar labels short enough to stay
+    within their own panel while retaining the full scientific meaning in the caption.
+    """
     b = data["stage_b"]
     components = list(b["mapped_exact_counts"])
     counts = [b["mapped_exact_counts"][c] for c in components]
@@ -31,20 +38,20 @@ def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
     ]
     y = np.arange(len(components))[::-1]
 
-    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(88)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(98)))
     gs = fig.add_gridspec(
         1,
         3,
-        left=0.17,
+        left=0.15,
         right=0.985,
-        top=0.91,
-        bottom=0.20,
-        wspace=0.42,
-        width_ratios=[1.16, 0.68, 1.16],
+        top=0.90,
+        bottom=0.22,
+        wspace=0.58,
+        width_ratios=[1.18, 1.00, 1.18],
     )
 
     ax = fig.add_subplot(gs[0, 0])
-    ax.scatter(counts, y, s=31, color=COLORS["fixed"], zorder=3)
+    ax.scatter(counts, y, s=32, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(counts, y):
         direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], 5)
     ax.set_xscale("log")
@@ -54,32 +61,33 @@ def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
     clean_axis(ax)
     ax.text(
         0,
-        -0.18,
+        -0.20,
         "100% agreement in each locked\nmapped denominator",
         transform=ax.transAxes,
-        fontsize=6.5,
+        fontsize=6.7,
         va="top",
         linespacing=1.05,
     )
-    panel_label(ax, "a", -0.38)
+    panel_label(ax, "a", -0.34)
 
     ax = fig.add_subplot(gs[0, 1])
     n = b["numeric"]
     exact = 100 * n["direct_exact"] / n["comparable"]
-    ax.barh([1], [exact], color=COLORS["fixed"], height=0.42)
-    ax.barh([1], [100 - exact], left=[exact], color=COLORS["light_gray"], height=0.42)
-    ax.barh([0], [100], color=COLORS["accent"], height=0.42)
+    ax.barh([1], [exact], color=COLORS["fixed"], height=0.38)
+    ax.barh([1], [100 - exact], left=[exact], color=COLORS["light_gray"], height=0.38)
+    ax.barh([0], [100], color=COLORS["accent"], height=0.38)
     ax.set(
-        xlim=(0, 103),
+        xlim=(0, 104),
         yticks=[1, 0],
-        yticklabels=["Directly exact\namong comparable", "Explained among\ninitial differences"],
+        yticklabels=["Directly exact\n(comparable)", "Explained\ninitial differences"],
         xlabel="Rows (%)",
     )
-    ax.set_title("Numeric\nreconciliation", loc="left")
+    ax.tick_params(axis="y", pad=4)
+    ax.set_title("Numeric reconciliation", loc="left")
     clean_axis(ax)
-    direct_value(ax, exact, 1, f"{exact:.3f}%", COLORS["dark"], 4)
-    direct_value(ax, 100, 0, "100%", COLORS["dark"], 4)
-    panel_label(ax, "b", -0.36)
+    direct_value(ax, exact, 1, f"{exact:.3f}%", COLORS["dark"], 5)
+    direct_value(ax, 100, 0, "100%", COLORS["dark"], 5)
+    panel_label(ax, "b", -0.34)
 
     ax = fig.add_subplot(gs[0, 2])
     lim = b["coverage_limitations"]
@@ -92,20 +100,22 @@ def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
     names = [label_map[k] for k in lim]
     vals = list(lim.values())
     yy = np.arange(len(names))[::-1]
-    ax.scatter(vals, yy, s=31, color=COLORS["end"], zorder=3)
+    ax.scatter(vals, yy, s=32, color=COLORS["end"], zorder=3)
     for x, yi in zip(vals, yy):
         dx = -5 if x == max(vals) else 5
         direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], dx)
     ax.set_xscale("log")
     ax.set(yticks=yy, yticklabels=names, xlabel="Rows/routes\n(log scale)")
+    ax.tick_params(axis="y", pad=4)
     ax.set_xlim(min(vals) / 1.7, max(vals) * 1.7)
     ax.set_title("Coverage limitations\nkept separate", loc="left")
     clean_axis(ax)
-    panel_label(ax, "c", -0.35)
+    panel_label(ax, "c", -0.34)
     return fig
 
 
 def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
+    """Show association, prediction, and recurrent-event sensitivity checks."""
     e = data["stage_e"]
     d = data["stage_d"]["recurrent"]
     ratios = e["fixed_association_or_ratio_omop_over_source"]
@@ -121,43 +131,47 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     vals = list(ratios.values())
     y = np.arange(len(features))[::-1]
     models = list(e["models"])
-    short = ["Logistic", "Ridge logistic", "Gradient boosting"]
+    short = ["Logistic", "Ridge logistic", "Gradient\nboosting"]
     corr = [e["models"][m]["fixed_probability_pearson"] for m in models]
     ym = np.arange(3)[::-1]
 
-    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(88)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(96)))
     gs = fig.add_gridspec(
         1,
         3,
-        left=0.18,
+        left=0.17,
         right=0.985,
-        top=0.91,
-        bottom=0.20,
-        wspace=0.38,
-        width_ratios=[1.02, 0.92, 1.06],
+        top=0.88,
+        bottom=0.23,
+        wspace=0.55,
+        width_ratios=[1.10, 0.95, 1.12],
     )
 
     ax = fig.add_subplot(gs[0, 0])
     ax.axvline(1, color=COLORS["dark"], linewidth=0.6)
-    ax.scatter(vals, y, s=31, color=COLORS["fixed"], zorder=3)
+    ax.scatter(vals, y, s=32, color=COLORS["fixed"], zorder=3)
     ax.set(yticks=y, yticklabels=feature_labels, xlabel="OMOP / PCORnet\nodds-ratio ratio")
+    ax.tick_params(axis="y", pad=4)
     ax.set_xlim(*padded_limits(vals, pad_frac=0.14, min_pad=0.00006, include=[1.0]))
     ax.ticklabel_format(axis="x", style="plain", useOffset=False)
     ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f"))
     ax.set_title("Fixed-cohort associations", loc="left")
     clean_axis(ax)
-    panel_label(ax, "a", -0.42)
+    panel_label(ax, "a", -0.38)
 
     ax = fig.add_subplot(gs[0, 1])
-    ax.scatter(corr, ym, s=31, color=COLORS["fixed"], zorder=3)
+    ax.scatter(corr, ym, s=32, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(corr, ym):
-        dx = 5 if x < 0.98 else -5
+        # Put values inward from the panel boundary rather than allowing them to run
+        # into the neighboring recurrent-event panel.
+        dx = 6 if x < 0.98 else -6
         direct_value(ax, x, yi, f"{x:.6f}", COLORS["dark"], dx)
     ax.set(yticks=ym, yticklabels=short, xlabel="Pearson correlation")
-    ax.set_xlim(*padded_limits(corr, pad_frac=0.18, min_pad=0.008, include=[1.0]))
+    ax.tick_params(axis="y", pad=4)
+    ax.set_xlim(*padded_limits(corr, pad_frac=0.20, min_pad=0.009, include=[1.0]))
     ax.set_title("Fixed prediction\nagreement", loc="left")
     clean_axis(ax)
-    panel_label(ax, "b", -0.30)
+    panel_label(ax, "b", -0.34)
 
     ax = fig.add_subplot(gs[0, 2])
     groups = ["Primary recurrent\nstroke-code endpoint", "Post-outcome\nPDX=P sensitivity"]
@@ -166,21 +180,41 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     om = [d["primary_omop_events"], d["pdx_primary_sensitivity_omop_events"]]
     for yi, a, b in zip(yy, pc, om):
         ax.plot([a, b], [yi, yi], color=COLORS["mid_gray"])
-        ax.scatter(a, yi + 0.035, s=31, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, zorder=3)
-        ax.scatter(b, yi - 0.035, s=26, color=COLORS["omop"], zorder=4)
+        ax.scatter(a, yi + 0.035, s=32, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, zorder=3)
+        ax.scatter(b, yi - 0.035, s=27, color=COLORS["omop"], zorder=4)
         if a == b:
-            direct_value(ax, a, yi + 0.16, f"{a}", COLORS["dark"], 0)
+            direct_value(ax, a, yi + 0.15, f"{a}", COLORS["dark"], 0)
         else:
-            direct_value(ax, a, yi + 0.16, f"{a}", COLORS["dark"], 0)
-            direct_value(ax, b, yi - 0.16, f"{b}", COLORS["dark"], 0)
+            direct_value(ax, a, yi + 0.15, f"{a}", COLORS["dark"], 0)
+            direct_value(ax, b, yi - 0.15, f"{b}", COLORS["dark"], 0)
     ax.set(yticks=yy, yticklabels=groups, xlabel="Patients with\nrecurrent event")
-    ax.set_xlim(*padded_limits(pc + om, pad_frac=0.16, min_pad=8))
+    ax.tick_params(axis="y", pad=5)
+    ax.set_xlim(*padded_limits(pc + om, pad_frac=0.18, min_pad=9))
     ax.set_title("Recurrent-stroke\nsensitivity", loc="left")
     clean_axis(ax)
-    ax.scatter([], [], facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, label="PCORnet")
-    ax.scatter([], [], color=COLORS["omop"], label="OMOP")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.52, 1.02), ncols=2, handletextpad=0.4, columnspacing=0.7)
     panel_label(ax, "c", -0.34)
+
+    # Keep the key completely outside the data axes so it cannot collide with points
+    # or direct labels. This also makes the open/filled encoding visually consistent
+    # with the main figures without consuming panel-c plotting area.
+    key = [
+        matplotlib.lines.Line2D(
+            [], [], marker="o", linestyle="none", markerfacecolor="white",
+            markeredgecolor=COLORS["pcornet"], markeredgewidth=0.8, label="PCORnet"
+        ),
+        matplotlib.lines.Line2D(
+            [], [], marker="o", linestyle="none", markerfacecolor=COLORS["omop"],
+            markeredgecolor=COLORS["omop"], label="OMOP"
+        ),
+    ]
+    fig.legend(
+        handles=key,
+        loc="upper right",
+        bbox_to_anchor=(0.985, 0.965),
+        ncols=2,
+        handletextpad=0.4,
+        columnspacing=0.9,
+    )
     return fig
 
 
