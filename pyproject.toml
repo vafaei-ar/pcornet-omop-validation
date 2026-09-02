@@ -19,6 +19,10 @@ etl = [
   "SQLAlchemy>=2.0",
   "pyodbc>=5.0",
 ]
+analysis = [
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+]
 dev = [
   "pytest>=8.0",
 ]
