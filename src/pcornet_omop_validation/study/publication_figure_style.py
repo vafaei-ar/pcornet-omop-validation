@@ -185,7 +185,7 @@ def add_box(
     *,
     facecolor: str = "white",
     edgecolor: str = COLORS["dark"],
-    fontsize: float = 6.7,
+    fontsize: float = 7.0,
     weight: str = "normal",
 ) -> None:
     x, y = xy
@@ -196,15 +196,8 @@ def add_box(
         )
     )
     ax.text(
-        x + width / 2,
-        y + height / 2,
-        text,
-        ha="center",
-        va="center",
-        fontsize=fontsize,
-        fontweight=weight,
-        color=COLORS["dark"],
-        linespacing=1.10,
+        x + width / 2, y + height / 2, text, ha="center", va="center",
+        fontsize=fontsize, fontweight=weight, color=COLORS["dark"], linespacing=1.15,
     )
 
 
