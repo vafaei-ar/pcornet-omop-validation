@@ -38,7 +38,7 @@ def figure1_validation_framework(data: dict) -> plt.Figure:
     add_box(ax, (0.36, 0.17), 0.25, 0.11, "Includes cohort-selection\nand representation effects")
     add_box(ax, (0.65, 0.17), 0.31, 0.11, "Different cohort composition,\nrisks and model performance", facecolor=COLORS["light_orange"], weight="bold")
     arrow(ax, (0.32, 0.225), (0.36, 0.225), COLORS["end"]); arrow(ax, (0.61, 0.225), (0.65, 0.225), COLORS["end"])
-    ax.text(0.50, 0.055, "Key mechanism: nonmissing DX_DATE required by the frozen ETL -> source episodes can be excluded -> cohort selection changes downstream estimates", fontsize=5.5, ha="center", va="center")
+    ax.text(0.50, 0.055, "Nonmissing DX_DATE required by ETL -> source episode excluded -> cohort and estimates change", fontsize=5.5, ha="center", va="center")
     return fig
 
 
@@ -50,7 +50,9 @@ def figure2_phenotype_reproducibility(data: dict) -> plt.Figure:
 
     ax = fig.add_subplot(gs[0, 0]); pc = [primary[p]["pcornet"] for p in phenotypes]; om = [primary[p]["omop"] for p in phenotypes]
     for yi, a, b in zip(y, pc, om):
-        ax.plot([a, b], [yi, yi], color=COLORS["mid_gray"]); ax.scatter(a, yi, s=24, color=COLORS["pcornet"], zorder=3); ax.scatter(b, yi, s=24, color=COLORS["omop"], zorder=3)
+        ax.plot([a, b], [yi, yi], color=COLORS["mid_gray"])
+        ax.scatter(a, yi, s=24, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, zorder=3)
+        ax.scatter(b, yi, s=24, color=COLORS["omop"], zorder=3)
         direct_value(ax, a, yi + 0.11, f"{a:,}", COLORS["pcornet"], -2); direct_value(ax, b, yi - 0.11, f"{b:,}", COLORS["omop"], 2)
     ax.set(yticks=y, yticklabels=phenotypes, xlim=(0, 10500), xlabel="Patients"); ax.set_title("Source-faithful phenotype size", loc="left"); clean_axis(ax, "x")
     ax.scatter([], [], facecolor="white", edgecolor=COLORS["pcornet"], linewidth=0.8, label="PCORnet"); ax.scatter([], [], color=COLORS["omop"], label="OMOP"); ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.90), ncols=2, handletextpad=0.4, columnspacing=0.9); panel_label(ax, "a")
