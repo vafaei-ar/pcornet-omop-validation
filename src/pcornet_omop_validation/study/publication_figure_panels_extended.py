@@ -30,7 +30,7 @@ def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
 
 def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     e = data["stage_e"]; d = data["stage_d"]["recurrent"]
-    ratios = {"Age": 1.000015, "Female": 1.000019, "Index length of stay": 0.999949, "Prior acute-care encounters": 1.000352, "Prior all encounters": 0.999409, "Prior ischemic stroke": 1.000241}; features = list(ratios); vals = list(ratios.values()); y = np.arange(len(features))[::-1]
+    ratios = e["fixed_association_or_ratio_omop_over_source"]; features = list(ratios); vals = list(ratios.values()); y = np.arange(len(features))[::-1]
     models = list(e["models"]); short = ["Logistic", "Ridge logistic", "Gradient boosting"]; corr = [e["models"][m]["fixed_probability_pearson"] for m in models]; ym = np.arange(3)[::-1]
     fig = plt.figure(figsize=(mm(DOUBLE_COLUMN_MM), mm(112))); gs = fig.add_gridspec(1, 3, left=0.14, right=0.98, top=0.92, bottom=0.14, wspace=0.55)
 
