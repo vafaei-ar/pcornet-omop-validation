@@ -1,32 +1,25 @@
 # Current status and publication plan
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-02_
 
-For the full historical record and methodological decisions, see `docs/project_history_and_decisions.md`. Completed stage records include `docs/stage_a_structural_semantic_results.md`, the Stage B lock/manuscript files, `docs/stage_c_stroke_completion_record.md`, and `docs/stage_d_stroke_completion_record.md`. The integrated manuscript draft through Stage D is `docs/publication_integrated_manuscript_draft_through_stage_d.md`.
-
-## Current status
-
-The audited PCORnet-to-OMOP ETL is frozen for publication at:
+For the historical methodological record, see `docs/project_history_and_decisions.md`. The publication ETL remains frozen at:
 
 `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 
-Publication analysis proceeds on `publication/analysis`. The frozen ETL remains immutable unless a new independently demonstrated ETL defect requires a documented new freeze.
+Publication analyses are maintained on `publication/analysis`. The frozen ETL was not retuned in response to downstream concordance results.
 
-Stage A is complete. Stage B is complete and locked. Stage C D0/D1/D3 are complete and closed. Stage D analytical equivalence is complete and closed.
+## Current analytical status
 
-```mermaid
-flowchart LR
-    A[PCORnet source] --> B[Frozen audited ETL]
-    B --> C[Frozen OMOP build]
-    B --> D[Route ledgers and lineage]
-    C --> E[Stage A complete]
-    D --> E
-    A --> F[Stage B complete]
-    C --> F
-    F --> G[Stage C phenotype reproducibility complete]
-    G --> H[Stage D analytical equivalence complete]
-    H --> I[Final manuscript integration]
-```
+Stages A-D are analytically closed. A post-freeze harmonized Stage C sensitivity and prespecified Stage E statistical/model reproducibility extension are also complete.
+
+| Layer | Question | Status | Main conclusion |
+| --- | --- | --- | --- |
+| Stage A | Did the ETL follow explicit structural transformation rules? | Complete | Structural differences were explainable by eligibility, routing, vocabulary coverage, one-to-many expansion, and concept-zero policies. |
+| Stage B | Were mapped patient-level clinical semantics preserved? | Complete/locked | Mapped semantics were preserved exactly in the prespecified denominators; remaining limitations were coverage/provenance issues rather than unexplained mapped-event loss. |
+| Stage C | Were complete ischemic-stroke phenotypes reproducible? | Complete/closed | Source-faithful D0/D1/D3 reproducibility was reduced primarily by the frozen non-null-`DX_DATE` ETL requirement. |
+| Stage C harmonized sensitivity | What happens when non-null `DX_DATE` eligibility is imposed symmetrically? | Complete, post-freeze sensitivity | D0, D1, and D3 became perfectly concordant: identical patients and identical index dates. |
+| Stage D | Were downstream acute-care outcomes analytically equivalent? | Complete/closed | Fixed-index 30/90-day outcomes were exactly reproduced; end-to-end equivalence failed because upstream cohort attrition changed the analyzed population. |
+| Stage E | Were descriptive features, association estimates, and prediction models reproducible? | Complete extension | On the same fixed cohort, feature distributions, logistic associations, and predictions were essentially identical; end-to-end differences appeared when the cohorts differed. |
 
 ## Frozen OMOP target counts
 
@@ -46,88 +39,121 @@ flowchart LR
 
 These counts are recorded outcomes, not acceptance thresholds.
 
-## Stage A status: complete
+## Stage A: structural transformation
 
-Stage A structural and semantic reconciliation is complete. Major explicit exclusions were 3,459,785 DIAGNOSIS rows missing `DX_DATE` and 16,924 PROCEDURES rows missing `PX_DATE`. One-to-many Standard mappings, cross-domain routing, and concept-zero coverage were retained and reported rather than forced into one-to-one row equality.
+Major explicit exclusions were 3,459,785 DIAGNOSIS rows missing `DX_DATE` and 16,924 PROCEDURES rows missing `PX_DATE`. One-to-many Standard mappings, cross-domain routing, and concept-zero retention were preserved rather than forced into one-to-one row correspondence. Drug mapping coverage remained incomplete, with 17,469,480 concept-zero Drug routes.
 
-## Stage B status: complete and locked
+## Stage B: mapped semantic preservation
 
-Mapped Encounter, Death, Condition, Procedure, Drug, and Measurement/Observation semantics were preserved exactly in the prespecified mapped denominators. Target-side excess for Condition and Procedure was fully explained by audited alternate source provenance. Resolved UCUM and mapped categorical values agreed exactly. All initially observed VITAL numeric differences were explained by the frozen SQL expression, leaving zero unexplained target mismatches.
+Encounter and Death were exactly concordant. Every mapped source Condition, Procedure, Drug, and Measurement/Observation semantic route in the locked mapped denominators was present in OMOP. Target-side Condition and Procedure excesses were fully explained by other audited source provenance. Resolved UCUM units and mapped categorical values agreed exactly. Of 75,769,622 directly comparable numeric rows, 75,644,000 were directly exact; the remaining 125,622 differences were all VITAL rows fully explained by the frozen SQL expression, leaving zero unexplained numeric mismatches.
 
-## Stage C status: complete and closed
+## Stage C: phenotype reproducibility
 
-The source D0 cohort contained 9,815 patients and the lineage-faithful OMOP cohort contained 6,001, with 6,001 shared exact-index patients. D1 patient Jaccard was 0.608 and D3 patient Jaccard was 0.622. Post-outcome mechanism audits showed that all D1/D3 source-only patients had null selected `DX_DATE` and lacked diagnosis lineage under the frozen required-date ETL policy. All residual shared-patient index-date differences were explained by selection of another qualifying episode after loss of the source-selected diagnosis.
+Primary source-faithful results:
 
-The dominant Stage C discordance therefore arose upstream at diagnosis materialization, not from progressive CT/MRI or lipid transformation failure.
+| Phenotype | PCORnet | Lineage-faithful OMOP | Shared | Source-only | OMOP-only | Jaccard | Exact index date among shared |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| D0 | 9,815 | 6,001 | 6,001 | 3,814 | 0 | 0.611 | 100.00% |
+| D1 | 8,624 | 5,246 | 5,245 | 3,379 | 1 | 0.608 | 97.39% |
+| D3 | 7,565 | 4,710 | 4,709 | 2,856 | 1 | 0.622 | 97.52% |
 
-## Stage D status: complete and closed
+Mechanism audits showed that all D1/D3 source-only patients had a null selected `DX_DATE`, lacked diagnosis lineage under the frozen required-date ETL policy, and experienced no further loss after existing diagnosis lineage. Residual shared-patient index-date mismatches were explained by selection of another qualifying episode after the source-selected diagnosis was absent from OMOP.
 
-Stage D was prespecified in `study_definitions/stage_d_stroke_analytical_equivalence_v1.json` before cross-CDM outcome queries. The outcome-free preflight used analysis SHA `6e6d2139ab09648b5c59770788ce7762ed5ffb7d`. The completed Stage D analysis used SHA `1e4508ff55928965249beb843646232f3a234048`; the intervening change only corrected a SQL Server aggregation syntax expression and did not alter any locked scientific definition.
+### Harmonized non-null-`DX_DATE` sensitivity
 
-### Fixed-index 90-day acute-care outcome
+This post-freeze sensitivity imposed the same non-null-`DX_DATE` requirement on the source phenotype before comparison.
 
-Among 3,822 patients observable in both representations, PCORnet and OMOP each identified 1,132 events. Risk was 29.6180% in both. Absolute risk difference was 0.0000 percentage points and the OMOP/source risk ratio was 1.0000. Both prespecified equivalence margins were met. All 1,132 both-positive patients had exactly concordant first-event dates.
+| Phenotype | PCORnet | OMOP | Shared | Source-only | OMOP-only | Jaccard | Exact index-date agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| D0 | 6,198 | 6,198 | 6,198 | 0 | 0 | 1.000 | 100.00% |
+| D1 | 5,246 | 5,246 | 5,246 | 0 | 0 | 1.000 | 100.00% |
+| D3 | 4,710 | 4,710 | 4,710 | 0 | 0 | 1.000 | 100.00% |
 
-### Fixed-index 30-day acute-care outcome
+The primary Stage C analysis remains unchanged. The harmonized sensitivity demonstrates that the observed source-faithful discordance was attributable to the asymmetric diagnosis-date eligibility interaction rather than an inability of OMOP to represent the qualifying phenotype once the same diagnosis eligibility was enforced.
 
-Among 4,374 patients, both representations identified 753 events. Risk was 17.2154% in both. Absolute risk difference was 0.0000 percentage points and risk ratio was 1.0000. Both equivalence margins were met.
+## Stage D: analytical equivalence
 
-### End-to-end reproducibility
+### Fixed-index acute-care outcomes
 
-End-to-end equivalence failed because the independently selected source and OMOP D0 cohorts differed upstream. At 90 days, source risk was 27.6275% and OMOP risk was 29.6180%, with absolute difference +1.9905 percentage points and risk ratio 1.0720. At 30 days, source risk was 16.1880% and OMOP risk was 17.2154%, with absolute difference +1.0274 percentage points and risk ratio 1.0635. Neither endpoint met the prespecified absolute or relative equivalence margins.
+| Estimand | Eligible | PCORnet events | OMOP events | PCORnet risk | OMOP risk | Absolute difference, pp | OMOP/source RR | Equivalence |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 90 day | 3,822 | 1,132 | 1,132 | 29.618% | 29.618% | 0.000 | 1.000 | Met |
+| 30 day | 4,374 | 753 | 753 | 17.215% | 17.215% | 0.000 | 1.000 | Met |
 
-This contrast localizes the analytical divergence to cohort construction rather than post-index acute-care outcome representation.
+For the 90-day endpoint, all 1,132 both-positive patients had the same first-event date and the median time to first event was 26.0 days in both representations.
 
-### Exploratory recurrent ischemic stroke
+### End-to-end acute-care outcomes
 
-Among 2,531 fixed-index patients with 365-day observability, PCORnet identified 263 recurrent events and OMOP identified 258. Label agreement was 2,526/2,531 (99.80%), with five source-only positives and no OMOP-only positives.
+| Estimand | PCORnet eligible/events/risk | OMOP eligible/events/risk | Absolute difference, pp | OMOP/source RR | Equivalence |
+| --- | --- | --- | ---: | ---: | --- |
+| 90 day | 6,508 / 1,798 / 27.628% | 3,822 / 1,132 / 29.618% | +1.990 | 1.072 | Not met |
+| 30 day | 7,277 / 1,178 / 16.188% | 4,374 / 753 / 17.215% | +1.027 | 1.063 | Not met |
 
-The aggregate-only diagnostic at SHA `6321336996cd826dfade84509a81691a8aaaf260` showed that all five discordant patients retained visit lineage, an acute-care OMOP visit, and correct temporal placement, but lacked a DIAGNOSIS-to-condition crosswalk for the qualifying recurrent diagnosis and therefore lacked a linked OMOP condition. None was a day-31/day-365 boundary case. The discordance is diagnosis materialization/condition-lineage loss, not encounter or timing drift.
+The contrast between exact fixed-index equivalence and failed end-to-end equivalence localizes the analytical divergence upstream to cohort construction rather than post-index acute-care event transformation.
 
-## Methodological decisions that remain fixed
+### Exploratory recurrent stroke
 
-- Do not use the comparator OMOP database as an ETL acceptance target.
-- Do not require raw row-count equality where one-to-many or cross-domain semantics apply.
-- Preserve one-to-many Standard mappings and cross-domain routes.
-- Do not choose arbitrary vocabulary candidates.
-- Use concept `0` when source semantics do not justify a unique Standard concept.
-- Retain non-event semantic targets in route ledgers rather than creating false standalone events.
-- Exclude missing required dates explicitly rather than invent sentinel dates.
-- Do not retune the frozen ETL from downstream concordance findings alone.
-- Keep native-model portability separate from lineage-faithful transformation fidelity.
-- Keep unresolved vocabulary/unit/value mappings separate from mapped semantic agreement.
-- Treat post-outcome mechanism audits as explanatory, not prespecified confirmatory analyses.
-- Distinguish fixed-index outcome fidelity from end-to-end analytical reproducibility.
+The implemented exploratory recurrent stroke-code endpoint, which did not require recurrent `PDX=P`, included 2,531 fixed-index patients: PCORnet identified 263 events and OMOP 258, with 2,526/2,531 label agreement (99.80%), five source-only positives, and no OMOP-only positives. All five discordances retained encounter/visit lineage and correct timing but lacked qualifying diagnosis-to-condition lineage. A post-outcome recurrent `PDX=P` sensitivity yielded 170 events in each representation with complete 2,531/2,531 label agreement.
 
-## Publication roadmap
+## Stage E: statistical and prediction-model reproducibility
 
-```mermaid
-flowchart TD
-    A[ETL freeze complete] --> B[Stage A complete]
-    B --> C[Stage B complete]
-    C --> D[Stage C complete]
-    D --> E[Stage D complete]
-    E --> F[Final manuscript integration]
-    F --> G[Tables and figures]
-    G --> H[Reproducibility and disclosure review]
-    H --> I[Journal targeting and submission package]
-```
+Stage E was prespecified before outcome/model queries and reused the locked Stage C/D0 and Stage D 90-day endpoint. The first execution stopped before model fitting because an anchor assertion detected a cohort-reconstruction implementation error. A documented compatibility correction restored exact Stage C/D anchors without changing the prespecified Stage E features, outcome, models, or metrics.
+
+Locked anchors reproduced exactly: source D0 9,815; OMOP D0 6,001; source 90-day eligible/events 6,508/1,798; OMOP 3,822/1,132; fixed cohort 3,822 with 1,132 events in each representation.
+
+### Fixed-cohort features
+
+Among the same 3,822 patients, age, sex, index length of stay, prior acute-care count, and prior ischemic-stroke indicator were exactly concordant for all patients. Prior all-encounter count was exact for 3,806/3,822 patients; mean absolute difference was 0.00497 encounters and Spearman correlation was 0.999989. All fixed-cohort standardized mean differences were effectively zero.
+
+### Fixed-cohort association and prediction models
+
+Multivariable logistic-regression coefficients and odds ratios were nearly identical across PCORnet and OMOP. For example, OMOP/source odds-ratio ratios were 1.000015 for age, 1.000019 for female sex, 0.999949 for length of stay, 1.000352 for prior acute-care count, 0.999409 for prior all-encounter count, and 1.000241 for prior ischemic stroke.
+
+| Fixed-cohort model | PCORnet AUROC | OMOP AUROC | AUROC difference | PCORnet AUPRC | OMOP AUPRC | Probability agreement |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Logistic regression | 0.591413 | 0.591345 | -0.000068 | 0.447941 | 0.447823 | Pearson 0.999994; mean absolute probability difference 0.000084 |
+| Ridge logistic | 0.591509 | 0.591427 | -0.000082 | 0.447921 | 0.447822 | Pearson 0.999994; mean absolute probability difference 0.000084 |
+| Histogram gradient boosting | 0.598737 | 0.597730 | -0.001007 | 0.439228 | 0.434959 | Pearson 0.965218; mean absolute probability difference 0.03698 |
+
+The nonlinear model therefore showed more patient-level prediction sensitivity to small feature differences even though aggregate fixed-cohort performance remained close.
+
+### End-to-end model comparison
+
+The independently selected source and OMOP populations differed in several baseline distributions. The largest locked-feature standardized mean differences were -0.132 for prior 365-day acute-care utilization and -0.158 for prior ischemic-stroke history.
+
+| End-to-end model | PCORnet AUROC | OMOP AUROC | Difference | PCORnet AUPRC | OMOP AUPRC | PCORnet Brier | OMOP Brier |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Logistic regression | 0.634628 | 0.591345 | -0.043284 | 0.454775 | 0.447823 | 0.195089 | 0.206229 |
+| Ridge logistic | 0.634705 | 0.591427 | -0.043278 | 0.454817 | 0.447822 | 0.195084 | 0.206210 |
+| Histogram gradient boosting | 0.626769 | 0.597730 | -0.029040 | 0.437420 | 0.434959 | 0.200138 | 0.218271 |
+
+These end-to-end differences combine upstream cohort selection with representation-specific feature construction and should not be interpreted as an intrinsic OMOP model-performance effect.
+
+## Current scientific interpretation
+
+The evidence supports a layered conclusion rather than a global claim of equivalence or nonequivalence:
+
+1. The audited ETL preserved mapped clinical semantics with essentially exact fidelity in the locked mapped denominators.
+2. A source phenotype that used encounter-date fallback selected many diagnoses the frozen ETL explicitly excluded for missing `DX_DATE`; this produced large source-faithful cohort differences.
+3. When diagnosis-date eligibility was harmonized, D0/D1/D3 phenotype membership and index dates were exactly reproduced.
+4. When patient and index date were held fixed, downstream acute-care outcomes were exact and conventional logistic-model features, associations, and predictions were essentially identical.
+5. When the complete source and OMOP cohorts were allowed to differ, downstream risks, baseline feature distributions, and prediction-model performance also differed.
+
+The strongest manuscript-level message is therefore: **an audited PCORnet-to-OMOP conversion can preserve mapped clinical information and conditional analyses extremely well while an explicit upstream eligibility policy can still alter cohort membership and thereby change end-to-end scientific results.**
+
+## Reproducibility and disclosure status
+
+- Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
+- Stage E study definition was frozen before outcome/model fitting.
+- Generated `results/` are intentionally excluded from Git by `.gitignore`.
+- Publication-facing Git records therefore consist of code, locked study definitions, aggregate completion records, manuscript summaries, and disclosure-reviewed result summaries.
+- Patient identifiers, row-level predictions, and row-level PHI are not committed.
+- The local Stage E completed JSON reported a clean worktree and passed aggregate-only disclosure review.
 
 ## Immediate next steps
 
-1. Treat Stages A-D as analytically closed for routine work.
-2. Use `docs/publication_integrated_manuscript_draft_through_stage_d.md` as the current manuscript synthesis.
-3. Build the final main tables and figures from the locked aggregate outputs rather than rerunning exploratory analyses.
-4. Perform a final consistency audit across manuscript numbers, study-definition hashes, analysis SHAs, and disclosure statements.
-5. Decide journal target and adapt word count, table count, supplement structure, and reporting format to that journal.
-6. Keep all patient-level disagreement rows outside Git; only aggregate disclosure-reviewed summaries may be committed.
-
-## Manuscript framing
-
-The paper should preserve four distinct layers: structural transformation, mapped semantic preservation, complete phenotype reproducibility, and downstream analytical equivalence. The strongest Stage D result is conditional: post-index acute-care outcome representation is exactly preserved when patient and index date are held fixed, while end-to-end equivalence fails because upstream phenotype attrition changes the population entering the analysis.
-
-The paper should not claim that OMOP and PCORnet are globally equivalent or globally nonequivalent. The evidence instead shows where equivalence holds, where it fails, and the mechanism responsible.
-
-## Reproducibility rule
-
-Every publication analysis run should record the frozen ETL SHA, analysis-code SHA, configuration hash without secrets, study-definition version/hash, input audit/freeze-manifest hashes where applicable, run timestamp, and aggregate output hashes/counts sufficient to regenerate tables and figures. Row-level data remain outside Git; aggregate outputs require disclosure review before external sharing.
+1. Treat Stages A-E as scientifically complete for routine publication work; do not add exploratory analyses unless needed for a specific scientific question or reviewer request.
+2. Use `docs/publication_integrated_manuscript_draft_through_stage_d.md` together with `docs/publication_stage_e_manuscript_extension.md` as the current manuscript source until a journal-targeted consolidated draft is created.
+3. Use `docs/publication_results_dashboard_through_stage_e.md` as the human-readable quantitative reference for manuscript writing and table/figure construction.
+4. Select a primary and backup journal, verify current author instructions, and then produce the journal-targeted manuscript and submission package.
+5. Preserve the distinction between prespecified analyses, post-freeze sensitivity analyses, and post-outcome explanatory diagnostics in all manuscript language.
