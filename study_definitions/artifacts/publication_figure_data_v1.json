@@ -1,0 +1,57 @@
+{
+  "version": "publication_figure_data_v1",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "stage_b": {
+    "mapped_exact_counts": {"Encounter": 1510957, "Death": 6955, "Condition": 8983621, "Procedure": 11121561, "Drug": 30988400, "Measurement/Observation": 92668145},
+    "numeric": {"comparable": 75769622, "direct_exact": 75644000, "explained_vital_differences": 125622, "unexplained": 0},
+    "coverage_limitations": {"Condition concept-zero fallback": 60148, "Procedure unresolved routes": 111660, "Drug concept-zero routes": 17469480, "Measurement/Observation unresolved": 366371}
+  },
+  "stage_c": {
+    "primary": {
+      "D0": {"pcornet": 9815, "omop": 6001, "shared": 6001, "source_only": 3814, "omop_only": 0, "jaccard": 0.611411, "exact_index_percent": 100.0},
+      "D1": {"pcornet": 8624, "omop": 5246, "shared": 5245, "source_only": 3379, "omop_only": 1, "jaccard": 0.608116, "exact_index_percent": 97.39},
+      "D3": {"pcornet": 7565, "omop": 4710, "shared": 4709, "source_only": 2856, "omop_only": 1, "jaccard": 0.62239, "exact_index_percent": 97.52}
+    },
+    "harmonized_dxdate": {
+      "D0": {"pcornet": 6198, "omop": 6198, "shared": 6198, "source_only": 0, "omop_only": 0, "jaccard": 1.0, "exact_index_percent": 100.0},
+      "D1": {"pcornet": 5246, "omop": 5246, "shared": 5246, "source_only": 0, "omop_only": 0, "jaccard": 1.0, "exact_index_percent": 100.0},
+      "D3": {"pcornet": 4710, "omop": 4710, "shared": 4710, "source_only": 0, "omop_only": 0, "jaccard": 1.0, "exact_index_percent": 100.0}
+    }
+  },
+  "stage_d": {
+    "equivalence_margins": {"risk_difference_pp": 0.5, "rr_lower": 0.95, "rr_upper": 1.05},
+    "fixed": {
+      "30_day": {"eligible": 4374, "pcornet_events": 753, "omop_events": 753, "pcornet_risk_percent": 17.2154, "omop_risk_percent": 17.2154, "risk_difference_pp": 0.0, "rr": 1.0},
+      "90_day": {"eligible": 3822, "pcornet_events": 1132, "omop_events": 1132, "pcornet_risk_percent": 29.618, "omop_risk_percent": 29.618, "risk_difference_pp": 0.0, "rr": 1.0}
+    },
+    "end_to_end": {
+      "30_day": {"pcornet_eligible": 7277, "omop_eligible": 4374, "pcornet_events": 1178, "omop_events": 753, "pcornet_risk_percent": 16.188, "omop_risk_percent": 17.2154, "risk_difference_pp": 1.0274, "rr": 1.063465197575114},
+      "90_day": {"pcornet_eligible": 6508, "omop_eligible": 3822, "pcornet_events": 1798, "omop_events": 1132, "pcornet_risk_percent": 27.6275, "omop_risk_percent": 29.618, "risk_difference_pp": 1.9905, "rr": 1.0720464450005207}
+    },
+    "recurrent": {"eligible": 2531, "primary_pcornet_events": 263, "primary_omop_events": 258, "primary_label_agreement": 2526, "primary_source_only": 5, "primary_omop_only": 0, "pdx_primary_sensitivity_pcornet_events": 170, "pdx_primary_sensitivity_omop_events": 170, "pdx_primary_sensitivity_label_agreement": 2531}
+  },
+  "stage_e": {
+    "fixed_feature_smd": {"Age": 0.0, "Female": 0.0, "Index length of stay": 0.0, "Prior acute-care encounters": 0.0, "Prior all encounters": 0.00039116011039966585, "Prior ischemic stroke": 0.0},
+    "end_to_end_feature_smd": {"Age": -0.015894860797286362, "Female": -0.02141425552198777, "Index length of stay": -0.07800780526806181, "Prior acute-care encounters": -0.13234373746645092, "Prior all encounters": -0.058306395510951015, "Prior ischemic stroke": -0.15809270093674627},
+    "models": {
+      "Logistic regression": {"fixed_pcornet_auroc": 0.591413, "fixed_omop_auroc": 0.591345, "fixed_auroc_difference": -0.000068, "fixed_probability_pearson": 0.999994, "fixed_probability_mad": 0.000084, "end_pcornet_auroc": 0.634628, "end_omop_auroc": 0.591345, "end_auroc_difference": -0.043284, "end_pcornet_brier": 0.195089, "end_omop_brier": 0.206229},
+      "Ridge logistic": {"fixed_pcornet_auroc": 0.591509, "fixed_omop_auroc": 0.591427, "fixed_auroc_difference": -0.000082, "fixed_probability_pearson": 0.999994, "fixed_probability_mad": 0.000084, "end_pcornet_auroc": 0.634705, "end_omop_auroc": 0.591427, "end_auroc_difference": -0.043278, "end_pcornet_brier": 0.195084, "end_omop_brier": 0.206210},
+      "Histogram gradient boosting": {"fixed_pcornet_auroc": 0.598737, "fixed_omop_auroc": 0.597730, "fixed_auroc_difference": -0.001007, "fixed_probability_pearson": 0.965218, "fixed_probability_mad": 0.03698, "end_pcornet_auroc": 0.626769, "end_omop_auroc": 0.597730, "end_auroc_difference": -0.029040, "end_pcornet_brier": 0.200138, "end_omop_brier": 0.218271}
+    },
+    "calibration": {
+      "Logistic regression": {
+        "fixed": {"pcornet_intercept": 0.03982777286113299, "omop_intercept": 0.0397550913637678, "pcornet_slope": 0.9062550932771516, "omop_slope": 0.9061655616384414, "test_n_pcornet": 1140, "test_n_omop": 1140, "test_events_pcornet": 358, "test_events_omop": 358},
+        "end_to_end": {"pcornet_intercept": 0.16601198824389243, "omop_intercept": 0.0397550913637678, "pcornet_slope": 1.057346859383593, "omop_slope": 0.9061655616384414, "test_n_pcornet": 1939, "test_n_omop": 1140, "test_events_pcornet": 570, "test_events_omop": 358}
+      },
+      "Ridge logistic": {
+        "fixed": {"pcornet_intercept": 0.04248933606480952, "omop_intercept": 0.042420478855534044, "pcornet_slope": 0.9091682688024213, "omop_slope": 0.909082009585314, "test_n_pcornet": 1140, "test_n_omop": 1140, "test_events_pcornet": 358, "test_events_omop": 358},
+        "end_to_end": {"pcornet_intercept": 0.16771865814267986, "omop_intercept": 0.042420478855534044, "pcornet_slope": 1.0590523002822354, "omop_slope": 0.909082009585314, "test_n_pcornet": 1939, "test_n_omop": 1140, "test_events_pcornet": 570, "test_events_omop": 358}
+      },
+      "Histogram gradient boosting": {
+        "fixed": {"pcornet_intercept": -0.4094787518964516, "omop_intercept": -0.4364108176300112, "pcornet_slope": 0.38750111909653234, "omop_slope": 0.3663263826263148, "test_n_pcornet": 1140, "test_n_omop": 1140, "test_events_pcornet": 358, "test_events_omop": 358},
+        "end_to_end": {"pcornet_intercept": -0.29775517446675936, "omop_intercept": -0.4364108176300112, "pcornet_slope": 0.5684851118569566, "omop_slope": 0.3663263826263148, "test_n_pcornet": 1939, "test_n_omop": 1140, "test_events_pcornet": 570, "test_events_omop": 358}
+      }
+    }
+  },
+  "provenance": {"aggregate_only": true, "source_documents": ["docs/03_RESULTS_THROUGH_STAGE_E.md", "docs/archive/stage_e_statistical_model_completion_record.md", "study_definitions/stage_e_statistical_model_reproducibility_v1.json"], "note": "Values are frozen disclosure-reviewed aggregates; patient-level data are not embedded in figure inputs."}
+}
