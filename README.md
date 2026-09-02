@@ -1,147 +1,73 @@
 # PCORnet to OMOP validation
 
-This repository develops a reproducible PCORnet-to-OMOP ETL and validation framework for evaluating whether transformation from the PCORnet Common Data Model to the OMOP Common Data Model preserves clinically and analytically relevant information.
+This repository contains an audited PCORnet-to-OMOP ETL and a staged validation study asking whether a study remains scientifically reproducible after transformation to OMOP CDM v5.4.2.
 
-The project does **not** assume that tables or row counts should be identical across CDMs. Validation proceeds from ETL/data understanding to semantic concordance, phenotype reproducibility, and analytical equivalence.
+The main question is:
 
-## Publication status
+> **If the same study is run independently in PCORnet and in the transformed OMOP data, do we obtain the same cohort, variables, outcomes, estimates, and scientific conclusion? If not, where did divergence enter and why?**
 
-The audited ETL completed its final clean publication freeze at commit `887e6f4d60a6b185e58b3c9fe8887472b49777e3`. Downstream scientific analyses proceed on `publication/analysis` while treating that ETL commit as fixed.
+## Start here
 
-Stage A structural/semantic concordance is complete. Stage B Wave 1 patient-level semantic concordance is active; encounter/visit and death comparisons are complete with full patient/date agreement under the locked `stage-b-v1` definition, and Condition semantic concordance is the next active run.
+Collaborators and students should read the numbered documentation in order:
 
-See:
+1. [`docs/01_READ_ME_FIRST.md`](docs/01_READ_ME_FIRST.md)
+2. [`docs/02_STUDY_DESIGN_AND_DECISIONS.md`](docs/02_STUDY_DESIGN_AND_DECISIONS.md)
+3. [`docs/03_RESULTS_THROUGH_STAGE_E.md`](docs/03_RESULTS_THROUGH_STAGE_E.md)
+4. [`docs/04_REPRODUCIBILITY_AND_RERUN.md`](docs/04_REPRODUCIBILITY_AND_RERUN.md)
+5. [`docs/05_CODE_REVIEW_GUIDE.md`](docs/05_CODE_REVIEW_GUIDE.md)
+6. [`docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md`](docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md)
 
-- `docs/current_status_and_publication_plan.md` for current project status and next steps;
-- `docs/project_history_and_decisions.md` for the durable project history, methodological decisions, findings, and Mermaid roadmap;
-- `docs/stage_a_structural_semantic_results.md` for completed Stage A findings;
-- `docs/stage_b_patient_semantic_concordance_spec.md` for the locked Stage B design;
-- `docs/stage_b_wave1_progress.md` for live Stage B Wave 1 results and implementation status;
-- `docs/publication_etl_freeze_record.md` for the final ETL freeze acceptance record;
-- `docs/publication_analysis_workflow.md` for the concordance, phenotype, and analytical-equivalence workflow;
-- `docs/final_freeze_runbook.md` for the operational clean-build procedure used to establish the freeze;
-- `docs/etl_redesign.md` for ETL architecture and design decisions.
+Older development notes, lock records, and superseded manuscript fragments are retained under `docs/archive/` for provenance but are not required reading.
 
-## Local layout
+## Study layers
 
-```text
-/usr/local/datasets/OMOP/
-├── OMOP_parquet/                 # prior OMOP build retained for comparison
-├── PCORnet_parquet/              # source PCORnet parquet tables
-└── OMOP_validated_parquet/       # output of the new audited ETL
+```mermaid
+flowchart LR
+    A[PCORnet source] --> B[Audited ETL]
+    B --> C[OMOP 5.4.2]
+    A --> D[Stage A/B\nstructural + semantic fidelity]
+    C --> D
+    D --> E[Stage C\nphenotype reproducibility]
+    E --> F[Stage D\noutcome reproducibility]
+    F --> G[Stage E\nstatistical/model reproducibility]
 ```
+
+## Current status
+
+- Canonical branch: `main`
+- Frozen publication ETL commit: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
+- Stages A–E: complete for routine publication work
+- Generated `results/`: intentionally gitignored
+- Patient-level outputs and credentials: must not be committed
+
+The key empirical finding is that conditional fidelity was extremely high when the same patients and index dates were held fixed, while end-to-end estimates differed because an upstream diagnosis-date eligibility policy changed cohort membership.
 
 ## Installation
 
 ```bash
-cd pcornet-omop-validation
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e '.[etl]'
+python -m pip install -e '.[etl,analysis,dev]'
 ```
 
-For development/tests:
-
-```bash
-python -m pip install -e '.[etl,dev]'
-pytest
-```
-
-## Audited PCORnet-to-OMOP ETL
-
-The ETL targets OMOP CDM v5.4.2 on SQL Server first. It keeps the prior OMOP database untouched and uses a separate validated target database.
-
-Create a local config:
+Create a local configuration from the tracked example and keep secrets out of Git:
 
 ```bash
 cp config/etl.example.yaml config/etl.yaml
-```
-
-Set the SQL Server password without storing it in Git:
-
-```bash
 export OMOP_SQL_PASSWORD='your-password'
 ```
 
-Inspect the planned stages and unresolved scientific decisions:
+## Code orientation
 
-```bash
-pcornet-omop-etl plan --config config/etl.yaml
-```
+- ETL implementation: `src/pcornet_omop_validation/etl/`
+- Study analyses: `src/pcornet_omop_validation/study/`
+- Locked scientific definitions: `study_definitions/`
+- Current documentation: `docs/01_...` through `docs/06_...`
+- Historical provenance: `docs/archive/`
 
-Download pinned public OHDSI dependencies and record checksums:
-
-```bash
-pcornet-omop-etl acquire --config config/etl.yaml
-```
-
-Athena vocabulary files are user-provided because vocabulary selection, authentication, and licensing may require user action. Put the downloaded Athena files in the directory configured under `vocabulary.directory`.
-
-Resolve explicit ETL/scientific decisions interactively:
-
-```bash
-pcornet-omop-etl configure --config config/etl.yaml
-```
-
-Run preflight checks:
-
-```bash
-pcornet-omop-etl preflight --config config/etl.yaml
-```
-
-Write the current provenance/configuration manifest:
-
-```bash
-pcornet-omop-etl manifest --config config/etl.yaml
-```
-
-Create the isolated target database if needed and apply the pinned official OHDSI OMOP v5.4 SQL Server DDL:
-
-```bash
-pcornet-omop-etl schema --config config/etl.yaml
-```
-
-The schema command is non-destructive. Destructive reset behavior is isolated behind the separately guarded clean-reset command and exact database/schema confirmations.
-
-## Run the initial profile
-
-```bash
-pcornet-omop-profile \
-  --pcornet /usr/local/datasets/OMOP/PCORnet_parquet \
-  --omop /usr/local/datasets/OMOP/OMOP_parquet \
-  --output results
-```
-
-Or:
-
-```bash
-cp config/example.yaml config/local.yaml
-pcornet-omop-profile --config config/local.yaml
-```
-
-## Run the transformation trace
-
-```bash
-python scripts/02_transform_trace.py \
-  --pcornet /usr/local/datasets/OMOP/PCORnet_parquet \
-  --omop /usr/local/datasets/OMOP/OMOP_parquet \
-  --output results/transform_trace
-```
-
-The `results/` directory is ignored by Git. Zip aggregate results for review when needed:
-
-```bash
-zip -r pcornet_omop_profile_results.zip results/
-```
-
-## Validation and publication stages
-
-1. Audited ETL and structural fidelity — **frozen**.
-2. Structural and semantic concordance — **Stage A complete; Stage B active**.
-3. Phenotype reproducibility.
-4. Analytical equivalence and sensitivity analyses.
+Each ETL/study code directory also contains a README explaining scientific conventions and how to review the modules.
 
 ## Data governance
 
-Do not commit source parquet files, Athena vocabulary packages, database credentials, or returned result bundles. Aggregate outputs can still contain sensitive information. Review outputs before sharing outside the approved research environment. The repository is public, so only code and non-sensitive documentation should be committed.
+This repository is public. Do not commit source parquet files, Athena vocabulary packages, database credentials, patient identifiers, row-level predictions, or other row-level sensitive outputs. Aggregate outputs must be disclosure-reviewed before being added to documentation.
