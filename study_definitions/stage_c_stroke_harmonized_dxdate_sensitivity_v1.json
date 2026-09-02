@@ -1,0 +1,26 @@
+{
+  "study_definition": "stage-c-stroke-harmonized-dxdate-sensitivity-v1",
+  "status": "post_freeze_sensitivity_defined_before_execution",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Evaluate Stage C D0/D1/D3 reproducibility after imposing the frozen ETL diagnosis-date eligibility rule symmetrically on the PCORnet source phenotype.",
+  "relationship_to_primary_stage_c": "This sensitivity does not replace or redefine the completed source-faithful Stage C analysis. The primary analysis asks whether a natural PCORnet phenotype reproduces after transformation; this sensitivity asks whether residual discordance remains after harmonizing diagnosis-date eligibility.",
+  "harmonized_rule": {
+    "source_diagnosis_requirement": "Qualifying PCORnet ischemic-stroke diagnosis must have non-null DX_DATE.",
+    "source_index_date": "DX_DATE for qualifying diagnoses; encounter-date fallback is not allowed in this sensitivity.",
+    "omop_requirement": "Lineage-faithful OMOP qualifying diagnosis must have the corresponding DIAGNOSIS lineage and materialized condition occurrence under the frozen ETL.",
+    "all_other_rules": "Retain the locked Stage C D0/D1/D3 diagnosis codes, PDX=P, encounter types, calendar-overnight rule, adult rule, imaging definitions, lipid whitelist, evidence windows, and earliest-qualifying-event selection."
+  },
+  "estimands": [
+    "D0 patient counts, intersection, source-only, OMOP-only, Jaccard, and index-date agreement",
+    "D1 patient counts, intersection, source-only, OMOP-only, Jaccard, and index-date agreement",
+    "D3 patient counts, intersection, source-only, OMOP-only, Jaccard, and index-date agreement"
+  ],
+  "interpretation": "If harmonization materially improves concordance, the difference between the primary and harmonized analyses quantifies the contribution of the asymmetric diagnosis-date eligibility policy. Any residual disagreement after harmonization must be attributed separately rather than assumed to be a CDM effect.",
+  "guardrails": {
+    "do_not_replace_primary_stage_c": true,
+    "post_freeze_sensitivity": true,
+    "no_etl_change": true,
+    "aggregate_outputs_only": true,
+    "patient_level_outputs_outside_git": true
+  }
+}
