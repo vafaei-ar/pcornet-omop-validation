@@ -6,12 +6,12 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .publication_figure_style import COLORS, DOUBLE_COLUMN_MM, clean_axis, direct_value, mm, panel_label
+from .publication_figure_style import COLORS, EXTENDED_DATA_WIDTH_MM, clean_axis, direct_value, mm, panel_label
 
 
 def extended_data_figure1_semantic_fidelity(data: dict) -> plt.Figure:
     b = data["stage_b"]; components = list(b["mapped_exact_counts"]); counts = [b["mapped_exact_counts"][c] for c in components]; y = np.arange(len(components))[::-1]
-    fig = plt.figure(figsize=(mm(DOUBLE_COLUMN_MM), mm(122))); gs = fig.add_gridspec(1, 3, left=0.16, right=0.97, top=0.92, bottom=0.16, wspace=0.62)
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(122))); gs = fig.add_gridspec(1, 3, left=0.16, right=0.97, top=0.92, bottom=0.16, wspace=0.62)
 
     ax = fig.add_subplot(gs[0, 0]); ax.scatter(counts, y, s=24, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(counts, y): direct_value(ax, x, yi, f"{x:,}", COLORS["dark"], 4)
@@ -32,7 +32,7 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     e = data["stage_e"]; d = data["stage_d"]["recurrent"]
     ratios = e["fixed_association_or_ratio_omop_over_source"]; features = list(ratios); vals = list(ratios.values()); y = np.arange(len(features))[::-1]
     models = list(e["models"]); short = ["Logistic", "Ridge logistic", "Gradient boosting"]; corr = [e["models"][m]["fixed_probability_pearson"] for m in models]; ym = np.arange(3)[::-1]
-    fig = plt.figure(figsize=(mm(DOUBLE_COLUMN_MM), mm(112))); gs = fig.add_gridspec(1, 3, left=0.14, right=0.98, top=0.92, bottom=0.14, wspace=0.55)
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(112))); gs = fig.add_gridspec(1, 3, left=0.14, right=0.98, top=0.92, bottom=0.14, wspace=0.55)
 
     ax = fig.add_subplot(gs[0, 0]); ax.axvline(1, color=COLORS["dark"], linewidth=0.6); ax.scatter(vals, y, s=24, color=COLORS["fixed"], zorder=3); ax.set(yticks=y, yticklabels=features, xlim=(0.9992, 1.00055), xlabel="OMOP / PCORnet odds-ratio ratio"); ax.ticklabel_format(axis="x", style="plain", useOffset=False); ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f")); ax.set_title("Fixed-cohort associations", loc="left"); clean_axis(ax, "x"); panel_label(ax, "a", -0.38)
 
@@ -59,7 +59,7 @@ def extended_data_figure3_calibration(data: dict) -> plt.Figure:
     models = list(cal)
     labels = ["Logistic", "Ridge logistic", "Gradient boosting"]
     y = np.arange(len(models))[::-1]
-    fig = plt.figure(figsize=(mm(DOUBLE_COLUMN_MM), mm(92)))
+    fig = plt.figure(figsize=(mm(EXTENDED_DATA_WIDTH_MM), mm(92)))
     gs = fig.add_gridspec(1, 2, left=0.13, right=0.98, top=0.90, bottom=0.18, wspace=0.36)
 
     ax = fig.add_subplot(gs[0, 0])
@@ -80,8 +80,8 @@ def extended_data_figure3_calibration(data: dict) -> plt.Figure:
     key = [
         matplotlib.lines.Line2D([], [], marker="o", linestyle="none", markerfacecolor="white", markeredgecolor=COLORS["dark"], markeredgewidth=0.8, label="PCORnet"),
         matplotlib.lines.Line2D([], [], marker="o", linestyle="none", markerfacecolor=COLORS["dark"], markeredgecolor=COLORS["dark"], label="OMOP"),
-        matplotlib.lines.Line2D([], [], color=COLORS["fixed"], linewidth=1.4, label="Fixed cohort"),
-        matplotlib.lines.Line2D([], [], color=COLORS["end"], linewidth=1.4, label="End-to-end"),
+        matplotlib.lines.Line2D([], [], color=COLORS["fixed"], linewidth=1.0, label="Fixed cohort"),
+        matplotlib.lines.Line2D([], [], color=COLORS["end"], linewidth=1.0, label="End-to-end"),
     ]
     ax.legend(handles=key, loc="upper left", bbox_to_anchor=(0.00, -0.10), ncols=2, handlelength=1.2, handletextpad=0.4, columnspacing=0.8)
     panel_label(ax, "a", -0.28)
