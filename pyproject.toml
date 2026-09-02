@@ -23,6 +23,9 @@ analysis = [
   "numpy>=1.26",
   "scikit-learn>=1.4",
 ]
+figures = [
+  "matplotlib>=3.8",
+]
 dev = [
   "pytest>=8.0",
 ]
@@ -30,6 +33,7 @@ dev = [
 [project.scripts]
 pcornet-omop-profile = "pcornet_omop_validation.cli:main"
 pcornet-omop-etl = "pcornet_omop_validation.etl_cli:main"
+pcornet-omop-figures = "pcornet_omop_validation.study.publication_figures:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
