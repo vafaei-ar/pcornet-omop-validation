@@ -80,24 +80,29 @@ def resolve_font(requested: str | None = None) -> str:
 
 
 def apply_nature_style(font_name: str) -> None:
-    """Set final-size typography, strokes, editable vector text, and white background."""
+    """Set final-size typography, strokes, editable vector text, and white background.
+
+    The prior defaults sat close to the journal minimum and looked undersized in the
+    assembled manuscript. These values deliberately use the upper end of the 5-7 pt
+    Nature range for reader-facing labels while retaining 8 pt panel letters.
+    """
     matplotlib.rcParams.update(
         {
             "font.family": "sans-serif",
             "font.sans-serif": [font_name],
-            "font.size": 6.0,
+            "font.size": 6.5,
             "axes.titlesize": 7.0,
-            "axes.labelsize": 6.5,
+            "axes.labelsize": 7.0,
             "axes.linewidth": 0.6,
             "axes.edgecolor": COLORS["dark"],
             "axes.labelcolor": COLORS["dark"],
-            "xtick.labelsize": 5.5,
-            "ytick.labelsize": 5.5,
+            "xtick.labelsize": 6.5,
+            "ytick.labelsize": 6.5,
             "xtick.major.width": 0.5,
             "ytick.major.width": 0.5,
-            "xtick.major.size": 2.5,
-            "ytick.major.size": 2.5,
-            "legend.fontsize": 5.5,
+            "xtick.major.size": 3.0,
+            "ytick.major.size": 3.0,
+            "legend.fontsize": 6.2,
             "legend.frameon": False,
             "lines.linewidth": 0.7,
             "lines.markersize": 4.0,
@@ -112,6 +117,41 @@ def apply_nature_style(font_name: str) -> None:
             "svg.hashsalt": "pcornet-omop-publication-v1",
         }
     )
+
+
+def padded_limits(
+    values: list[float] | tuple[float, ...],
+    *,
+    pad_frac: float = 0.10,
+    min_pad: float = 0.02,
+    include: list[float] | tuple[float, ...] | None = None,
+    lower: float | None = None,
+    upper: float | None = None,
+) -> tuple[float, float]:
+    """Return compact data-driven limits with optional reference values/clamps.
+
+    Dot/interval plots do not encode magnitude from a zero baseline, so forcing broad
+    fixed ranges wastes publication area. This helper preserves any scientifically
+    meaningful reference values while keeping the data region visually efficient.
+    """
+    vals = [float(v) for v in values]
+    if include:
+        vals.extend(float(v) for v in include)
+    if not vals:
+        raise ValueError("padded_limits requires at least one value")
+
+    lo = min(vals)
+    hi = max(vals)
+    span = hi - lo
+    pad = max(min_pad, span * pad_frac if span else min_pad)
+    lo -= pad
+    hi += pad
+
+    if lower is not None:
+        lo = max(lo, lower)
+    if upper is not None:
+        hi = min(hi, upper)
+    return lo, hi
 
 
 def clean_axis(ax: plt.Axes, grid_axis: str | None = None) -> None:
@@ -135,7 +175,7 @@ def direct_value(ax: plt.Axes, x: float, y: float, text: str, color: str, dx: fl
     del color
     ax.annotate(
         text, (x, y), xytext=(dx, 0), textcoords="offset points", va="center",
-        ha="left" if dx >= 0 else "right", fontsize=5.3, color=COLORS["dark"],
+        ha="left" if dx >= 0 else "right", fontsize=5.9, color=COLORS["dark"],
         annotation_clip=False, clip_on=False,
     )
 
@@ -149,7 +189,7 @@ def add_box(
     *,
     facecolor: str = "white",
     edgecolor: str = COLORS["dark"],
-    fontsize: float = 6.0,
+    fontsize: float = 6.2,
     weight: str = "normal",
 ) -> None:
     x, y = xy
