@@ -8,7 +8,7 @@ The central question is not simply whether rows were copied correctly. It is:
 
 ## Recommended reading order
 
-Read these six files in order:
+Read these seven files in order:
 
 1. **`01_READ_ME_FIRST.md`** — orientation, study question, and repository map.
 2. **`02_STUDY_DESIGN_AND_DECISIONS.md`** — what was tested, why each validation layer exists, and which scientific decisions were frozen.
@@ -16,6 +16,7 @@ Read these six files in order:
 4. **`04_REPRODUCIBILITY_AND_RERUN.md`** — how the ETL/analyses were frozen, what may be rerun, and what outputs are intentionally not committed.
 5. **`05_CODE_REVIEW_GUIDE.md`** — how to read the ETL and study code, including the files where scientific choices are implemented.
 6. **`06_MANUSCRIPT_AND_REVIEW_GUIDE.md`** — current manuscript framing, reviewer questions, limitations, and what feedback is most useful.
+7. **`07_PUBLICATION_FIGURES.md`** — reproducible publication figures, Nature-oriented artwork standards, and figure-generation commands.
 
 Historical development notes, interim lock records, and superseded manuscript fragments are retained under `docs/archive/`. They are provenance, not required reading.
 
@@ -55,6 +56,7 @@ Please focus feedback on:
 - whether any ETL policy should be described differently from an ETL defect;
 - whether the causal explanation for cohort divergence is adequately supported;
 - whether the manuscript overstates generalizability beyond this dataset, ETL, phenotype, and outcome;
+- whether the main/Extended Data figure split communicates the result without redundancy;
 - whether additional analyses are truly necessary or would create unnecessary post-hoc scope.
 
 ## Canonical technical anchors
@@ -63,4 +65,4 @@ Please focus feedback on:
 - Frozen publication ETL commit: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 - OMOP target: CDM v5.4.2
 - Current repository history includes completed Stages A–E.
-- Generated `results/` are intentionally gitignored; committed documentation contains disclosure-reviewed aggregate summaries rather than patient-level outputs.
+- Generated `results/` and rendered `figures/generated/` are intentionally gitignored; committed documentation and figure-data artifacts contain disclosure-reviewed aggregate summaries rather than patient-level outputs.
