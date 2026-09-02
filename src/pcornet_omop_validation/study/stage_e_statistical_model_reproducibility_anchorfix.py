@@ -2,13 +2,38 @@ from __future__ import annotations
 
 """Compatibility wrapper for the locked Stage E analysis.
 
-The first Stage E execution attempt stopped before feature/model fitting because the
-analysis reconstructed lineage-faithful OMOP D0 by selecting the earliest surviving
-materialized OMOP episode per patient. Locked Stage C instead first selects the source
-D0 index episode, then asks whether that exact episode materialized in OMOP.
+The first Stage E execution attempt stopped BEFORE feature/model fitting because the
+base analysis reconstructed lineage-faithful OMOP D0 by selecting the earliest
+surviving materialized OMOP episode per patient. Locked Stage C instead first selects
+the source D0 index episode, then asks whether THAT EXACT episode materialized in OMOP.
 
-This wrapper changes only that reconstruction detail at execution time. The locked
-Stage E study definition, features, outcome, split, models, and metrics are unchanged.
+Why a wrapper instead of silently editing the locked analysis
+-------------------------------------------------------------
+The Stage E study definition, feature set, outcome, patient split, models, and metrics
+had already been prespecified. The safest correction was therefore to preserve the
+original module and apply the smallest execution-time compatibility patch needed to
+restore the inherited Stage C cohort semantics. This makes the correction explicit in
+Git history and prevents it from being mistaken for post-hoc model tuning.
+
+What this wrapper changes
+-------------------------
+Only the SQL fragment that builds #omop_d0:
+- source is changed from all D0 candidates to the already selected #src_d0 episode;
+- the redundant adult-age filter is removed because #src_d0 already applied it.
+
+What this wrapper does NOT change
+---------------------------------
+- the frozen ETL;
+- the Stage E study definition;
+- the outcome;
+- any feature definition;
+- imputation/scaling;
+- train/test hashing;
+- prediction models;
+- evaluation metrics.
+
+The completed Stage E run must still reproduce all locked Stage C/D anchors before any
+feature comparison or model result is accepted.
 """
 
 from sqlalchemy.engine import Connection
@@ -16,10 +41,18 @@ from sqlalchemy.engine import Connection
 from pcornet_omop_validation.study import stage_e_statistical_model_reproducibility as base
 
 
+# Keep a stable reference so the SQLAlchemy method is always restored, including when
+# base.run raises an exception. This avoids leaking the compatibility patch into other
+# analyses executed in the same Python process.
 _ORIGINAL = Connection.exec_driver_sql
 
 
 def _patched_exec_driver_sql(self: Connection, statement: str, *args, **kwargs):
+    """Patch only the known Stage E OMOP-D0 construction statement.
+
+    The marker and exact old fragments make this intentionally brittle: if the base SQL
+    changes, fail loudly rather than applying a patch to an unrecognized query.
+    """
     sql = statement
     marker = "IF OBJECT_ID('tempdb..#omop_d0') IS NOT NULL DROP TABLE #omop_d0;"
     if marker in sql:
@@ -37,6 +70,8 @@ def _patched_exec_driver_sql(self: Connection, statement: str, *args, **kwargs):
 
 
 def run(config_path: str, output_dir: str | None = None):
+    # The monkeypatch is scoped to this one run and restored in finally. No caller should
+    # import this module expecting a globally modified SQLAlchemy connection behavior.
     Connection.exec_driver_sql = _patched_exec_driver_sql
     try:
         return base.run(config_path, output_dir)
