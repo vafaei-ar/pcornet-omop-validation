@@ -1,5 +1,29 @@
 from __future__ import annotations
 
+"""Locked Stage D outcome-reproducibility analysis.
+
+This module intentionally computes TWO different scientific comparisons:
+
+1. Fixed-index outcome fidelity: restrict to patients shared by PCORnet and the
+   lineage-faithful OMOP D0 cohort with the same selected index date and adequate
+   observability in both representations. This isolates post-index outcome
+   representation. If this comparison differs, the same patient's downstream event
+   history is being represented differently.
+
+2. End-to-end analytical reproducibility: independently use each representation's
+   eligible D0 cohort and observability. This allows upstream phenotype attrition to
+   propagate into the final risk estimate, which is what happens when a study is run
+   independently in each CDM.
+
+These two estimands must not be collapsed. Exact fixed-index outcome agreement can
+coexist with different end-to-end risks when cohort construction selects different
+patients. That contrast is a central scientific result of this project.
+
+The study definition and inherited D0 definition are hash-checked against an
+outcome-free preflight before any outcome query is accepted. This is deliberate: the
+analysis should fail rather than silently run after a definition change.
+"""
+
 import argparse
 import hashlib
 import json
@@ -37,6 +61,7 @@ def _schema(v: object) -> str:
 
 
 def _norm(expr: str) -> str:
+    """Normalize diagnosis codes exactly as in the locked Stage C stroke matcher."""
     return f"REPLACE(UPPER(LTRIM(RTRIM(CONVERT(nvarchar(255), {expr})))),'.','')"
 
 
@@ -53,6 +78,11 @@ def _risk(events: int, eligible: int) -> float | None:
 
 
 def _comparison(source_events: int, source_eligible: int, omop_events: int, omop_eligible: int, abs_margin_pp: float, rr_lo: float, rr_hi: float) -> dict[str, object]:
+    """Apply the prespecified absolute and relative equivalence margins.
+
+    A nonsignificant difference is not treated as equivalence. Both the absolute risk
+    difference and risk-ratio margins must be satisfied.
+    """
     sr = _risk(source_events, source_eligible)
     orisk = _risk(omop_events, omop_eligible)
     diff = None if sr is None or orisk is None else 100.0 * (orisk - sr)
@@ -88,6 +118,9 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
     preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
     if preflight.get("status") != "stage_d_stroke_preflight_ready":
         raise RuntimeError("Stage D preflight is not ready")
+    # These checks preserve the outcome-free lock. If either definition changed after
+    # preflight, the correct action is to stop and create a new documented analysis
+    # version, not continue with the old lock record.
     if preflight.get("study_definition_sha256") != _sha256(STUDY_PATH):
         raise RuntimeError("Stage D study definition changed after preflight; rerun preflight")
     if preflight.get("inherited_d0_definition_sha256") != _sha256(D0_PATH):
@@ -99,6 +132,7 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
     target_schema = _schema(cfg.raw["sqlserver"].get("target_schema", "dbo"))
     code_list = _sql_list(set(ICD9_STROKE_CODES) | set(ICD10_STROKE_CODES))
     acute_source = "'ED','EI','IP'"
+    # OMOP concepts corresponding to the frozen ED/EI/IP transformation semantics.
     acute_target = "9203,262,9201"
 
     engine = make_engine(cfg)
@@ -142,6 +176,9 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
             """)
 
             print("progress: materializing inherited lineage-faithful OMOP D0 index cohort", flush=True)
+            # IMPORTANT: OMOP D0 is anchored to the already selected source D0 episode.
+            # We are asking whether that exact qualifying source diagnosis/visit
+            # materialized, not searching OMOP for a replacement episode.
             con.exec_driver_sql("IF OBJECT_ID('tempdb..#omop_d0_all') IS NOT NULL DROP TABLE #omop_d0_all")
             con.exec_driver_sql(f"""
             SELECT s.patid,p.person_id,s.encounterid,s.index_date source_index_date,
@@ -178,6 +215,10 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
                 raise RuntimeError(f"Stage D failed to reproduce Stage C D0 anchors: source={source_n}, omop={omop_n}, shared_exact={shared_exact_n}, expected={anchor}")
 
             print("progress: materializing representation-specific observability and acute-care labels", flush=True)
+            # Follow-up eligibility is representation-specific by design: PCORnet uses
+            # ENROLLMENT and OMOP uses observation_period. Fixed-index comparisons later
+            # require observability in both; end-to-end comparisons retain each side's
+            # own observable cohort.
             con.exec_driver_sql("IF OBJECT_ID('tempdb..#src_labels') IS NOT NULL DROP TABLE #src_labels")
             con.exec_driver_sql(f"""
             SELECT s.*,
@@ -220,6 +261,7 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
             """)
 
             def aggregate_fixed(window: int) -> dict[str, int]:
+                """Same patients + same index + observability on both sides."""
                 row = con.execute(text(f"""
                 WITH x AS (
                   SELECT s.patid,s.event{window} se,o.event{window} oe
@@ -238,6 +280,7 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
                 return {k:int(v or 0) for k,v in dict(row).items()}
 
             def aggregate_end(window: int, table: str) -> tuple[int,int]:
+                """Representation-specific cohort: deliberately allows membership differences."""
                 row = con.execute(text(f"SELECT COUNT_BIG(*) eligible,SUM(CASE WHEN event{window}=1 THEN 1 ELSE 0 END) events FROM {table} WHERE covered{window}=1")).mappings().one()
                 return int(row["eligible"] or 0), int(row["events"] or 0)
 
@@ -269,6 +312,9 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
             """)).mappings().one()
             date_metrics = {"both_positive":int(date_row["both_positive"] or 0),"exact_first_event_date":int(date_row["exact_date"] or 0),"within1_first_event_date":int(date_row["within1_date"] or 0)}
 
+            # The exploratory recurrent endpoint as originally implemented does NOT
+            # require recurrent PDX=P. A later PDX=P analysis is explicitly post-outcome
+            # sensitivity work and is not silently folded into this primary file.
             recurrent = con.execute(text("""
             WITH fixed AS (
               SELECT s.patid,s.recurrent365 sr,o.recurrent365 orc
