@@ -1,5 +1,27 @@
 from __future__ import annotations
 
+"""Post-freeze Stage C sensitivity with symmetric diagnosis-date eligibility.
+
+Why this file exists
+--------------------
+The locked/source-faithful Stage C phenotype intentionally preserved the source study's
+natural behavior: if the selected primary stroke diagnosis had no DX_DATE, the source
+phenotype could still anchor the encounter using encounter dates. The frozen ETL, by
+contrast, requires a diagnosis date to materialize a DIAGNOSIS event in OMOP. That is a
+real end-to-end portability issue, but it also means the source and target comparisons
+use asymmetric diagnosis-date eligibility.
+
+This sensitivity answers a narrower causal-attribution question: after requiring
+non-null DX_DATE on the PCORnet side as well, is there any residual D0/D1/D3 phenotype
+discordance? It must NOT be interpreted as a replacement for the original Stage C
+result. The original asks whether the natural source phenotype survives the frozen ETL;
+this file asks whether the representations agree once diagnosis-date eligibility is
+made deliberately symmetric.
+
+Lineage joins below are used only to verify that the same eligible source evidence
+materialized in OMOP. They do not modify the frozen ETL or invent target events.
+"""
+
 import argparse
 import csv
 import hashlib
@@ -21,6 +43,9 @@ LIPID_ARTIFACT = Path("study_definitions/artifacts/stage_c_lipid_loinc_whitelist
 CT_CODES = frozenset({"70450", "70460", "70470"})
 MRI_CODES = frozenset({"70551", "70552", "70553", "70557", "70558", "70559"})
 CPT_TYPES = frozenset({"CH", "CPT", "CPT4", "HCPCS"})
+# Prefer the same source lab-date hierarchy used by the locked Stage C logic. We inspect
+# the source schema at runtime because not every PCORnet extract exposes every optional
+# date field.
 LAB_DATE_PRIORITY = ("LAB_TKN_DTTM", "SPECIMEN_DATE", "LAB_DATE", "RESULT_DATE")
 
 
@@ -43,6 +68,7 @@ def _schema(v: object) -> str:
 
 
 def _norm(expr: str) -> str:
+    """Normalize source codes exactly as the locked stroke matcher does."""
     return f"REPLACE(UPPER(LTRIM(RTRIM(CONVERT(nvarchar(255), {expr})))),'.','')"
 
 
@@ -60,12 +86,15 @@ def _columns(con, schema: str, table: str) -> set[str]:
 
 
 def _load_loincs() -> list[str]:
+    # The lipid whitelist is a versioned study artifact so D1/D3 evidence cannot drift
+    # with later vocabulary or ad-hoc code-list changes.
     with LIPID_ARTIFACT.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         return sorted({str(r.get("LOINC_NUM") or "").strip().upper() for r in reader if str(r.get("LOINC_NUM") or "").strip()})
 
 
 def _metrics(con, src: str, omop: str) -> dict[str, Any]:
+    """Compare patient membership and selected index dates for two temp cohorts."""
     row = con.execute(text(f"""
     WITH s AS (SELECT patid,index_date FROM {src}),
          o AS (SELECT patid,index_date FROM {omop}),
@@ -93,6 +122,8 @@ def _metrics(con, src: str, omop: str) -> dict[str, Any]:
 def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
     cfg = load_etl_config(config_path)
     study = json.loads(STUDY_PATH.read_text(encoding="utf-8"))
+    # These guards make it impossible to run this as an unlabeled post-hoc rewrite of
+    # Stage C. The sensitivity definition and ETL anchor must match the committed lock.
     if study.get("status") != "post_freeze_sensitivity_defined_before_execution":
         raise RuntimeError("Harmonized sensitivity definition is not locked before execution")
     if study.get("frozen_etl_sha") != FROZEN_ETL_SHA:
@@ -116,6 +147,8 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
 
             print("progress: materializing harmonized non-null-DX_DATE stroke candidates", flush=True)
             con.exec_driver_sql("IF OBJECT_ID('tempdb..#h_dx') IS NOT NULL DROP TABLE #h_dx")
+            # The defining sensitivity change is here: d.DX_DATE IS NOT NULL is imposed
+            # on the source candidate set before either representation is constructed.
             con.exec_driver_sql(f"""
             ;WITH dx_rank AS (
               SELECT CONVERT(nvarchar(255),d.PATID) patid,
@@ -160,6 +193,9 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
 
             print("progress: materializing lineage-faithful OMOP evidence", flush=True)
             con.exec_driver_sql("IF OBJECT_ID('tempdb..#h_omop_base') IS NOT NULL DROP TABLE #h_omop_base")
+            # PDX and exact source diagnosis identity are not native OMOP core fields in
+            # this ETL. Frozen lineage therefore identifies whether the SAME qualifying
+            # source diagnosis/visit materialized; it is not used to manufacture a row.
             con.exec_driver_sql(f"""
             SELECT d.patid,d.encounterid,d.diagnosisid,d.dx_date,d.admit_date,d.discharge_date,d.birth_date,
                    p.person_id,v.visit_occurrence_id,CAST(v.visit_start_date AS date) target_admit_date,CAST(v.visit_end_date AS date) target_discharge_date,
@@ -204,6 +240,9 @@ def run(config_path: str, output_dir: str | None = None) -> dict[str, object]:
             """)
 
             def make_source(name: str, where: str) -> None:
+                # Patient-level selection is repeated separately for D0/D1/D3 because
+                # imaging/lipid evidence can change which encounter is the first
+                # qualifying episode for a patient.
                 con.exec_driver_sql(f"IF OBJECT_ID('tempdb..#h_src_{name}') IS NOT NULL DROP TABLE #h_src_{name}")
                 con.exec_driver_sql(f"""
                 ;WITH q AS (
