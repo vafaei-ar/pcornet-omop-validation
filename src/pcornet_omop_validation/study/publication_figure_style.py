@@ -3,13 +3,14 @@ from __future__ import annotations
 """Shared Nature-oriented styling and export helpers for publication figures."""
 
 import hashlib
+import re
 import subprocess
 import warnings
 from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
+from matplotlib import font_manager, ticker
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 MM_PER_INCH = 25.4
@@ -144,6 +145,94 @@ def padded_limits(
     return lo, hi
 
 
+def _compact_direct_label(text: str) -> str:
+    """Remove computational precision that adds no reader-facing information.
+
+    Counts, inequalities and already compact nonnumeric labels are left alone. The
+    exact values remain in the versioned aggregate JSON; this function controls only
+    what is printed in publication artwork.
+    """
+    stripped = text.strip()
+    if not stripped or stripped.startswith(("<", ">")):
+        return text
+
+    percent = re.fullmatch(r"([+-]?)(\d+)\.(\d+)%", stripped)
+    if percent:
+        sign, whole, decimals = percent.groups()
+        if len(decimals) <= 1:
+            return text
+        value = float(f"{sign}{whole}.{decimals}")
+        if abs(value - 100.0) < 5e-10:
+            return "100%"
+        return f"{value:.1f}%"
+
+    number = re.fullmatch(r"([+-]?)(\d+)\.(\d+)", stripped)
+    if not number:
+        return text
+
+    sign, whole, decimals = number.groups()
+    if len(decimals) <= 2:
+        return text
+    value = float(f"{sign}{whole}.{decimals}")
+
+    if value == 0:
+        return f"{value:+.2f}" if sign == "+" else f"{value:.2f}"
+    if 0 < abs(value) < 0.001:
+        return "<0.001" if value > 0 else ">-0.001"
+    if sign in {"+", "-"} or abs(value) >= 1.0:
+        return f"{value:+.2f}" if sign == "+" else f"{value:.2f}"
+    # Preserve three decimals for correlations/probability differences such as 0.965
+    # and 0.037, where that third decimal communicates a visible scientific contrast.
+    return f"{value:.3f}"
+
+
+def _numeric_tick_text(label: str) -> float | None:
+    cleaned = label.strip().replace("−", "-")
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _compact_linear_x_ticks(fig: plt.Figure) -> None:
+    """Use the fewest x-axis decimals that preserve distinctions at the shown scale."""
+    # This is deliberately applied after every panel builder has set its final limits.
+    # Logarithmic axes and categorical axes are excluded.
+    fig.canvas.draw()
+    for ax in fig.axes:
+        if ax.get_xscale() != "linear" or not ax.get_visible():
+            continue
+        labels = [tick.get_text() for tick in ax.get_xticklabels()]
+        visible = [label for label in labels if label.strip()]
+        if not visible or any(_numeric_tick_text(label) is None for label in visible):
+            continue
+
+        lo, hi = ax.get_xlim()
+        span = abs(hi - lo)
+        if span >= 1.0:
+            # Integer/one-decimal axes are already compact enough and may have
+            # scientifically chosen fixed ticks.
+            continue
+        if span >= 0.20:
+            decimals = 1
+        elif span >= 0.005:
+            decimals = 2
+        else:
+            decimals = 3
+
+        formatter = ticker.FormatStrFormatter(f"%.{decimals}f")
+        ticks = [x for x in ax.get_xticks() if min(lo, hi) - 1e-12 <= x <= max(lo, hi) + 1e-12]
+        rendered = [f"{x:.{decimals}f}" for x in ticks]
+        if len(rendered) != len(set(rendered)):
+            # If rounding would duplicate adjacent tick labels, use a coarser locator
+            # matched to the requested precision instead of adding more digits.
+            step = 10 ** (-decimals)
+            ax.xaxis.set_major_locator(ticker.MultipleLocator(step))
+        ax.xaxis.set_major_formatter(formatter)
+
+
 def clean_axis(ax: plt.Axes, grid_axis: str | None = None) -> None:
     """Use a restrained Nature-style axis without background gridlines."""
     del grid_axis
@@ -160,10 +249,11 @@ def panel_label(ax: plt.Axes, letter: str, x: float = -0.10, y: float = 1.06) ->
 
 
 def direct_value(ax: plt.Axes, x: float, y: float, text: str, color: str, dx: float = 4) -> None:
-    """Annotate a plotted value using near-maximal permitted figure text size."""
+    """Annotate a plotted value at publication display precision."""
     del color
+    display_text = _compact_direct_label(text)
     ax.annotate(
-        text,
+        display_text,
         (x, y),
         xytext=(dx, 0),
         textcoords="offset points",
@@ -243,6 +333,7 @@ def validate_figure_artwork(fig: plt.Figure) -> None:
 
 
 def save_figure(fig: plt.Figure, stem: Path, formats: tuple[str, ...], dpi: int) -> list[Path]:
+    _compact_linear_x_ticks(fig)
     validate_figure_artwork(fig)
     paths: list[Path] = []
     for fmt in formats:
