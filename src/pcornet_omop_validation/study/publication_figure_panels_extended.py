@@ -154,6 +154,8 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     ax.tick_params(axis="y", pad=4)
     ax.set_xlim(*padded_limits(vals, pad_frac=0.14, min_pad=0.00006, include=[1.0]))
     ax.ticklabel_format(axis="x", style="plain", useOffset=False)
+    # Four decimals are retained on this deliberately restricted ratio axis because
+    # three decimals would collapse several distinct positions into the same label.
     ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f"))
     ax.set_title("Fixed-cohort associations", loc="left")
     clean_axis(ax)
@@ -162,10 +164,11 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     ax = fig.add_subplot(gs[0, 1])
     ax.scatter(corr, ym, s=32, color=COLORS["fixed"], zorder=3)
     for x, yi in zip(corr, ym):
-        # Put values inward from the panel boundary rather than allowing them to run
-        # into the neighboring recurrent-event panel.
+        # Manuscript display precision: avoid exposing six-decimal computational
+        # output when the scientific message is simply near-perfect agreement.
+        label = ">0.999" if x > 0.999 else f"{x:.3f}"
         dx = 6 if x < 0.98 else -6
-        direct_value(ax, x, yi, f"{x:.6f}", COLORS["dark"], dx)
+        direct_value(ax, x, yi, label, COLORS["dark"], dx)
     ax.set(yticks=ym, yticklabels=short, xlabel="Pearson correlation")
     ax.tick_params(axis="y", pad=4)
     ax.set_xlim(*padded_limits(corr, pad_frac=0.20, min_pad=0.009, include=[1.0]))
@@ -192,11 +195,9 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
     ax.set_xlim(*padded_limits(pc + om, pad_frac=0.18, min_pad=9))
     ax.set_title("Recurrent-stroke\nsensitivity", loc="left")
     clean_axis(ax)
-    panel_label(ax, "c", -0.34)
 
-    # Keep the key completely outside the data axes so it cannot collide with points
-    # or direct labels. This also makes the open/filled encoding visually consistent
-    # with the main figures without consuming panel-c plotting area.
+    # Keep the key inside panel c, in the large empty upper-left data region. A
+    # vertical two-row key avoids both the panel title and the recurrent-event points.
     key = [
         matplotlib.lines.Line2D(
             [], [], marker="o", linestyle="none", markerfacecolor="white",
@@ -207,14 +208,15 @@ def extended_data_figure2_additional_reproducibility(data: dict) -> plt.Figure:
             markeredgecolor=COLORS["omop"], label="OMOP"
         ),
     ]
-    fig.legend(
+    ax.legend(
         handles=key,
-        loc="upper right",
-        bbox_to_anchor=(0.985, 0.965),
-        ncols=2,
-        handletextpad=0.4,
-        columnspacing=0.9,
+        loc="center left",
+        bbox_to_anchor=(0.03, 0.73),
+        ncols=1,
+        handletextpad=0.5,
+        borderaxespad=0.0,
     )
+    panel_label(ax, "c", -0.34)
     return fig
 
 
