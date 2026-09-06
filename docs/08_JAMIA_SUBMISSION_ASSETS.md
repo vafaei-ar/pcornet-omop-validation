@@ -16,7 +16,7 @@ The JAMIA-facing figure design emphasizes the manuscript's central contrast:
 
 ## Figures
 
-Base builders:
+Original JAMIA-oriented builders:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_jamia_assets \
@@ -24,7 +24,25 @@ python -m pcornet_omop_validation.study.publication_jamia_assets \
   --outdir figures/jamia
 ```
 
-Final visually reviewed export wrapper:
+Second-pass main-figure redesign:
+
+```bash
+python -m pcornet_omop_validation.study.publication_jamia_main_v2 \
+  --outdir figures/jamia_v2
+```
+
+The v2 main figures were redesigned around the paper-level visual thesis rather than the internal A-E validation workflow. The design intentionally uses fewer schematic nodes, larger typography, stronger fixed-versus-end-to-end hierarchy, direct quantitative labels, and only the minimum precision needed to preserve the scientific distinction.
+
+The v2 figure jobs are:
+
+- Figure 1: identify the reproducibility breakpoint, then contrast fixed-patient/index and independent end-to-end estimands;
+- Figure 2: show source-faithful phenotype divergence, demonstrate exact rescue after symmetric diagnosis-date eligibility, and localize the DX_DATE mechanism with a sparse fork diagram;
+- Figure 3: contrast exact fixed-index outcome representation with end-to-end risk/population change and show the prespecified reproducibility tolerance directly;
+- Figure 4: show end-to-end case-mix shift, discrimination change, and fixed-patient prediction agreement without overloading the panel set.
+
+The existing Extended Data builders remain appropriate for supporting semantic-fidelity, association/prediction-agreement, recurrent-stroke, and calibration evidence.
+
+Final visually reviewed export wrapper for the earlier builder set:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_jamia_final \
