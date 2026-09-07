@@ -190,8 +190,8 @@ def figure4(data):
     ax.tick_params(axis="y",labelsize=10.2)
     ax.set_title("Discrimination is stable fixed, shifted end-to-end",loc="left",fontweight="bold",pad=15)
 
-    ax=fig.add_subplot(gs[1,1]); ax.set(xlim=(0,1),ylim=(-.45,2.55)); ax.axis("off"); panel(ax,"c",x=-.21,y=1.08)
-    ax.text(0,2.54,"Individual prediction agreement vs end-to-end error",fontsize=11.0,fontweight="bold",va="top")
+    ax=fig.add_subplot(gs[1,1]); ax.set(xlim=(0,1),ylim=(-.45,2.68)); ax.axis("off"); panel(ax,"c",x=-.21,y=1.08)
+    ax.text(0,2.64,"Individual prediction agreement vs end-to-end error",fontsize=11.0,fontweight="bold",va="top")
     ax.text(.48,2.22,"Fixed prediction MAD",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["pcornet"])
     ax.text(.96,2.22,"End-to-end Brier Δ",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["omop"])
     mad=[e["models"][m]["fixed_probability_mad"] for m in models]; bd=[e["models"][m]["end_omop_brier"]-e["models"][m]["end_pcornet_brier"] for m in models]
