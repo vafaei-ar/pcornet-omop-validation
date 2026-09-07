@@ -1,188 +1,156 @@
-# 07 — Publication figures
+# 07 — Publication figures and tables
 
-This document defines the reproducible figure pipeline for the manuscript. The figures are not screenshots and are not manually edited after export: every panel is generated from versioned disclosure-reviewed aggregate values by Python code in this repository.
+This document defines the **single current publication-asset pipeline** for the study. Historical plotting implementations were removed from the current branch; Git history preserves them if provenance review is ever needed.
 
-## Design objective
+The rule is simple:
 
-The figures are designed around the paper's central scientific distinction:
+> **All manuscript figures are generated from code in `publication_figures.py` using the frozen aggregate publication artifact. No figure should be manually edited after export.**
 
-> **Conditional fidelity can be nearly exact when the same patients and index dates are held fixed, while an independently run end-to-end study can produce different cohorts and final estimates because an upstream eligibility rule changes who enters the analysis.**
-
-The main figures therefore prioritize scientific mechanism and estimands rather than converting every results table into a plot.
-
-```mermaid
-flowchart LR
-    A[Mapped-event fidelity] --> B[Phenotype selection]
-    B --> C[Fixed-index outcome fidelity]
-    B --> D[End-to-end population change]
-    D --> E[Risk and feature-distribution change]
-    E --> F[Prediction-performance change]
-```
-
-## Current figure set
-
-| Figure | Purpose | Manuscript role |
-| --- | --- | --- |
-| Figure 1 — validation framework | Shows the ETL, Stages A–E, and the fixed versus end-to-end estimands | Main |
-| Figure 2 — phenotype reproducibility | Shows source-faithful discordance, exact harmonized sensitivity, and the `DX_DATE` mechanism | Main |
-| Figure 3 — outcome reproducibility | Contrasts exact fixed-index risks with non-equivalent end-to-end risks and cohort sizes | Main |
-| Figure 4 — model reproducibility | Shows feature SMDs, AUROC differences, patient-level prediction differences, and Brier differences | Main |
-| Extended Data Fig. 1 — semantic fidelity | Separates exact mapped semantic fidelity from unresolved/concept-zero coverage limitations | Extended Data |
-| Extended Data Fig. 2 — additional reproducibility | Shows fixed-cohort association ratios, probability correlations, and recurrent-stroke sensitivity | Extended Data |
-| Extended Data Fig. 3 — calibration | Shows calibration slopes and intercepts under fixed and end-to-end estimands | Extended Data |
-
-## Nature-oriented technical standard
-
-The plotting defaults are aligned with the current Nature research-figure guidance checked on 2026-09-02:
-
-- main figures: **89 mm** single-column or **183 mm** double-column width;
-- Extended Data figures: maximum **180 mm** page width;
-- maximum figure height: **170 mm**;
-- body/axis/legend text: **5–7 pt** at final physical size;
-- panel letters: **8 pt bold lowercase**;
-- sans-serif font, preferably **Arial or Helvetica**;
-- editable vector text, not outlined; Matplotlib PDF font type **42**;
-- line/stroke widths enforced within **0.25–1 pt**;
-- RGB, colour-vision-deficiency-friendly palette;
-- no background gridlines, drop shadows, decorative effects, or coloured annotation text;
-- axis lines, tick marks, labels, and units are retained;
-- vector export for artwork plus a high-resolution raster preview.
-
-Official references:
-
-- https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
-- https://research-figure-guide.nature.com/figures/building-and-exporting-figure-panels/
-- https://research-figure-guide.nature.com/figures/extended-data-formatting-guidelines/
-
-The repository uses an Okabe–Ito colour-safe palette. Colour is never the only carrier of meaning: open/filled markers, labels, row names, and/or connecting lines also distinguish comparisons.
-
-## Reproducibility architecture
+## Scientific source of truth
 
 Figure inputs are stored in:
 
 `study_definitions/artifacts/publication_figure_data_v1.json`
 
-This file contains **aggregate values only** and is intentionally versioned. It does not contain patient identifiers, row-level predictions, or protected health information. Scientific values used in the plots live in this versioned data artifact rather than being hard-coded into panel code.
+This committed artifact contains disclosure-reviewed aggregate values only. It does not contain patient identifiers, row-level predictions, or protected health information.
 
-Figure code is split into:
+The figure runner validates locked scientific invariants before rendering, including:
 
-- `publication_figure_style.py` — typography, dimensions, colour palette, export and artwork validation;
-- `publication_figure_panels_main.py` — Figures 1–4;
-- `publication_figure_panels_extended.py` — Extended Data figures;
-- `publication_figures.py` — command-line generation, scientific invariant checks, export, and manifest generation.
+- exact concordance of the harmonized D0/D1/D3 sensitivity;
+- exact fixed-cohort Stage D event/risk agreement;
+- complete Stage B numeric reconciliation with zero unexplained differences.
 
-The figure runner verifies locked scientific invariants before rendering. For example, it fails if the harmonized Stage C phenotypes are not exactly concordant, if fixed Stage D events/risks are not identical, or if Stage B numeric reconciliation no longer sums correctly. Artwork validation also fails when final-size text or visible line weights fall outside the configured Nature ranges.
+## Canonical figure code
 
-## Installation
+There is now one publication figure module:
+
+`src/pcornet_omop_validation/study/publication_figures.py`
+
+It contains the current builders for all seven figures:
+
+1. `Figure1_reproducibility_breakpoint`
+2. `Figure2_phenotype_mechanism`
+3. `Figure3_outcome_estimands`
+4. `Figure4_model_reproducibility`
+5. `ExtendedDataFigure1_semantic_fidelity`
+6. `ExtendedDataFigure2_additional_reproducibility`
+7. `ExtendedDataFigure3_calibration`
+
+The current main figures use reader-facing clinical/scientific terminology rather than requiring readers to decode raw database column names. Exact schema identifiers remain in the ETL/analysis code and technical provenance records.
+
+## Generate all figures
+
+Install the plotting dependencies:
 
 ```bash
 python -m pip install -e '.[figures]'
 ```
 
-For the full development environment:
-
-```bash
-python -m pip install -e '.[etl,analysis,figures,dev]'
-```
-
-## Generate the figures
-
-Review-quality generation using the best available installed sans-serif font:
+Then run either:
 
 ```bash
 pcornet-omop-figures
 ```
 
-Equivalent module invocation:
+or the equivalent module command:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_figures
 ```
 
-Default outputs are written to `figures/generated/` in:
+The default output directory is:
 
-- PDF — editable vector artwork for main-figure submission/authoring;
-- EPS — vector artwork and an accepted Nature Extended Data format;
-- SVG — convenient editable/review format;
-- PNG — 600-dpi **review preview only**, not the intended Nature submission file.
+`results/publication_assets/figures/`
 
-Nature's current main-figure guidance prefers editable vector PDF/EPS/AI; its current Extended Data guidance accepts JPEG/TIFF/EPS and specifies a 180-mm maximum page width. For this all-vector figure set, use the generated **EPS** files for Extended Data submission rather than the PNG review previews.
+The default formats are PNG, PDF, and SVG. Generated outputs are intentionally ignored by Git; the code plus frozen aggregate input are the source of truth.
 
-Generated files are ignored by Git. The code and versioned aggregate inputs are the reproducible source of truth.
-
-## Final-submission font check
-
-Nature prefers Arial or Helvetica. Linux systems often do not include either by default. Review figures may therefore render with Nimbus Sans or Liberation Sans, but final submission artwork should be regenerated on a system with Arial or Helvetica available.
-
-To enforce this rather than silently accepting a fallback:
+To regenerate from a clean output directory:
 
 ```bash
-pcornet-omop-figures --font Arial --strict-font
+rm -rf results/publication_assets/figures
+pcornet-omop-figures
 ```
 
-or:
-
-```bash
-pcornet-omop-figures --font Helvetica --strict-font
-```
-
-The repository does **not** distribute font files.
-
-## Generate or verify selected figures
-
-Validate the frozen aggregate input without producing graphics:
+## Validate without rendering
 
 ```bash
 pcornet-omop-figures --verify-only
 ```
 
-Generate one figure only:
+This validates the frozen aggregate artifact and scientific invariants without writing graphics.
+
+## Generate selected figures
+
+For example:
 
 ```bash
-pcornet-omop-figures --only Figure3_outcome_reproducibility
+pcornet-omop-figures \
+  --only Figure2_phenotype_mechanism \
+  --only ExtendedDataFigure2_additional_reproducibility
 ```
 
-Change formats explicitly if needed:
+## Font and export controls
+
+The pipeline prefers Arial or Helvetica when installed, with a sans-serif fallback for review rendering.
+
+For final artwork, a machine with Arial or Helvetica can enforce the font explicitly:
 
 ```bash
-pcornet-omop-figures --formats pdf,eps
+pcornet-omop-figures --font Arial --strict-font
 ```
 
-## Manifest and audit trail
+Change formats or PNG resolution if required by the eventual submission system:
 
-Each complete run writes:
+```bash
+pcornet-omop-figures --formats pdf,svg,png --dpi 300
+```
 
-`figures/generated/publication_figures_manifest.json`
+The repository does not distribute font files.
+
+## Reproducibility manifest
+
+Each figure run writes:
+
+`results/publication_assets/figures/publication_figures_manifest.json`
 
 The manifest records:
 
 - frozen ETL SHA;
-- figure-data SHA-256;
-- Git SHA of the plotting code;
+- SHA-256 of the aggregate figure-data artifact;
+- Git SHA of the current checkout;
 - Matplotlib version;
-- actual font used;
-- main and Extended Data size targets, typography and line-weight constraints;
-- every generated filename, byte size, and SHA-256;
-- aggregate-only status.
+- font used;
+- figure names;
+- every generated filename, byte size, and SHA-256.
 
-This allows a collaborator or reviewer to determine exactly which code/data/font/software generated a submitted figure.
+## Current figure interpretation guardrails
 
-## Figure-specific interpretation guardrails
+**Figure 1:** summarizes the paper's main distinction: mapped technical fidelity can coexist with end-to-end study divergence when cohort selection changes upstream.
 
-**Figure 2:** the harmonized `DX_DATE` result is a post-freeze sensitivity. It demonstrates residual representation concordance after symmetric eligibility; it does not replace the source-faithful primary phenotype result. Panels **b** and **c** intentionally use restricted x-axis ranges to resolve differences near complete agreement; the manuscript figure legend must disclose this magnification explicitly.
+**Figure 2:** the diagnosis-date harmonization is a post-freeze sensitivity. It explains the mechanism but does not replace the source-faithful primary phenotype comparison.
 
-**Figure 3:** shaded areas are the prespecified Stage D equivalence margins (absolute risk difference ±0.5 percentage points; risk ratio 0.95–1.05). The fixed and end-to-end rows answer different scientific questions.
+**Figure 3:** the ±0.5 percentage-point band is the prespecified empirical cross-CDM reproducibility tolerance for risk difference, not a clinical noninferiority margin.
 
-**Figure 4:** the dashed line in panel a marks the prespecified Stage E negligible SMD threshold of 0.10. End-to-end prediction differences combine cohort selection and feature-distribution differences; they are not a pure intrinsic OMOP model effect.
+**Figure 4:** the 0.10 SMD line is a conventional descriptive reference value, not a prespecified statistical threshold. Fixed-cohort and end-to-end model results answer different questions.
 
-**Extended Data Fig. 1:** exact mapped semantic agreement and vocabulary/coverage limitations are deliberately shown separately. A concept-zero or unresolved route is not counted as a mapped-event disagreement.
+**Extended Data Figure 1:** mapped semantic agreement and mapping/coverage limitations are shown separately so unresolved or unmapped records are not misclassified as mapped-event disagreement.
 
-**Extended Data Fig. 2:** panels **a** and **b** intentionally use restricted x-axis ranges to resolve near-exact odds-ratio and probability-correlation agreement. The Extended Data legend must state that these axes are restricted.
+**Extended Data Figure 2:** panels a and b use restricted ranges to make near-exact agreement visible. Panel c retains the recurrent-stroke sensitivity as a secondary analysis and identifies PCORnet and OMOP explicitly.
 
-**Extended Data Fig. 3:** ideal calibration is slope = 1 and intercept = 0. Calibration differences are descriptive reproducibility results; no calibration-equivalence margin was prespecified for Stage E v1.
+**Extended Data Figure 3:** calibration slope and intercept are descriptive reproducibility results; no calibration-equivalence margin was prespecified.
 
-## Recommended manuscript use
+## Publication tables
 
-Keep Figures 1–4 in the main text unless a target journal has a stricter display-item limit. Extended Data figures should carry technical validation detail so the main narrative remains readable.
+The current code-generated main and supplementary tables are produced by:
 
-Do not manually reposition points, alter scales, change values, or edit labels in Illustrator/PowerPoint after export. If a figure needs revision, change the Python code or versioned aggregate input, regenerate it, and retain the new manifest.
+```bash
+pcornet-omop-tables \
+  --data study_definitions/artifacts/publication_figure_data_v1.json \
+  --outdir results/publication_assets/tables
+```
+
+The table generator writes reader-facing CSV files and a JSON specification for Main Tables 1–3 and Supplementary Tables S1–S14.
+
+## Do not create parallel figure pipelines
+
+If a figure needs revision, modify `publication_figures.py`, regenerate the figure, and inspect the new output. Do **not** create `v2`, `v3`, `final`, `jamia`, or other parallel plotting modules/directories for incremental revisions. Git history already provides version provenance.
