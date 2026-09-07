@@ -288,7 +288,7 @@ def extended1(data: dict) -> plt.Figure:
     ax.scatter(vals, y, s=50, color=COLORS["pcornet"]); ax.set_xscale("log"); ax.set_yticks(y, labels=["Encounter", "Death", "Condition", "Procedure", "Drug", "Measurement/\nObservation"]); ax.set_xlabel("Exact mapped rows (log scale)"); ax.set_title("Mapped semantic fidelity", fontweight="bold"); clean(ax); panel(ax, "a")
     ax = axs[1]; pct = 100 * b["numeric"]["direct_exact"] / b["numeric"]["comparable"]
     ax.barh([1, 0], [pct, 100], height=0.55); ax.set_xlim(0, 104); ax.set_yticks([1, 0], labels=["Directly exact\namong comparable", "Explained among\ninitial differences"]); ax.set_xlabel("Rows (%)"); ax.set_title("Numeric reconciliation", fontweight="bold"); clean(ax); ax.text(pct + 1, 1, f"{pct:.1f}%", va="center"); ax.text(101, 0, "100%", va="center"); panel(ax, "b")
-    ax = axs[2]; names = ["Condition\nunmapped", "Procedure\nunresolved", "Drug\nunmapped", "Measurement/observation\nunresolved"]; vals = list(b["coverage_limitations"].values()); yy = np.arange(4)[::-1]
+    ax = axs[2]; names = ["Condition\nunmapped", "Procedure\nunresolved", "Drug\nunmapped", "Measurement/\nobservation\nunresolved"]; vals = list(b["coverage_limitations"].values()); yy = np.arange(4)[::-1]
     ax.scatter(vals, yy, s=50, color=COLORS["omop"]); ax.set_xscale("log"); ax.set_yticks(yy, labels=names); ax.tick_params(axis="y", pad=2); ax.set_xlabel("Rows/routes (log scale)"); ax.set_title("Coverage limitations kept separate", fontweight="bold"); clean(ax); panel(ax, "c")
     return fig
 
