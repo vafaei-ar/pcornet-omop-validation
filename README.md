@@ -94,7 +94,7 @@ pcornet-omop-tables \
 - Locked scientific definitions: `study_definitions/`
 - Frozen publication aggregate input: `study_definitions/artifacts/publication_figure_data_v1.json`
 - Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`
-- Publication table code: `src/pcornet_omop_validation/study/publication_jamia_tables.py`
+- Publication table code: `src/pcornet_omop_validation/study/publication_tables.py`
 - Current documentation: `docs/01_...` through `docs/07_...`
 - Historical provenance: `docs/archive/`
 
