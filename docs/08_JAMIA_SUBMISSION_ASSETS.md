@@ -14,53 +14,50 @@ The JAMIA-facing figure design emphasizes the manuscript's central contrast:
 4. fixed-patient/fixed-index downstream outcomes are exact;
 5. independent end-to-end cohort construction changes the empirical population and final estimates.
 
-## Figures
+## Main figures: current canonical pipeline
 
-Original JAMIA-oriented builders:
+Use the reader-facing v3 builder for manuscript Figures 1-4:
+
+```bash
+python -m pcornet_omop_validation.study.publication_jamia_main_v3 \
+  --data study_definitions/artifacts/publication_figure_data_v1.json \
+  --outdir figures/jamia_v3
+```
+
+The v3 pipeline preserves the refined v2 quantitative layouts while replacing internal schema/code terminology in the reader-facing graphics with clinical and scientific terminology. Exact source identifiers remain in code and technical documentation rather than requiring readers to decode database field names in the figures.
+
+The current main-figure jobs are:
+
+- Figure 1: identify the reproducibility breakpoint, then contrast fixed-patient/index and independent end-to-end estimands;
+- Figure 2: show source-faithful phenotype divergence, demonstrate exact rescue after applying the same diagnosis-date requirement, and localize the missing-diagnosis-date mechanism with a sparse fork diagram;
+- Figure 3: contrast exact fixed-index outcome representation with end-to-end risk/population change and show the prespecified reproducibility tolerance directly;
+- Figure 4: show end-to-end case-mix shift, discrimination change, and fixed-patient prediction agreement without overloading the panel set.
+
+The earlier v2 builder is retained for provenance:
+
+```bash
+python -m pcornet_omop_validation.study.publication_jamia_main_v2 \
+  --data study_definitions/artifacts/publication_figure_data_v1.json \
+  --outdir figures/jamia_v2
+```
+
+## Extended Data figures
+
+The existing JAMIA builders remain appropriate for supporting semantic-fidelity, association/prediction-agreement, recurrent-stroke, and calibration evidence.
+
+```bash
+python -m pcornet_omop_validation.study.publication_jamia_final \
+  --data study_definitions/artifacts/publication_figure_data_v1.json \
+  --outdir figures/jamia_extended
+```
+
+The earlier base builder remains available as:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_jamia_assets \
   --data study_definitions/artifacts/publication_figure_data_v1.json \
   --outdir figures/jamia
 ```
-
-Second-pass main-figure redesign:
-
-```bash
-python -m pcornet_omop_validation.study.publication_jamia_main_v2 \
-  --outdir figures/jamia_v2
-```
-
-The v2 main figures were redesigned around the paper-level visual thesis rather than the internal A-E validation workflow. The design intentionally uses fewer schematic nodes, larger typography, stronger fixed-versus-end-to-end hierarchy, direct quantitative labels, and only the minimum precision needed to preserve the scientific distinction.
-
-The v2 figure jobs are:
-
-- Figure 1: identify the reproducibility breakpoint, then contrast fixed-patient/index and independent end-to-end estimands;
-- Figure 2: show source-faithful phenotype divergence, demonstrate exact rescue after symmetric diagnosis-date eligibility, and localize the DX_DATE mechanism with a sparse fork diagram;
-- Figure 3: contrast exact fixed-index outcome representation with end-to-end risk/population change and show the prespecified reproducibility tolerance directly;
-- Figure 4: show end-to-end case-mix shift, discrimination change, and fixed-patient prediction agreement without overloading the panel set.
-
-The existing Extended Data builders remain appropriate for supporting semantic-fidelity, association/prediction-agreement, recurrent-stroke, and calibration evidence.
-
-Final visually reviewed export wrapper for the earlier builder set:
-
-```bash
-python -m pcornet_omop_validation.study.publication_jamia_final \
-  --data study_definitions/artifacts/publication_figure_data_v1.json \
-  --outdir figures/jamia
-```
-
-The final wrapper preserves the aggregate-only base builders and applies the reviewed annotation positions needed to avoid label/title and label/data collisions in Figures 2–4.
-
-Outputs are PNG, PDF and SVG for:
-
-- Figure 1: reproducibility breakpoint / fixed-vs-end-to-end conceptual result
-- Figure 2: phenotype divergence and diagnosis-date mechanism
-- Figure 3: outcome reproducibility under fixed and end-to-end estimands
-- Figure 4: population and prediction-model reproducibility
-- Extended Data Figure 1: semantic fidelity and coverage limitations
-- Extended Data Figure 2: additional analytical reproducibility
-- Extended Data Figure 3: calibration reproducibility
 
 ## Tables
 
@@ -70,12 +67,16 @@ python -m pcornet_omop_validation.study.publication_jamia_tables \
   --outdir tables/jamia
 ```
 
-The script writes reader-facing CSV files and a JSON specification for main Tables 1–3 and Supplementary Tables S1–S14. Supplementary Table S14 records the locked D0/D1/D3 phenotype definitions from the versioned Stage C study definitions.
+The script writes reader-facing CSV files and a JSON specification for main Tables 1-3 and Supplementary Tables S1-S14. Supplementary Table S14 records the locked D0/D1/D3 phenotype definitions from the versioned Stage C study definitions.
 
 ## Numerical display policy
 
 Reader-facing precision is intentionally limited to the minimum needed to preserve meaningful distinctions. Exact computational values remain in the locked machine-readable study artifacts.
 
+## Terminology policy
+
+Main-manuscript figures use reader-facing clinical/scientific terms such as **diagnosis date**, **procedure date**, and **principal diagnosis** rather than raw table or field identifiers. Exact PCORnet/OMOP schema identifiers are preserved in the reproducible code and may be reported in technical supplementary material when needed for implementation reproducibility.
+
 ## Submission note
 
-The manuscript treats the ±0.5 percentage-point risk-difference margin and risk ratio 0.95–1.05 as prespecified **empirical cross-CDM reproducibility tolerances**, not clinical noninferiority margins or formal population-level equivalence tests.
+The manuscript treats the +/-0.5 percentage-point risk-difference margin and risk ratio 0.95-1.05 as prespecified **empirical cross-CDM reproducibility tolerances**, not clinical noninferiority margins or formal population-level equivalence tests.
