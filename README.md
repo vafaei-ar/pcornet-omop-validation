@@ -38,8 +38,9 @@ flowchart LR
 - Canonical branch: `main`
 - Frozen publication ETL commit: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 - Stages A–E: complete for routine publication work
-- Publication figures: reproducible Python pipeline with versioned aggregate inputs
-- Generated `results/` and `figures/generated/`: intentionally gitignored
+- Publication figures: one canonical Python module using versioned aggregate inputs
+- Publication tables: one code-generated main/supplementary table pipeline
+- Generated `results/`: intentionally gitignored
 - Patient-level outputs and credentials: must not be committed
 
 The key empirical finding is that conditional fidelity was extremely high when the same patients and index dates were held fixed, while end-to-end estimates differed because an upstream diagnosis-date eligibility policy changed cohort membership.
@@ -66,14 +67,34 @@ export OMOP_SQL_PASSWORD='your-password'
 pcornet-omop-figures
 ```
 
-The plotting pipeline produces vector PDF/EPS/SVG plus 600-dpi PNG review files from the frozen aggregate figure input. See [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md) for final-size typography, Nature-oriented artwork checks, figure guardrails, font requirements, and the reproducibility manifest.
+All seven current figures are written to:
+
+`results/publication_assets/figures/`
+
+The same command also writes a reproducibility manifest containing the aggregate-input hash, Git SHA, software version, font, and output hashes. See [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md).
+
+To validate the frozen figure input without rendering:
+
+```bash
+pcornet-omop-figures --verify-only
+```
+
+## Generate publication tables
+
+```bash
+pcornet-omop-tables \
+  --data study_definitions/artifacts/publication_figure_data_v1.json \
+  --outdir results/publication_assets/tables
+```
 
 ## Code orientation
 
 - ETL implementation: `src/pcornet_omop_validation/etl/`
 - Study analyses: `src/pcornet_omop_validation/study/`
 - Locked scientific definitions: `study_definitions/`
-- Publication figure code: `src/pcornet_omop_validation/study/publication_figure*.py`
+- Frozen publication aggregate input: `study_definitions/artifacts/publication_figure_data_v1.json`
+- Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`
+- Publication table code: `src/pcornet_omop_validation/study/publication_jamia_tables.py`
 - Current documentation: `docs/01_...` through `docs/07_...`
 - Historical provenance: `docs/archive/`
 
