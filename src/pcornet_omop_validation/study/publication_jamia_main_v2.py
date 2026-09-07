@@ -53,7 +53,6 @@ def figure1(data):
     for i,(x,w,t,f) in enumerate(zip(xs,ws,texts,fills)):
         box(ax,(x,.29),w,.40,t,face=f,fs=9.7,bold=i in {0,1,3})
         if i<3: arrow(ax,(x+w,.49),(xs[i+1],.49),COLORS["mid"])
-    # Keep the breakpoint annotation visually separate from the causal connector.
     ax.text(xs[1]+ws[1]/2,.10,"BREAKPOINT",ha="center",fontsize=9.2,fontweight="bold",color=COLORS["omop"])
     ax.text(xs[1]+ws[1]/2,.17,"▲",ha="center",va="center",fontsize=9.0,color=COLORS["omop"])
 
@@ -86,11 +85,14 @@ def figure2(data):
         ax.plot([b,a],[yi,yi],color=COLORS["light"],lw=2.2)
         ax.scatter(a,yi,s=82,facecolor="white",edgecolor=COLORS["pcornet"],linewidth=1.6,zorder=3)
         ax.scatter(b,yi,s=74,color=COLORS["omop"],zorder=3)
-        ax.text(a,yi+.07,f"{a:,}",ha="center",va="bottom",fontsize=9.8)
-        ax.text(b,yi-.07,f"{b:,}",ha="center",va="top",fontsize=9.8)
+        # Keep direct labels close enough to associate with points, but not visually touching them.
+        ax.text(a,yi+.13,f"{a:,}",ha="center",va="bottom",fontsize=9.8)
+        if k == "D3":
+            ax.text(b+150,yi+.13,f"{b:,}",ha="left",va="bottom",fontsize=9.8)
+        else:
+            ax.text(b,yi-.13,f"{b:,}",ha="center",va="top",fontsize=9.8)
     ax.set(yticks=y,yticklabels=ph,xlabel="Patients"); ax.set_xlim(4600,10350); ax.set_ylim(-.30,2.55)
     ax.set_title("Source-faithful phenotype size",loc="left",fontweight="bold",pad=12); clean(ax); panel(ax,"a",x=-.13,y=1.10)
-    # Manual legend in the dedicated headroom keeps it away from all three data rows.
     ax.scatter(5300,2.34,s=54,facecolor="white",edgecolor=COLORS["pcornet"],linewidth=1.4,zorder=3)
     ax.text(5420,2.34,"PCORnet",va="center",fontsize=9.7)
     ax.scatter(7550,2.34,s=50,color=COLORS["omop"],zorder=3)
@@ -114,9 +116,9 @@ def figure2(data):
     arrow(ax,(.50,.78),(.50,.70),COLORS["mid"])
     ax.plot([.26,.74],[.70,.70],color=COLORS["mid"],lw=.95)
     arrow(ax,(.26,.70),(.26,.60),COLORS["pcornet"]); arrow(ax,(.74,.70),(.74,.60),COLORS["omop"])
-    box(ax,(.07,.38),.38,.21,"PCORnet phenotype\nencounter-date fallback\nepisode remains eligible",face=COLORS["blue_fill"],fs=10.0,bold=True,edge=COLORS["pcornet"])
-    box(ax,(.55,.38),.38,.21,"Frozen ETL\nno diagnosis event materialized\nselected episode absent",face=COLORS["orange_fill"],fs=10.0,bold=True,edge=COLORS["omop"])
-    arrow(ax,(.26,.38),(.40,.26),COLORS["green"]); arrow(ax,(.74,.38),(.60,.26),COLORS["green"])
+    box(ax,(.07,.39),.38,.18,"PCORnet phenotype: encounter-date fallback\nepisode remains eligible",face=COLORS["blue_fill"],fs=10.0,bold=True,edge=COLORS["pcornet"])
+    box(ax,(.55,.39),.38,.18,"Frozen ETL: no diagnosis event materialized\nselected episode absent",face=COLORS["orange_fill"],fs=10.0,bold=True,edge=COLORS["omop"])
+    arrow(ax,(.26,.39),(.40,.26),COLORS["green"]); arrow(ax,(.74,.39),(.60,.26),COLORS["green"])
     box(ax,(.23,.04),.54,.21,"Require nonmissing DX_DATE in both representations\nD0/D1/D3: Jaccard 1.000 · index dates 100% exact",face=COLORS["green_fill"],fs=10.1,bold=True,edge=COLORS["green"])
     return fig
 
@@ -129,7 +131,7 @@ def figure3(data):
         ax.scatter(x,yi,s=86,facecolor="white",edgecolor=COLORS["pcornet"],linewidth=1.7,zorder=3)
         ax.scatter(x,yi,s=40,color=COLORS["omop"],zorder=4)
         ax.text(x+.35,yi,f"{x:.1f}% = {r['omop_risk_percent']:.1f}%",va="center",fontsize=10.2,fontweight="bold")
-    ax.set(yticks=y,yticklabels=labels,xlabel="Acute-care risk (%)"); ax.set_xlim(15.5,31.5); clean(ax); panel(ax,"a")
+    ax.set(yticks=y,yticklabels=labels,xlabel="Acute-care risk (%)"); ax.set_xlim(15.5,33.3); clean(ax); panel(ax,"a")
     ax.set_title("Same patient + index: outcome representation is exact",loc="left",fontweight="bold")
     ax.legend(handles=[plt.Line2D([],[],marker="o",mfc="white",mec=COLORS["pcornet"],ls="None",label="PCORnet"),plt.Line2D([],[],marker="o",color=COLORS["omop"],ls="None",label="OMOP")],loc="center right",frameon=False,ncol=1)
 
@@ -169,9 +171,9 @@ def figure4(data):
         ax.scatter(a,yi,s=68,facecolor="white",edgecolor=COLORS["pcornet"],linewidth=1.5,zorder=3)
         ax.scatter(b,yi,s=62,color=COLORS["omop"],zorder=3)
         if b>=.10: ax.text(b+.006,yi,f"{b:.2f}",va="center",fontsize=9.4,fontweight="bold")
-    ax.set(yticks=y,yticklabels=features,xlabel="Absolute standardized mean difference"); ax.set_xlim(-.005,.18); clean(ax); panel(ax,"a",x=-.29)
+    ax.set(yticks=y,yticklabels=features,xlabel="Absolute standardized mean difference"); ax.set_xlim(-.005,.18); clean(ax); panel(ax,"a",x=-.29,y=1.08)
     ax.tick_params(axis="y",labelsize=10.4)
-    ax.set_title("Case mix shifts only when cohorts are built independently",loc="left",fontweight="bold")
+    ax.set_title("Case mix shifts only when cohorts are built independently",loc="left",fontweight="bold",pad=15)
     ax.text(.103,5.25,"0.10 reference",fontsize=8.8,color=COLORS["mid"])
     ax.legend(handles=[plt.Line2D([],[],marker="o",mfc="white",mec=COLORS["pcornet"],ls="None",label="Fixed cohort"),plt.Line2D([],[],marker="o",color=COLORS["omop"],ls="None",label="End-to-end")],loc="upper right",bbox_to_anchor=(.98,.96),frameon=False,ncol=1,handletextpad=.4)
 
@@ -184,21 +186,20 @@ def figure4(data):
         label_y = yi-.16 if yi > 0 else yi+.14
         label_va = "top" if yi > 0 else "bottom"
         ax.text(b-.001,label_y,f"{b:.2f}",ha="right",va=label_va,fontsize=9.3,fontweight="bold")
-    ax.set(yticks=ym,yticklabels=mlabs,xlabel="AUROC difference (OMOP − PCORnet)"); ax.set_xlim(-.052,.004); clean(ax); panel(ax,"b",x=-.21)
+    ax.set(yticks=ym,yticklabels=mlabs,xlabel="AUROC difference (OMOP − PCORnet)"); ax.set_xlim(-.052,.004); clean(ax); panel(ax,"b",x=-.21,y=1.08)
     ax.tick_params(axis="y",labelsize=10.2)
-    ax.set_title("Discrimination is stable fixed, shifted end-to-end",loc="left",fontweight="bold")
+    ax.set_title("Discrimination is stable fixed, shifted end-to-end",loc="left",fontweight="bold",pad=15)
 
-    ax=fig.add_subplot(gs[1,1]); ax.set(xlim=(0,1),ylim=(-.45,2.55)); ax.axis("off"); panel(ax,"c",x=-.21)
-    ax.text(0,2.50,"Individual prediction agreement vs end-to-end error",fontsize=11.0,fontweight="bold",va="top")
-    ax.text(.48,2.08,"Fixed prediction MAD",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["pcornet"])
-    ax.text(.96,2.08,"End-to-end Brier Δ",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["omop"])
+    ax=fig.add_subplot(gs[1,1]); ax.set(xlim=(0,1),ylim=(-.45,2.55)); ax.axis("off"); panel(ax,"c",x=-.21,y=1.08)
+    ax.text(0,2.54,"Individual prediction agreement vs end-to-end error",fontsize=11.0,fontweight="bold",va="top")
+    ax.text(.48,2.22,"Fixed prediction MAD",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["pcornet"])
+    ax.text(.96,2.22,"End-to-end Brier Δ",ha="right",fontsize=9.2,fontweight="bold",color=COLORS["omop"])
     mad=[e["models"][m]["fixed_probability_mad"] for m in models]; bd=[e["models"][m]["end_omop_brier"]-e["models"][m]["end_pcornet_brier"] for m in models]
     for yi,label,mv,bv in zip(ym,mlabs,mad,bd):
         ax.text(0,yi,label,va="center",fontsize=10.0)
         ax.text(.48,yi,"<0.001" if mv<.001 else f"{mv:.3f}",ha="right",va="center",fontsize=10.0,fontweight="bold" if mv<.001 else "normal",color=COLORS["pcornet"])
         ax.text(.96,yi,f"{bv:+.2f}",ha="right",va="center",fontsize=10.0,color=COLORS["omop"])
         ax.plot([.03,.96],[yi-.30,yi-.30],color="#EEEEEE",lw=.8)
-    # Keep the explanatory sentence out of the panel; the caption carries this interpretation.
     return fig
 
 def main():
