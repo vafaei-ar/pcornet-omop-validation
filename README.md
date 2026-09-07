@@ -61,17 +61,26 @@ cp config/etl.example.yaml config/etl.yaml
 export OMOP_SQL_PASSWORD='your-password'
 ```
 
-## Generate publication figures
+## Rebuild all publication assets
+
+For a clean reproducibility check of all current figures and tables, run:
+
+```bash
+bash scripts/rebuild_publication_assets.sh
+```
+
+This removes obsolete local `jamia*` output directories from earlier development iterations, validates the frozen aggregate input, generates all seven current figures, and regenerates all current main/supplementary tables into one canonical location:
+
+- `results/publication_assets/figures/`
+- `results/publication_assets/tables/`
+
+## Generate publication figures only
 
 ```bash
 pcornet-omop-figures
 ```
 
-All seven current figures are written to:
-
-`results/publication_assets/figures/`
-
-The same command also writes a reproducibility manifest containing the aggregate-input hash, Git SHA, software version, font, and output hashes. See [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md).
+The figure command writes a reproducibility manifest containing the aggregate-input hash, Git SHA, software version, font, and output hashes. See [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md).
 
 To validate the frozen figure input without rendering:
 
@@ -79,12 +88,10 @@ To validate the frozen figure input without rendering:
 pcornet-omop-figures --verify-only
 ```
 
-## Generate publication tables
+## Generate publication tables only
 
 ```bash
-pcornet-omop-tables \
-  --data study_definitions/artifacts/publication_figure_data_v1.json \
-  --outdir results/publication_assets/tables
+pcornet-omop-tables
 ```
 
 ## Code orientation
@@ -94,7 +101,8 @@ pcornet-omop-tables \
 - Locked scientific definitions: `study_definitions/`
 - Frozen publication aggregate input: `study_definitions/artifacts/publication_figure_data_v1.json`
 - Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`
-- Publication table code: `src/pcornet_omop_validation/study/publication_tables.py`
+- Canonical publication table code: `src/pcornet_omop_validation/study/publication_tables.py`
+- One-command publication rebuild: `scripts/rebuild_publication_assets.sh`
 - Current documentation: `docs/01_...` through `docs/07_...`
 - Historical provenance: `docs/archive/`
 
