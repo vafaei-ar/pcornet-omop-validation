@@ -1,0 +1,103 @@
+{
+  "study_definition": "stage-c-d-encounter-date-fallback-sensitivity-v1",
+  "status": "reviewer_inspired_post_freeze_sensitivity_locked_before_fallback_execution",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Test the mechanistic counterfactual that preserving otherwise-eligible PCORnet stroke diagnoses with missing diagnosis dates by assigning the linked encounter admission date as the target condition date is sufficient to restore source-faithful Stage C phenotype reproducibility and downstream Stage D 30-day/90-day analytical reproducibility.",
+  "relationship_to_completed_analyses": {
+    "primary_stage_c": "Already known before this sensitivity was defined; remains the primary source-faithful portability analysis.",
+    "harmonized_dxdate_sensitivity": "Already known before this sensitivity was defined; applies the opposite intervention by excluding missing-diagnosis-date source evidence before patient-level selection.",
+    "primary_stage_d": "Already known before this sensitivity was defined; remains the primary analytical-equivalence analysis.",
+    "post_result_mechanism_audits": "The source-only outcome complement audit and harmonization transition audits were already known before this sensitivity was defined.",
+    "fallback_results": "Unknown when this definition is committed. No fallback Stage C or Stage D result may be used to revise this definition."
+  },
+  "alternative_target_date_policy": {
+    "scope": "Qualifying PCORnet DIAGNOSIS records used by the locked D0/D1/D3 ischemic-stroke phenotypes. All non-date phenotype rules remain unchanged.",
+    "date_rule": [
+      {
+        "condition": "DX_DATE is recorded",
+        "target_condition_date": "DX_DATE",
+        "date_basis": "recorded_diagnosis_date"
+      },
+      {
+        "condition": "DX_DATE is missing and the linked qualifying encounter has ADMIT_DATE",
+        "target_condition_date": "ADMIT_DATE",
+        "date_basis": "encounter_admission_date_fallback"
+      }
+    ],
+    "discharge_date_fallback": "Not used. The locked D0/D1/D3 encounter definition already requires ADMIT_DATE and DISCHARGE_DATE, so ADMIT_DATE is available for every qualifying episode and is the first encounter-date fallback used by the source-faithful index rule.",
+    "provenance_requirement": "Every alternative target diagnosis event must retain whether its date came from the recorded diagnosis date or encounter-admission fallback.",
+    "non_date_etl_rules": "Retain the frozen transformation's person/visit linkage, vocabulary mapping, concept-zero policy where applicable, source identity/provenance, and all other transformation rules. The sensitivity changes only diagnosis-date eligibility/date assignment for otherwise-eligible DIAGNOSIS records.",
+    "implementation_isolation": "Implement only in session-local temporary tables, a dedicated sensitivity schema, or equivalent non-destructive overlay. Do not insert, update, or delete rows in the frozen OMOP_VALIDATED_A target tables and do not rerun the frozen ETL in place."
+  },
+  "stage_c_analysis": {
+    "source_comparator": "Reconstruct the locked source-faithful D0/D1/D3 cohorts without changing source rules.",
+    "fallback_target": "Construct lineage-faithful alternative target stroke evidence under the alternative target date policy, then apply the locked D0/D1/D3 patient-level episode selection rules.",
+    "all_other_rules": "Retain the locked stroke code lists, PDX=P, encounter types, overnight rule, adult rule, imaging definitions, lipid whitelist, evidence windows, earliest-qualifying-episode selection, and target procedure/lipid evidence rules.",
+    "estimands": [
+      "D0 source and fallback-target patient counts",
+      "D0 intersection, source-only, fallback-only, Jaccard, exact index-date agreement, and within-1-day agreement",
+      "D1 source and fallback-target patient counts, intersection, discordant membership, Jaccard, and index-date agreement",
+      "D3 source and fallback-target patient counts, intersection, discordant membership, Jaccard, and index-date agreement",
+      "For each phenotype, counts of selected fallback target episodes using recorded_diagnosis_date versus encounter_admission_date_fallback"
+    ],
+    "known_source_anchor_counts": {
+      "D0": 9815,
+      "D1": 8624,
+      "D3": 7565
+    },
+    "fallback_target_expected_counts": "Not prespecified. The analysis must report observed values even if they do not converge to the source counts."
+  },
+  "stage_d_analysis": {
+    "index_cohorts": "Compare the unchanged locked source-faithful D0 cohort with the independently selected fallback-target D0 cohort from this sensitivity.",
+    "outcome_definition": "Inherit the locked Stage D acute-care reutilization definitions exactly; no outcome-event transformation rule changes are allowed.",
+    "windows": [
+      "day 1 through day 30 after index discharge, inclusive",
+      "day 1 through day 90 after index discharge, inclusive"
+    ],
+    "observability": "Use the same representation-specific source ENROLLMENT and target observation_period coverage rules as the locked Stage D analysis.",
+    "metrics": [
+      "representation-specific eligible patients",
+      "outcome events",
+      "outcome risk",
+      "absolute risk difference in percentage points",
+      "relative risk ratio",
+      "whether the existing empirical cross-CDM reproducibility tolerances are met"
+    ],
+    "known_source_anchors": {
+      "30_day": {
+        "eligible": 7277,
+        "events": 1178
+      },
+      "90_day": {
+        "eligible": 6508,
+        "events": 1798
+      }
+    },
+    "empirical_tolerances_inherited_not_redefined": {
+      "absolute_risk_difference_percentage_points": 0.5,
+      "relative_risk_ratio_lower": 0.95,
+      "relative_risk_ratio_upper": 1.05
+    },
+    "recurrent_stroke": "Not rerun in this sensitivity unless separately justified and locked before execution.",
+    "stage_e_models": "Not rerun in this sensitivity unless Stage C/Stage D fallback results create a separately justified question that is locked before model execution."
+  },
+  "precommitted_interpretation_branches": {
+    "stage_c_exact_convergence": "If fallback-target D0/D1/D3 membership and selected index dates reproduce the source-faithful cohorts exactly, interpret this as evidence that the diagnosis-date policy is sufficient to explain the observed lineage-faithful Stage C discordance under this alternative-date sensitivity. Do not describe the fallback policy as the uniquely correct ETL.",
+    "stage_c_membership_only_convergence": "If membership converges but index dates do not, report the residual date discordance separately and do not claim full mechanistic closure.",
+    "stage_c_residual_membership_discordance": "If any membership discordance remains, quantify and decompose it rather than attributing all primary Stage C differences to the diagnosis-date policy.",
+    "stage_d_convergence": "If 30-day and 90-day end-to-end risks meet both inherited empirical tolerances, interpret this as evidence that restoring missing-date source stroke evidence under the alternative date policy is sufficient to remove the previously observed end-to-end risk divergence in this dataset.",
+    "stage_d_nonconvergence": "If either window fails either inherited tolerance, report the residual difference and investigate remaining cohort-selection, observability, or outcome-representation mechanisms without revising this sensitivity definition post hoc.",
+    "combined_mechanistic_reading": "Convergence of both the restrictive harmonized sensitivity and the preservative fallback sensitivity would provide two directionally opposite mechanistic checks pointing to diagnosis-date handling as the principal driver of the primary cohort divergence."
+  },
+  "guardrails": {
+    "post_freeze_reviewer_inspired_sensitivity": true,
+    "do_not_replace_primary_stage_c_or_stage_d": true,
+    "do_not_modify_frozen_target_database": true,
+    "do_not_call_fallback_policy_correct_or_standard": true,
+    "do_not_change_stage_c_phenotype_rules_other_than_target_diagnosis_date_policy": true,
+    "do_not_change_stage_d_outcome_rules_or_tolerances": true,
+    "report_nonconvergence_if_observed": true,
+    "aggregate_outputs_only": true,
+    "patient_identifiers_written": false
+  }
+}
