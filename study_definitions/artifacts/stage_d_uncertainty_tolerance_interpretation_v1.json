@@ -1,0 +1,46 @@
+{
+  "artifact": "stage-d-uncertainty-tolerance-interpretation-v1",
+  "status": "post_result_interpretation_artifact",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Clarify the role of the prespecified Stage D reproducibility tolerances and the treatment of statistical uncertainty without converting a deterministic cross-CDM validation exercise into a formal clinical equivalence or noninferiority analysis.",
+  "prespecification": {
+    "stage_d_definition": "study_definitions/stage_d_stroke_analytical_equivalence_v1.json",
+    "definition_status": "prespecified_before_stage_d_cross_cdm_outcome_queries",
+    "absolute_risk_difference_tolerance_percentage_points": 0.5,
+    "relative_risk_ratio_lower": 0.95,
+    "relative_risk_ratio_upper": 1.05,
+    "margins_locked_before_outcomes": true,
+    "post_result_margin_changes_prohibited": true
+  },
+  "interpretation": {
+    "preferred_term": "empirical cross-CDM reproducibility tolerances",
+    "not_clinical_equivalence_margin": true,
+    "not_noninferiority_margin": true,
+    "not_minimal_clinically_important_difference": true,
+    "not_formal_ci_based_equivalence_test": true,
+    "role": "Operational thresholds for flagging cross-representation drift in this validation study. They were prespecified before Stage D outcome queries and are applied to observed cross-CDM risk differences and risk ratios.",
+    "scope": "Passing both tolerances means the observed discrepancy is within the prespecified reproducibility bounds for this dataset and analysis; it does not establish clinical equivalence of PCORnet and OMOP in general."
+  },
+  "uncertainty_decision": {
+    "primary_analysis": "Report observed paired/fixed-index and independently selected end-to-end risks, risk differences, risk ratios, and patient-level label agreement without using confidence intervals to determine whether the reproducibility tolerances are met.",
+    "rationale": [
+      "The primary validation estimand is the deterministic discrepancy induced by applying two representations and locked analytic rules to the same underlying data resource, rather than estimation of a treatment effect in a sampled population.",
+      "For the fixed-index analysis, patient membership and index dates are held fixed and outcome labels are compared patient by patient; exact agreement is directly observed rather than inferred from sampling uncertainty.",
+      "For the end-to-end analysis, the observed discrepancy arises from deterministic cohort-selection and observability rules applied to the available source and transformed data. Conventional independent-sample confidence intervals would ignore the dependence between representations.",
+      "A patient-level bootstrap could be added as a supplementary sensitivity if required by peer review, but it would answer a different question: sampling variability of the observed cross-CDM discrepancy under repeated resampling of patients. It should not replace or redefine the prespecified reproducibility tolerances."
+    ],
+    "bootstrap_required_for_primary_claim": false,
+    "confidence_intervals_required_for_tolerance_decision": false
+  },
+  "recommended_methods_language": "Before Stage D outcome queries, we prespecified empirical cross-CDM reproducibility tolerances of an absolute risk difference within 0.5 percentage points and a risk ratio between 0.95 and 1.05. These thresholds were operational validation criteria, not clinical equivalence, noninferiority, or minimum-important-difference margins. Because the primary estimand was the deterministic discrepancy produced by applying locked definitions to two representations of the same underlying data, tolerance decisions were based on observed cross-CDM differences rather than confidence-interval-based equivalence testing.",
+  "recommended_results_language": "For the fixed-index analysis, observed 30- and 90-day risks were identical and patient-level outcome labels agreed completely, so both empirical reproducibility tolerances were met. In the primary end-to-end analysis, the observed absolute and relative differences exceeded the prespecified tolerances at both windows. Under the encounter-date fallback sensitivity, the independently selected cohorts and outcome labels reproduced exactly and both tolerances were again met.",
+  "recommended_limitation_language": "The reproducibility tolerances were prespecified operational thresholds for cross-CDM validation and were not derived as clinical equivalence or noninferiority margins. We therefore do not interpret passing these bounds as evidence of clinical equivalence between data models. Statistical confidence intervals were not used to adjudicate the deterministic cross-representation discrepancy; a patient-level bootstrap could characterize sampling variability in a future multi-site or inferential extension.",
+  "manuscript_guardrails": [
+    "Use the term empirical cross-CDM reproducibility tolerances.",
+    "Do not call the thresholds clinical equivalence margins, noninferiority margins, or minimal clinically important differences.",
+    "Do not use nonsignificance as evidence of reproducibility.",
+    "Do not retrofit confidence intervals to redefine pass/fail after seeing the results.",
+    "If a bootstrap is later added, define it prospectively as a supplementary sampling-variability analysis and preserve patient-level dependence across representations.",
+    "Do not claim general PCORnet-OMOP equivalence from passing the observed tolerances in this dataset."
+  ]
+}
