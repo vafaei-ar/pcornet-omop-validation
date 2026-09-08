@@ -1,902 +1,126 @@
 from __future__ import annotations
 
-"""Generate the manuscript tables from frozen aggregate study results."""
+"""Generate canonical manuscript and supplementary tables from current aggregate results."""
 
 import argparse
 import csv
 import json
 from pathlib import Path
 
+DEFAULT_DATA = Path("study_definitions/artifacts/publication_figure_data_v2.json")
 
-def _table(
-    title: str,
-    columns: list[str],
-    rows: list[list[str]],
-    note: str = "",
-) -> dict:
-    return {
-        "title": title,
-        "columns": columns,
-        "rows": rows,
-        "note": note,
-    }
+
+def _table(title: str, columns: list[str], rows: list[list[str]], note: str = "") -> dict:
+    return {"title": title, "columns": columns, "rows": rows, "note": note}
+
+
+def validate_data(data: dict) -> None:
+    if data.get("version") != "publication_figure_data_v2":
+        raise ValueError("Canonical publication tables require publication_figure_data_v2")
+    if data.get("frozen_etl_sha") != "887e6f4d60a6b185e58b3c9fe8887472b49777e3":
+        raise ValueError("Unexpected frozen ETL SHA")
+    for phenotype in ("D0", "D1", "D3"):
+        f = data["stage_c"]["encounter_date_fallback"][phenotype]
+        if not (f["pcornet"] == f["target"] == f["shared"] and f["jaccard"] == 1.0 and f["exact_index_percent"] == 100.0):
+            raise ValueError(f"Fallback Stage C invariant failed for {phenotype}")
+    for window in ("30_day", "90_day"):
+        f = data["stage_d"]["fallback_end_to_end"][window]
+        if not (f["risk_difference_pp"] == 0 and f["rr"] == 1 and f["pcornet_eligible"] == f["target_eligible"] == f["label_agreement"]):
+            raise ValueError(f"Fallback Stage D invariant failed for {window}")
+    c = data["stage_d"]["source_only_complement"]["90_day"]
+    if not c["source_only_risk_percent"] < c["shared_risk_percent"]:
+        raise ValueError("Selective-loss risk ordering invariant failed")
 
 
 def main_tables(_: dict) -> dict[str, dict]:
     return {
         "Table1": _table(
             "Table 1 | Reproducibility across validation layers",
+            ["Layer", "Comparison unit", "Primary evidence", "Result", "Interpretation"],
             [
-                "Layer",
-                "Comparison unit",
-                "Primary evidence",
-                "Result",
-                "Interpretation",
+                ["Structural transformation", "Source eligibility/routing", "Counts, exclusions, route ledgers", "All major differences explained", "No unexplained structural loss after freeze"],
+                ["Routing + attributes", "Patient-level mapped events/values", "Route consistency + attribute agreement", "Mapped routes exact; values, units and categorical attributes highly preserved", "Internal rule consistency plus strong attribute preservation"],
+                ["Stroke phenotype", "Independently constructed D0/D1/D3", "Membership, Jaccard, index dates", "Primary Jaccard 0.608–0.622", "Upstream eligibility changed cohort"],
+                ["Recorded-date sensitivity", "Same recorded-diagnosis-date requirement", "Membership and index dates", "Jaccard 1.000; index agreement 100%", "Divergence localized to diagnosis-date policy"],
+                ["Acute-care outcomes", "Same patient/index vs end-to-end", "30/90-day risks", "Fixed exact; end-to-end outside reproducibility tolerances", "Outcome representation preserved; cohort selection changed estimate"],
+                ["Statistical models", "Features, associations, predictions", "Fixed vs end-to-end analyses", "Fixed near-identical; end-to-end diverged", "Population shift propagated into inference/model performance"],
+                ["Encounter-date fallback sensitivity", "Alternative target diagnosis-date policy", "Membership, index dates, and 30/90-day labels", "Exact D0/D1/D3 and acute-care outcomes", "Opposite intervention confirms the date-policy mechanism"],
             ],
-            [
-                [
-                    "Structural transformation",
-                    "Source eligibility/routing",
-                    "Counts, exclusions, route ledgers",
-                    "All major differences explained",
-                    "No unexplained structural loss after freeze",
-                ],
-                [
-                    "Mapped semantics",
-                    "Patient-level mapped events/values",
-                    "Exact canonical concordance",
-                    "Exact across locked mapped denominators",
-                    "High conditional semantic fidelity",
-                ],
-                [
-                    "Stroke phenotype",
-                    "Independently constructed D0/D1/D3",
-                    "Membership, Jaccard, index dates",
-                    "Primary Jaccard 0.608–0.622",
-                    "Upstream eligibility changed cohort",
-                ],
-                [
-                    "Harmonized sensitivity",
-                    "Same diagnosis-date requirement in both representations",
-                    "Membership and index dates",
-                    "Jaccard 1.000; index agreement 100%",
-                    "Divergence localized to diagnosis-date policy",
-                ],
-                [
-                    "Acute-care outcomes",
-                    "Same patient/index vs end-to-end",
-                    "30/90-day risks",
-                    "Fixed exact; end-to-end outside reproducibility margins",
-                    "Outcome representation preserved; cohort selection changed estimate",
-                ],
-                [
-                    "Statistical models",
-                    "Features, associations, predictions",
-                    "Fixed vs end-to-end analyses",
-                    "Fixed near-identical; end-to-end diverged",
-                    "Population shift propagated into inference/model performance",
-                ],
-            ],
-            (
-                "Mapped-event concordance and vocabulary coverage are intentionally "
-                "reported separately."
-            ),
         ),
         "Table2": _table(
             "Table 2 | Phenotype and downstream outcome reproducibility",
+            ["Analysis", "PCORnet", "OMOP", "Shared/eligible", "Difference", "Agreement metric", "Conclusion"],
             [
-                "Analysis",
-                "PCORnet",
-                "OMOP",
-                "Shared/eligible",
-                "Difference",
-                "Agreement metric",
-                "Conclusion",
+                ["D0 source-faithful", "9,815", "6,001", "6,001 shared", "3,814 source-only", "Jaccard 0.611", "Different cohort"],
+                ["D1 source-faithful", "8,624", "5,246", "5,245 shared", "3,379 source-only; 1 OMOP-only", "Jaccard 0.608", "Different cohort"],
+                ["D3 source-faithful", "7,565", "4,710", "4,709 shared", "2,856 source-only; 1 OMOP-only", "Jaccard 0.622", "Different cohort"],
+                ["D0/D1/D3 recorded-date sensitivity", "6,198 / 5,246 / 4,710", "Same", "All shared", "0", "Jaccard 1.000; index 100%", "Exact after symmetric date eligibility"],
+                ["90-day fixed-index risk", "29.6%", "29.6%", "3,822 eligible", "0.00 pp", "RR 1.00", "Within reproducibility tolerances"],
+                ["90-day end-to-end risk", "27.6%", "29.6%", "6,508 / 3,822 eligible", "+1.99 pp", "RR 1.07", "Outside reproducibility tolerances"],
+                ["D0/D1/D3 encounter-date fallback", "9,815 / 8,624 / 7,565", "Same", "All shared", "0", "Jaccard 1.000; index 100%", "Exact under alternative target date policy"],
+                ["90-day fallback end-to-end risk", "27.6%", "27.6%", "6,508 / 6,508 eligible", "0.00 pp", "RR 1.00", "Within reproducibility tolerances"],
             ],
-            [
-                [
-                    "D0 source-faithful",
-                    "9,815",
-                    "6,001",
-                    "6,001 shared",
-                    "3,814 source-only",
-                    "Jaccard 0.611",
-                    "Different cohort",
-                ],
-                [
-                    "D1 source-faithful",
-                    "8,624",
-                    "5,246",
-                    "5,245 shared",
-                    "3,379 source-only; 1 OMOP-only",
-                    "Jaccard 0.608",
-                    "Different cohort",
-                ],
-                [
-                    "D3 source-faithful",
-                    "7,565",
-                    "4,710",
-                    "4,709 shared",
-                    "2,856 source-only; 1 OMOP-only",
-                    "Jaccard 0.622",
-                    "Different cohort",
-                ],
-                [
-                    "D0/D1/D3 harmonized",
-                    "6,198 / 5,246 / 4,710",
-                    "Same",
-                    "All shared",
-                    "0",
-                    "Jaccard 1.000; index 100%",
-                    "Exact after applying the same diagnosis-date requirement",
-                ],
-                [
-                    "90-day fixed-index risk",
-                    "29.6%",
-                    "29.6%",
-                    "3,822 eligible",
-                    "0.00 pp",
-                    "RR 1.00",
-                    "Within reproducibility margins",
-                ],
-                [
-                    "90-day end-to-end risk",
-                    "27.6%",
-                    "29.6%",
-                    "6,508 / 3,822 eligible",
-                    "+1.99 pp",
-                    "RR 1.07",
-                    "Outside reproducibility margins",
-                ],
-            ],
-            (
-                "Prespecified empirical reproducibility margins were ±0.5 percentage "
-                "points for risk difference and 0.95–1.05 for the OMOP/PCORnet risk "
-                "ratio; these were operational cross-CDM tolerances, not clinical "
-                "noninferiority margins."
-            ),
         ),
         "Table3": _table(
             "Table 3 | Fixed-cohort versus end-to-end statistical reproducibility",
+            ["Domain", "Fixed cohort", "End-to-end PCORnet", "End-to-end OMOP", "Interpretation"],
             [
-                "Domain",
-                "Fixed cohort",
-                "End-to-end PCORnet",
-                "End-to-end OMOP",
-                "Interpretation",
+                ["Population", "n=3,822; same patients/index", "n=6,508", "n=3,822", "End-to-end cohort differs upstream"],
+                ["Largest feature imbalance", "All |SMD|<0.001", "Reference", "Prior stroke |SMD|=0.16; prior acute care 0.13", "Selective case-mix shift"],
+                ["Logistic AUROC", "0.59 vs 0.59; Δ<0.001", "0.63", "0.59", "Fixed discrimination reproduced; end-to-end differs"],
+                ["Logistic probability agreement", "Pearson >0.999; MAD<0.001", "Not same patient set", "Not same patient set", "Patient-level predictions reproduced when population fixed"],
+                ["Gradient-boosting probability agreement", "Pearson 0.965; MAD 0.037", "—", "—", "Nonlinear model amplifies small feature differences"],
+                ["End-to-end Brier score", "—", "0.20", "0.21", "Prediction error differs with population/model fit"],
             ],
-            [
-                [
-                    "Population",
-                    "n=3,822; same patients/index",
-                    "n=6,508",
-                    "n=3,822",
-                    "End-to-end cohort differs upstream",
-                ],
-                [
-                    "Largest feature imbalance",
-                    "All |SMD|<0.001",
-                    "Reference",
-                    "Prior stroke |SMD|=0.16; prior acute care 0.13",
-                    "Selective case-mix shift",
-                ],
-                [
-                    "Logistic AUROC",
-                    "0.59 vs 0.59; Δ<0.001",
-                    "0.63",
-                    "0.59",
-                    "Fixed discrimination reproduced; end-to-end differs",
-                ],
-                [
-                    "Logistic probability agreement",
-                    "Pearson >0.999; MAD<0.001",
-                    "Not same patient set",
-                    "Not same patient set",
-                    "Patient-level predictions reproduced when population fixed",
-                ],
-                [
-                    "Gradient-boosting probability agreement",
-                    "Pearson 0.965; MAD 0.037",
-                    "—",
-                    "—",
-                    "Nonlinear model amplifies small feature differences",
-                ],
-                [
-                    "End-to-end Brier score",
-                    "—",
-                    "0.20",
-                    "0.21",
-                    "Prediction error differs with population/model fit",
-                ],
-            ],
-            (
-                "The conventional |SMD|=0.10 value is used descriptively, not as a "
-                "prespecified statistical threshold."
-            ),
         ),
     }
 
 
 def supplementary_tables(_: dict) -> dict[str, dict]:
-    tables: dict[str, dict] = {}
-
-    tables["S1"] = _table(
-        "Supplementary Table S1 | Frozen OMOP target-domain counts",
-        ["OMOP domain", "Rows"],
-        [
-            ["Person", "27,089"],
-            ["Observation period", "27,087"],
-            ["Visit occurrence", "1,510,957"],
-            ["Condition occurrence", "7,315,572"],
-            ["Procedure occurrence", "4,182,803"],
-            ["Measurement", "85,715,435"],
-            ["Observation", "7,319,081"],
-            ["Drug exposure", "48,458,058"],
-            ["Device exposure", "196,660"],
-            ["Specimen", "93"],
-            ["Death", "6,955"],
-        ],
-        (
-            "Counts correspond to the frozen validated OMOP target used for publication "
-            "analyses; exact OMOP schema identifiers are retained in the reproducible "
-            "ETL code."
-        ),
-    )
-
-    tables["S2"] = _table(
-        "Supplementary Table S2 | Stage A exclusions and routing",
-        [
-            "Source area",
-            "Source / eligible",
-            "Excluded or alternate routing",
-            "Primary reason / interpretation",
-        ],
-        [
-            [
-                "Diagnosis records",
-                "11,484,577 source; 8,024,792 eligible",
-                "3,459,785 excluded (30.1%)",
-                "Missing diagnosis date",
-            ],
-            [
-                "Procedure records",
-                "11,244,947 source; 11,228,023 eligible",
-                "16,924 excluded (0.2%)",
-                "Missing procedure date",
-            ],
-            [
-                "Procedure route ledger",
-                "11,234,863 routes",
-                "111,660 unresolved; 1,642 non-event semantic components",
-                "Vocabulary/semantic routing separated from event routes",
-            ],
-            [
-                "Diagnosis + condition records",
-                "8,674,973 eligible source events",
-                (
-                    "9,045,157 canonical routes; 361,606 events >1 core route; "
-                    "60,148 unmapped-concept fallback"
-                ),
-                "One-to-many canonical routing preserved",
-            ],
-            [
-                "Clinical observation records",
-                "38,850,928 rows",
-                (
-                    "37,327,978 Measurement; 1,471,098 Observation; 39,115 Condition; "
-                    "12,737 unresolved/unmapped"
-                ),
-                "Routed by Standard OMOP concept domain",
-            ],
-            [
-                "Drug route ledger",
-                "48,457,880 routes",
-                "17,469,480 unmapped-concept routes (36.1%)",
-                "Mapping/vocabulary limitation, retained with source value",
-            ],
-        ],
-    )
-
-    tables["S3"] = _table(
-        "Supplementary Table S3 | Stage B mapped semantic concordance",
-        [
-            "Domain",
-            "Mapped comparison",
-            "Concordance",
-            "Separate coverage limitations",
-        ],
-        [
-            [
-                "Encounter",
-                "1,510,957",
-                "Exact; patient Jaccard 1.000",
-                "None material",
-            ],
-            [
-                "Death",
-                "6,955",
-                "Exact; patient Jaccard 1.000",
-                "None material",
-            ],
-            [
-                "Condition",
-                "8,983,621 mapped source routes",
-                "All exact",
-                (
-                    "60,148 unmapped-concept fallback; target excess explained by other "
-                    "audited provenance"
-                ),
-            ],
-            [
-                "Procedure",
-                "11,121,561 mapped source routes",
-                "All exact",
-                "111,660 unresolved + 1,642 non-event components; target excess explained",
-            ],
-            [
-                "Drug",
-                "30,988,400 mapped nonzero Standard Drug routes",
-                "All exact; patient Jaccard 1.000",
-                "17,469,480 unmapped-concept routes",
-            ],
-            [
-                "Measurement / Observation",
-                "92,668,145 mapped rows",
-                "All exact; patient Jaccard 1.000",
-                (
-                    "366,371 unresolved/descriptive unmapped records excluded from mapped "
-                    "comparison"
-                ),
-            ],
-        ],
-        (
-            "Coverage limitations are shown separately so unresolved or unmapped records "
-            "are not misclassified as failures among successfully mapped events."
-        ),
-    )
-
-    tables["S4"] = _table(
-        "Supplementary Table S4 | Stage B value-level concordance",
-        ["Value type", "Comparable denominator", "Agreement", "Residual / explanation"],
-        [
-            [
-                "Numeric",
-                "75,769,622",
-                "75,644,000 directly exact",
-                (
-                    "125,622 differences, all vital-sign records and fully explained by "
-                    "the prespecified transformation logic; 0 unexplained"
-                ),
-            ],
-            [
-                "Units",
-                "58,916,347 uniquely resolved active Standard UCUM rows",
-                "100% agreement",
-                "No residual disagreement",
-            ],
-            [
-                "Categorical values",
-                "809,630 mapped categorical concepts",
-                "100% agreement",
-                "No residual disagreement",
-            ],
-        ],
-    )
-
-    tables["S5"] = _table(
-        "Supplementary Table S5 | Stage C primary source-faithful phenotype comparison",
-        [
-            "Phenotype",
-            "PCORnet",
-            "OMOP",
-            "Shared",
-            "Source-only",
-            "OMOP-only",
-            "Jaccard",
-            "Exact index among shared",
-        ],
-        [
-            ["D0", "9,815", "6,001", "6,001", "3,814", "0", "0.611", "100.0%"],
-            ["D1", "8,624", "5,246", "5,245", "3,379", "1", "0.608", "97.4%"],
-            ["D3", "7,565", "4,710", "4,709", "2,856", "1", "0.622", "97.5%"],
-        ],
-        (
-            "All source-only D1/D3 patients had a selected diagnosis with a missing "
-            "diagnosis date and lacked diagnosis lineage under the frozen transformation. "
-            "Shared index-date mismatches arose from selection of another surviving episode."
-        ),
-    )
-
-    tables["S6"] = _table(
-        "Supplementary Table S6 | Stage C harmonized diagnosis-date sensitivity",
-        [
-            "Phenotype",
-            "PCORnet",
-            "OMOP",
-            "Shared",
-            "Source-only",
-            "OMOP-only",
-            "Jaccard",
-            "Exact index",
-        ],
-        [
-            ["D0", "6,198", "6,198", "6,198", "0", "0", "1.000", "100.0%"],
-            ["D1", "5,246", "5,246", "5,246", "0", "0", "1.000", "100.0%"],
-            ["D3", "4,710", "4,710", "4,710", "0", "0", "1.000", "100.0%"],
-        ],
-        (
-            "Post-freeze sensitivity requiring a recorded diagnosis date in both PCORnet "
-            "and OMOP; all other locked phenotype rules were unchanged."
-        ),
-    )
-
-    tables["S7"] = _table(
-        "Supplementary Table S7 | Stage D acute-care outcome reproducibility",
-        [
-            "Estimand",
-            "Eligible PCORnet / OMOP",
-            "Events PCORnet / OMOP",
-            "Risk PCORnet / OMOP",
-            "Abs diff, pp",
-            "RR",
-            "Reproducibility margin",
-        ],
-        [
-            [
-                "Fixed 30 day",
-                "4,374 / 4,374",
-                "753 / 753",
-                "17.2% / 17.2%",
-                "0.00",
-                "1.00",
-                "Met",
-            ],
-            [
-                "Fixed 90 day",
-                "3,822 / 3,822",
-                "1,132 / 1,132",
-                "29.6% / 29.6%",
-                "0.00",
-                "1.00",
-                "Met",
-            ],
-            [
-                "End-to-end 30 day",
-                "7,277 / 4,374",
-                "1,178 / 753",
-                "16.2% / 17.2%",
-                "+1.03",
-                "1.06",
-                "Not met",
-            ],
-            [
-                "End-to-end 90 day",
-                "6,508 / 3,822",
-                "1,798 / 1,132",
-                "27.6% / 29.6%",
-                "+1.99",
-                "1.07",
-                "Not met",
-            ],
-        ],
-        (
-            "Prespecified empirical reproducibility margins: absolute risk difference "
-            "±0.5 percentage points and RR 0.95–1.05. All 1,132 fixed 90-day "
-            "both-positive patients had exactly matching first-event dates; median time "
-            "to first event was 26 days in both representations."
-        ),
-    )
-
-    tables["S8"] = _table(
-        "Supplementary Table S8 | Stage D recurrent ischemic stroke analysis",
-        [
-            "Analysis",
-            "Eligible",
-            "PCORnet events",
-            "OMOP events",
-            "Agreement",
-            "Discordance / attribution",
-        ],
-        [
-            [
-                "Primary recurrent stroke-code endpoint, days 31–365",
-                "2,531",
-                "263",
-                "258",
-                "2,526/2,531 (99.8%)",
-                (
-                    "5 source-only; visits/timing preserved but qualifying "
-                    "diagnosis-to-condition lineage absent"
-                ),
-            ],
-            [
-                "Post-outcome principal-diagnosis sensitivity",
-                "2,531",
-                "170",
-                "170",
-                "2,531/2,531",
-                "Complete agreement",
-            ],
-        ],
-    )
-
-    tables["S9"] = _table(
-        "Supplementary Table S9 | Stage E fixed-cohort feature and association reproducibility",
-        ["Feature", "Patient-level agreement", "Fixed SMD", "OMOP/source OR ratio"],
-        [
-            ["Age at index", "3,822/3,822 exact", "0.00", "1.000"],
-            ["Female indicator", "3,822/3,822 exact", "0.00", "1.000"],
-            ["Index length of stay", "3,822/3,822 exact", "0.00", "1.000"],
-            [
-                "Prior 365-day acute-care encounters",
-                "3,822/3,822 exact",
-                "0.00",
-                "1.000",
-            ],
-            [
-                "Prior 365-day all encounters",
-                "3,806/3,822 exact; MAD 0.005; Spearman >0.999",
-                "<0.001",
-                "0.999",
-            ],
-            [
-                "Prior 365-day ischemic stroke",
-                "3,822/3,822 exact",
-                "0.00",
-                "1.000",
-            ],
-        ],
-        (
-            "Association estimates are from the prespecified multivariable logistic "
-            "model. No formal coefficient-equivalence threshold was specified."
-        ),
-    )
-
-    tables["S10"] = _table(
-        "Supplementary Table S10 | Stage E end-to-end population characteristics",
-        ["Feature", "PCORnet", "OMOP", "SMD (source−OMOP)"],
-        [
-            ["Age, mean years", "67.11", "67.34", "−0.02"],
-            ["Female", "46.9%", "48.0%", "−0.02"],
-            ["Index length of stay, mean days", "6.91", "7.68", "−0.08"],
-            ["Prior acute-care encounters, mean", "0.75", "0.96", "−0.13"],
-            ["Prior all encounters, mean", "6.77", "7.49", "−0.06"],
-            ["Prior ischemic stroke", "6.3%", "10.7%", "−0.16"],
-        ],
-        (
-            "Using the conventional descriptive heuristic |SMD|>0.10, the largest "
-            "differences were prior ischemic-stroke history and prior acute-care "
-            "utilization. These are descriptive population differences, not causal effects."
-        ),
-    )
-
-    tables["S11"] = _table(
-        "Supplementary Table S11 | Stage E prediction-model reproducibility",
-        [
-            "Model",
-            "Fixed AUROC PCORnet / OMOP (Δ)",
-            "Fixed probability agreement",
-            "End-to-end AUROC PCORnet / OMOP (Δ)",
-            "End-to-end Brier PCORnet / OMOP",
-        ],
-        [
-            [
-                "Logistic regression",
-                "0.59 / 0.59 (Δ<0.001)",
-                "Pearson >0.999; MAD <0.001",
-                "0.63 / 0.59 (−0.04)",
-                "0.20 / 0.21",
-            ],
-            [
-                "Ridge logistic",
-                "0.59 / 0.59 (Δ<0.001)",
-                "Pearson >0.999; MAD <0.001",
-                "0.63 / 0.59 (−0.04)",
-                "0.20 / 0.21",
-            ],
-            [
-                "Histogram gradient boosting",
-                "0.60 / 0.60 (−0.001)",
-                "Pearson 0.965; MAD 0.037",
-                "0.63 / 0.60 (−0.03)",
-                "0.20 / 0.22",
-            ],
-        ],
-        (
-            "Fixed-cohort comparisons hold patient, index date, observability, and "
-            "outcome population constant while constructing features independently in "
-            "each CDM. End-to-end comparisons permit the independently selected "
-            "populations to differ."
-        ),
-    )
-
-    tables["S12"] = _table(
-        "Supplementary Table S12 | Stage E calibration metrics",
-        [
-            "Model",
-            "Estimand",
-            "Intercept PCORnet / OMOP",
-            "Slope PCORnet / OMOP",
-            "Test n / events PCORnet",
-            "Test n / events OMOP",
-        ],
-        [
-            [
-                "Logistic",
-                "Fixed",
-                "0.04 / 0.04",
-                "0.91 / 0.91",
-                "1,140 / 358",
-                "1,140 / 358",
-            ],
-            [
-                "Logistic",
-                "End-to-end",
-                "0.17 / 0.04",
-                "1.06 / 0.91",
-                "1,939 / 570",
-                "1,140 / 358",
-            ],
-            [
-                "Ridge logistic",
-                "Fixed",
-                "0.04 / 0.04",
-                "0.91 / 0.91",
-                "1,140 / 358",
-                "1,140 / 358",
-            ],
-            [
-                "Ridge logistic",
-                "End-to-end",
-                "0.17 / 0.04",
-                "1.06 / 0.91",
-                "1,939 / 570",
-                "1,140 / 358",
-            ],
-            [
-                "Gradient boosting",
-                "Fixed",
-                "−0.41 / −0.44",
-                "0.39 / 0.37",
-                "1,140 / 358",
-                "1,140 / 358",
-            ],
-            [
-                "Gradient boosting",
-                "End-to-end",
-                "−0.30 / −0.44",
-                "0.57 / 0.37",
-                "1,939 / 570",
-                "1,140 / 358",
-            ],
-        ],
-        (
-            "Ideal calibration is intercept 0 and slope 1. No formal "
-            "calibration-equivalence margins were prespecified for Stage E v1."
-        ),
-    )
-
-    tables["S13"] = _table(
-        "Supplementary Table S13 | Implementation issues identified during PCORnet-to-OMOP ETL validation",
-        [
-            "Starting implementation issue / decision",
-            "Why it matters",
-            "Publication ETL approach",
-            "Generalizable lesson",
-        ],
-        [
-            [
-                "Missing diagnosis dates replaced by 1900-01-01",
-                "Converts missingness into apparently valid longitudinal information",
-                "Exclude when target-required event date absent",
-                (
-                    "Avoid replacing missing clinical dates with plausible sentinel dates "
-                    "unless they remain explicitly distinguishable from observed dates"
-                ),
-            ],
-            [
-                "PCORnet condition records absent from the starting condition-event conversion",
-                "Omits a distinct source condition-provenance stream",
-                "Include diagnosis and condition records with lineage",
-                "Audit all source domains contributing to a target clinical domain",
-            ],
-            [
-                "Vital-sign conversion file in the evaluated package was mispackaged or inconsistent with its filename",
-                "Can omit vital data or duplicate another domain",
-                (
-                    "Restore domain-specific vital-sign conversion logic and validate "
-                    "resulting values against source data"
-                ),
-                "Verify conversion scripts against source/target fields, not filenames alone",
-            ],
-            [
-                "Observation-like source records require target-domain resolution",
-                (
-                    "Mapped Standard concepts can belong to Measurement, Observation, "
-                    "Condition or other OMOP domains"
-                ),
-                "Route by Standard concept domain",
-                (
-                    "Route records according to the domain of the mapped Standard concept "
-                    "rather than source-table identity alone"
-                ),
-            ],
-            [
-                "Valid one-to-many mappings can be lost if source rows are forced into one target representation",
-                "Loses legitimate target semantics",
-                "Preserve valid canonical routes",
-                (
-                    "Do not assume one source row must correspond to exactly one canonical "
-                    "OMOP representation"
-                ),
-            ],
-            [
-                "Source events without a Standard concept mapping",
-                (
-                    "Dropping otherwise eligible unmapped events can create hidden "
-                    "information loss or selection"
-                ),
-                (
-                    "Retain the event using OMOP's unmapped concept where permitted and "
-                    "preserve source-code information"
-                ),
-                "Separate mapping coverage from event preservation",
-            ],
-            [
-                "Procedures with a missing procedure date",
-                "The target procedure event requires a valid event date",
-                "Exclude and explicitly count",
-                (
-                    "Quantify exclusions caused by target-required fields and test their "
-                    "analytical consequences"
-                ),
-            ],
-            [
-                "Multiple drug source pathways",
-                (
-                    "Prescribing, medication-administration, and dispensing records can "
-                    "differ in vocabulary-mapping and encounter-linkage pathways"
-                ),
-                "Preserve pathway/source lineage",
-                (
-                    "Validate drug source pathways separately before interpreting pooled "
-                    "drug-exposure results"
-                ),
-            ],
-            [
-                "Provider data unavailable in the source extract",
-                (
-                    "Provider entities and downstream provider linkages cannot be "
-                    "reconstructed completely"
-                ),
-                "Treat as explicit source limitation",
-                (
-                    "Treat unavailable source provenance as an explicit limitation rather "
-                    "than synthesizing unsupported mappings"
-                ),
-            ],
-        ],
-        (
-            "These items describe issues and design decisions identified in the conversion "
-            "package and source extract evaluated in this study. They should not be "
-            "interpreted as deficiencies of the PCORnet or OMOP data models themselves, "
-            "nor as claims about the current state of any external community-maintained "
-            "converter. The publication ETL refers to the frozen transformation used for "
-            "the analyses reported in this study."
-        ),
-    )
-
-    tables["S14"] = _table(
-        "Supplementary Table S14 | Locked ischemic-stroke phenotype definitions",
-        ["Component", "D0", "D1", "D3"],
-        [
-            [
-                "Base stroke episode",
-                (
-                    "Adult ED-to-inpatient or inpatient encounter; ≥1 calendar-day "
-                    "overnight stay; exact locked ischemic-stroke ICD-9-CM/ICD-10-CM "
-                    "code; principal diagnosis"
-                ),
-                "Same as D0",
-                "Same as D0",
-            ],
-            [
-                "Imaging requirement",
-                "None",
-                "≥1 CT or MRI procedure",
-                "≥1 MRI procedure",
-            ],
-            [
-                "Imaging codes / window",
-                "—",
-                (
-                    "CT CPT 70450, 70460, 70470 or MRI CPT 70551, 70552, 70553, "
-                    "70557, 70558, 70559; procedure date from admission−2 days through "
-                    "discharge"
-                ),
-                (
-                    "MRI CPT 70551, 70552, 70553, 70557, 70558, 70559; procedure date "
-                    "from admission−2 days through discharge"
-                ),
-            ],
-            [
-                "Lipid requirement",
-                "None",
-                "≥1 result with LOINC in versioned locked whitelist during admission–discharge",
-                "Same as D1",
-            ],
-            [
-                "Index selection",
-                (
-                    "First qualifying encounter per patient; source index uses diagnosis "
-                    "date when available, otherwise encounter dates"
-                ),
-                "Imaging/lipid evaluated per D0-eligible encounter before first-event ranking",
-                "Same as D1",
-            ],
-            ["Age rule", "After first qualifying encounter, age ≥18 years", "Same", "Same"],
-            [
-                "Primary source-date behavior",
-                (
-                    "Selected diagnosis ordered by diagnosis date with missing dates last; "
-                    "source index can fall back to encounter dates"
-                ),
-                "Inherited from D0",
-                "Inherited from D0",
-            ],
-        ],
-        (
-            "D1 is D0 plus CT-or-MRI imaging and lipid evidence; D3 is D0 plus MRI "
-            "imaging and lipid evidence. The primary comparison preserved source-faithful "
-            "rules; the post-freeze harmonized sensitivity additionally required a recorded "
-            "diagnosis date in both representations without changing other rules. Exact "
-            "field and encounter-type codes are retained in the versioned study definitions "
-            "and analysis code."
-        ),
-    )
-
-    return tables
+    t: dict[str, dict] = {}
+    t["S1"] = _table("Supplementary Table S1 | Frozen OMOP target row counts", ["OMOP table", "Rows"], [["person", "27,089"], ["observation_period", "27,087"], ["visit_occurrence", "1,510,957"], ["condition_occurrence", "7,315,572"], ["procedure_occurrence", "4,182,803"], ["measurement", "85,715,435"], ["observation", "7,319,081"], ["drug_exposure", "48,458,058"], ["device_exposure", "196,660"], ["specimen", "93"], ["death", "6,955"]], "Counts correspond to the frozen validated OMOP target used for publication analyses.")
+    t["S2"] = _table("Supplementary Table S2 | Stage A exclusions and routing", ["Source area", "Source / eligible", "Excluded or alternate routing", "Primary reason / interpretation"], [["DIAGNOSIS", "11,484,577 source; 8,024,792 eligible", "3,459,785 excluded (30.1%)", "Missing DX_DATE"], ["PROCEDURES", "11,244,947 source; 11,228,023 eligible", "16,924 excluded (0.2%)", "Missing PX_DATE"], ["Procedure route ledger", "11,234,863 routes", "111,660 unresolved; 1,642 non-event semantic components", "Vocabulary/semantic routing separated from event routes"], ["DIAGNOSIS + CONDITION", "8,674,973 eligible source events", "9,045,157 canonical routes; 361,606 events >1 core route; 60,148 concept-zero fallback", "One-to-many canonical routing preserved"], ["OBS_CLIN", "38,850,928 rows", "37,327,978 Measurement; 1,471,098 Observation; 39,115 Condition; 12,737 unresolved concept 0", "Routed by Standard OMOP concept domain"], ["Drug route ledger", "48,457,880 routes", "17,469,480 concept-zero (36.1%)", "Mapping/vocabulary limitation, retained with source value"]])
+    t["S3"] = _table("Supplementary Table S3 | Stage B routing consistency and coverage", ["Domain", "Mapped comparison", "Concordance", "Separate coverage limitations"], [["Encounter", "1,510,957", "Exact; patient Jaccard 1.000", "None material"], ["Death", "6,955", "Exact; patient Jaccard 1.000", "None material"], ["Condition", "8,983,621 mapped source routes", "All exact", "60,148 concept-zero fallback; target excess explained by other audited provenance"], ["Procedure", "11,121,561 mapped source routes", "All exact", "111,660 unresolved + 1,642 non-event components; target excess explained"], ["Drug", "30,988,400 mapped nonzero Standard Drug routes", "All exact; patient Jaccard 1.000", "17,469,480 concept-zero routes"], ["Measurement / Observation", "92,668,145 mapped rows", "All exact; patient Jaccard 1.000", "366,371 unresolved/descriptive concept-zero excluded from mapped comparison"]], "Coverage limitations are shown separately so unresolved/concept-zero records are not misclassified as failures among successfully mapped events. Route-level concordance evaluates consistency with the prespecified vocabulary and routing rules and should not be interpreted as independent semantic validation.")
+    t["S4"] = _table("Supplementary Table S4 | Stage B value-level concordance", ["Value type", "Comparable denominator", "Agreement", "Residual / explanation"], [["Numeric", "75,769,622", "75,644,000 directly exact", "125,622 differences, all vital-sign records and fully explained by prespecified transformation logic; 0 unexplained"], ["Units", "58,916,347 uniquely resolved active Standard UCUM rows", "100% agreement", "No residual disagreement"], ["Categorical values", "809,630 mapped categorical concepts", "100% agreement", "No residual disagreement"]])
+    t["S5"] = _table("Supplementary Table S5 | Stage C primary source-faithful phenotype comparison", ["Phenotype", "PCORnet", "OMOP", "Shared", "Source-only", "OMOP-only", "Jaccard", "Exact index among shared"], [["D0", "9,815", "6,001", "6,001", "3,814", "0", "0.611", "100.0%"], ["D1", "8,624", "5,246", "5,245", "3,379", "1", "0.608", "97.4%"], ["D3", "7,565", "4,710", "4,709", "2,856", "1", "0.622", "97.5%"]], "All source-only D1/D3 patients had a missing diagnosis date on the selected source diagnosis and lacked diagnosis lineage under the frozen ETL. Shared index-date mismatches arose from selection of another surviving episode.")
+    t["S6"] = _table("Supplementary Table S6 | Stage C recorded-diagnosis-date sensitivity", ["Phenotype", "PCORnet", "OMOP", "Shared", "Source-only", "OMOP-only", "Jaccard", "Exact index"], [["D0", "6,198", "6,198", "6,198", "0", "0", "1.000", "100.0%"], ["D1", "5,246", "5,246", "5,246", "0", "0", "1.000", "100.0%"], ["D3", "4,710", "4,710", "4,710", "0", "0", "1.000", "100.0%"]], "Post-freeze sensitivity requiring a recorded diagnosis date before patient-level episode selection in both representations; all other locked phenotype rules were unchanged. Because eligibility preceded episode ranking, later qualifying episodes could be reselected.")
+    t["S7"] = _table("Supplementary Table S7 | Stage D acute-care outcome reproducibility", ["Estimand", "Eligible PCORnet / OMOP", "Events PCORnet / OMOP", "Risk PCORnet / OMOP", "Abs diff, pp", "RR", "Reproducibility tolerance"], [["Fixed 30 day", "4,374 / 4,374", "753 / 753", "17.2% / 17.2%", "0.00", "1.00", "Met"], ["Fixed 90 day", "3,822 / 3,822", "1,132 / 1,132", "29.6% / 29.6%", "0.00", "1.00", "Met"], ["End-to-end 30 day", "7,277 / 4,374", "1,178 / 753", "16.2% / 17.2%", "+1.03", "1.06", "Not met"], ["End-to-end 90 day", "6,508 / 3,822", "1,798 / 1,132", "27.6% / 29.6%", "+1.99", "1.07", "Not met"]], "Prespecified empirical cross-CDM reproducibility tolerances were an absolute risk difference within ±0.5 percentage points and RR 0.95–1.05; these were operational validation criteria, not clinical equivalence or noninferiority margins. All 1,132 fixed 90-day both-positive patients had exactly matching first-event dates; median time to first event was 26 days in both representations.")
+    t["S8"] = _table("Supplementary Table S8 | Stage D recurrent ischemic stroke analysis", ["Analysis", "Eligible", "PCORnet events", "OMOP events", "Agreement", "Discordance / attribution"], [["Primary recurrent stroke-code endpoint, days 31–365", "2,531", "263", "258", "2,526/2,531 (99.8%)", "5 source-only; visits/timing preserved but qualifying diagnosis-to-condition lineage absent"], ["Post-outcome PDX=P sensitivity", "2,531", "170", "170", "2,531/2,531", "Complete agreement"]])
+    t["S9"] = _table("Supplementary Table S9 | Stage E fixed-cohort feature and association reproducibility", ["Feature", "Patient-level agreement", "Fixed SMD", "OMOP/source OR ratio"], [["Age at index", "3,822/3,822 exact", "0.00", "1.000"], ["Female indicator", "3,822/3,822 exact", "0.00", "1.000"], ["Index length of stay", "3,822/3,822 exact", "0.00", "1.000"], ["Prior 365-day acute-care encounters", "3,822/3,822 exact", "0.00", "1.000"], ["Prior 365-day all encounters", "3,806/3,822 exact; MAD 0.005; Spearman >0.999", "<0.001", "0.999"], ["Prior 365-day ischemic stroke", "3,822/3,822 exact", "0.00", "1.000"]], "Association estimates are from the prespecified multivariable logistic model. No formal coefficient-equivalence threshold was specified.")
+    t["S10"] = _table("Supplementary Table S10 | Stage E end-to-end population characteristics", ["Feature", "PCORnet", "OMOP", "SMD (source−OMOP)"], [["Age, mean years", "67.11", "67.34", "−0.02"], ["Female", "46.9%", "48.0%", "−0.02"], ["Index LOS, mean days", "6.91", "7.68", "−0.08"], ["Prior acute-care encounters, mean", "0.75", "0.96", "−0.13"], ["Prior all encounters, mean", "6.77", "7.49", "−0.06"], ["Prior ischemic stroke", "6.3%", "10.7%", "−0.16"]], "Using the conventional descriptive heuristic |SMD|>0.10, the largest differences were prior ischemic-stroke history and prior acute-care utilization. These are descriptive population differences, not causal effects.")
+    t["S11"] = _table("Supplementary Table S11 | Stage E prediction-model reproducibility", ["Model", "Fixed AUROC PCORnet / OMOP (Δ)", "Fixed probability agreement", "End-to-end AUROC PCORnet / OMOP (Δ)", "End-to-end Brier PCORnet / OMOP"], [["Logistic regression", "0.59 / 0.59 (Δ<0.001)", "Pearson >0.999; MAD <0.001", "0.63 / 0.59 (−0.04)", "0.20 / 0.21"], ["Ridge logistic", "0.59 / 0.59 (Δ<0.001)", "Pearson >0.999; MAD <0.001", "0.63 / 0.59 (−0.04)", "0.20 / 0.21"], ["Histogram gradient boosting", "0.60 / 0.60 (−0.001)", "Pearson 0.965; MAD 0.037", "0.63 / 0.60 (−0.03)", "0.20 / 0.22"]], "Fixed-cohort comparisons hold patient, index date, observability, and outcome population constant while constructing features independently in each CDM. End-to-end comparisons permit the independently selected populations to differ. Models used a deterministic 70/30 patient-level split; logistic models used training-set standardization and prespecified median/mode imputation.")
+    t["S12"] = _table("Supplementary Table S12 | Stage E calibration metrics", ["Model", "Estimand", "Intercept PCORnet / OMOP", "Slope PCORnet / OMOP", "Test n / events PCORnet", "Test n / events OMOP"], [["Logistic", "Fixed", "0.04 / 0.04", "0.91 / 0.91", "1,140 / 358", "1,140 / 358"], ["Logistic", "End-to-end", "0.17 / 0.04", "1.06 / 0.91", "1,939 / 570", "1,140 / 358"], ["Ridge logistic", "Fixed", "0.04 / 0.04", "0.91 / 0.91", "1,140 / 358", "1,140 / 358"], ["Ridge logistic", "End-to-end", "0.17 / 0.04", "1.06 / 0.91", "1,939 / 570", "1,140 / 358"], ["Gradient boosting", "Fixed", "−0.41 / −0.44", "0.39 / 0.37", "1,140 / 358", "1,140 / 358"], ["Gradient boosting", "End-to-end", "−0.30 / −0.44", "0.57 / 0.37", "1,939 / 570", "1,140 / 358"]], "Ideal calibration is intercept 0 and slope 1. No formal calibration-equivalence margins were prespecified for Stage E v1.")
+    t["S13"] = _table("Supplementary Table S13 | Implementation issues identified during PCORnet-to-OMOP ETL validation", ["Starting implementation issue / decision", "Why it matters", "Publication ETL approach", "Generalizable lesson"], [["Missing diagnosis dates replaced by 1900-01-01", "Converts missingness into apparently valid longitudinal information", "Exclude when target-required event date absent", "Avoid replacing missing clinical dates with plausible sentinel dates unless they remain explicitly distinguishable from observed dates"], ["PCORnet CONDITION absent from the starting condition-occurrence conversion", "Omits a distinct source condition-provenance stream", "Include DIAGNOSIS + CONDITION with lineage", "Audit all source domains contributing to a target clinical domain"], ["VITAL conversion file in the evaluated package was mispackaged or inconsistent with its filename", "Can omit vital data or duplicate another domain", "Restore domain-specific VITAL conversion logic and validate resulting values against source data", "Verify conversion scripts against source/target fields, not filenames alone"], ["Observation-like source records require target-domain resolution", "Mapped Standard concepts can belong to Measurement, Observation, Condition or other OMOP domains", "Route by standard concept domain", "Route records according to the domain of the mapped Standard concept rather than source-table identity alone"], ["Valid one-to-many mappings can be lost if source rows are forced into one target representation", "Loses legitimate target semantics", "Preserve valid canonical routes", "Do not assume one source row must correspond to exactly one canonical OMOP representation"], ["Source events without a Standard concept mapping", "Dropping otherwise eligible unmapped events can create hidden information loss or selection", "Retain the event with standard concept 0 where permitted and preserve source-code information", "Separate mapping coverage from event preservation"], ["Procedures with missing PX_DATE", "The target procedure event requires a valid event date", "Exclude and explicitly count", "Quantify exclusions caused by target-required fields and test their analytical consequences"], ["Multiple drug source pathways", "PRESCRIBING, MED_ADMIN and DISPENSING can differ in vocabulary-mapping and encounter-linkage pathways", "Preserve pathway/source lineage", "Validate drug source pathways separately before interpreting pooled Drug Exposure results"], ["PCORnet PROVIDER source unavailable", "Provider entities and downstream provider linkages cannot be reconstructed completely from the available source extract", "Treat as explicit source limitation", "Treat unavailable source provenance as an explicit limitation rather than synthesizing unsupported mappings"]], "These items describe issues and design decisions identified in the conversion package and source extract evaluated in this study. They should not be interpreted as deficiencies of the PCORnet or OMOP data models themselves, nor as claims about the current state of any external community-maintained converter. The publication ETL refers to the frozen transformation used for the analyses reported in this study.")
+    t["S14"] = _table("Supplementary Table S14 | Locked ischemic-stroke phenotype definitions", ["Component", "D0", "D1", "D3"], [["Base stroke episode", "Adult EI/IP encounter; ≥1 calendar-day overnight stay; exact locked ischemic-stroke ICD-9-CM/ICD-10-CM code; PDX=P", "Same as D0", "Same as D0"], ["Imaging requirement", "None", "≥1 CT or MRI procedure", "≥1 MRI procedure"], ["Imaging codes / window", "—", "CT CPT 70450, 70460, 70470 or MRI CPT 70551, 70552, 70553, 70557, 70558, 70559; procedure date from admit−2 days through discharge", "MRI CPT 70551, 70552, 70553, 70557, 70558, 70559; procedure date from admit−2 days through discharge"], ["Lipid requirement", "None", "≥1 result with LOINC in versioned locked whitelist during admission–discharge", "Same as D1"], ["Index selection", "First qualifying encounter per patient; encounter index = COALESCE(DX_DATE, ADMIT_DATE, DISCHARGE_DATE)", "Imaging/lipid evaluated per D0-eligible encounter before first-event ranking", "Same as D1"], ["Age rule", "After first qualifying encounter, floor(days from birth to index /365.0) ≥18", "Same", "Same"], ["Primary source-date behavior", "Selected diagnosis ordered by DX_DATE with nulls last; source index can fall back to encounter dates", "Inherited from D0", "Inherited from D0"]], "D1 is D0 plus CT-or-MRI imaging and lipid evidence; D3 is D0 plus MRI imaging and lipid evidence. The primary comparison preserved source-faithful rules. The recorded-diagnosis-date sensitivity required DX_DATE to be recorded before episode selection; the separate encounter-admission-date fallback sensitivity preserved otherwise-eligible missing-date diagnoses in a non-destructive target overlay without changing other phenotype rules.")
+    t["S15"] = _table("Supplementary Table S15 | Stage C diagnosis-date harmonization transition audit", ["Phenotype", "Primary source", "Recorded-date source", "Shared", "Primary-only", "Recorded-date-only", "Same selected episode", "Reselected later episode"], [["D0", "9,815", "6,198", "6,197", "3,618", "1", "6,001", "196"], ["D1", "8,624", "5,246", "5,245", "3,379", "1", "5,108", "137"], ["D3", "7,565", "4,710", "4,709", "2,856", "1", "4,592", "117"]], "Diagnosis-date eligibility was applied before patient-level episode selection, so the recorded-date cohorts were reranked rather than formed by filtering the previously selected cohorts. For D0, 196 patients were reselected to later qualifying episodes; one additional patient entered after an earlier under-18 episode with a missing diagnosis date was removed. No patient identifiers were written to the audit output.")
+    t["S16"] = _table("Supplementary Table S16 | Stage C encounter-admission-date fallback sensitivity", ["Phenotype", "PCORnet", "Fallback target", "Shared", "Source-only", "Fallback-only", "Jaccard", "Exact index", "Selected target date provenance"], [["D0", "9,815", "9,815", "9,815", "0", "0", "1.000", "100.0%", "6,001 recorded; 3,814 encounter fallback"], ["D1", "8,624", "8,624", "8,624", "0", "0", "1.000", "100.0%", "5,108 recorded; 3,516 encounter fallback"], ["D3", "7,565", "7,565", "7,565", "0", "0", "1.000", "100.0%", "4,592 recorded; 2,973 encounter fallback"]], "Reviewer-inspired post-freeze sensitivity locked before execution. Otherwise-eligible stroke diagnoses with a missing diagnosis date were represented in a non-destructive target overlay using the linked encounter admission date, with date provenance retained. The frozen target database and all non-date phenotype rules were unchanged. This was an alternative transformation-policy sensitivity, not an intrinsic OMOP requirement; exact convergence does not establish the fallback policy as uniquely correct or standard.")
+    t["S17"] = _table("Supplementary Table S17 | Stage D selective-loss audit and encounter-date fallback sensitivity", ["Analysis", "Group A eligible/events/risk", "Group B eligible/events/risk", "Risk difference, pp", "Risk ratio", "Additional result"], [["Source-only complement, 30 day", "Shared: 4,374 / 753 / 17.2%", "Source-only: 2,903 / 425 / 14.6%", "−2.58", "0.85", "All complement patients absent from lineage-faithful OMOP D0"], ["Source-only complement, 90 day", "Shared: 3,822 / 1,132 / 29.6%", "Source-only: 2,686 / 666 / 24.8%", "−4.82", "0.84", "All complement patients absent from lineage-faithful OMOP D0"], ["Fallback end-to-end, 30 day", "PCORnet: 7,277 / 1,178 / 16.2%", "Fallback target: 7,277 / 1,178 / 16.2%", "0.00", "1.00", "7,277/7,277 patient-level labels agreed"], ["Fallback end-to-end, 90 day", "PCORnet: 6,508 / 1,798 / 27.6%", "Fallback target: 6,508 / 1,798 / 27.6%", "0.00", "1.00", "6,508/6,508 patient-level labels agreed"]], "The source-only complement had lower acute-care risk than the shared cohort, demonstrating outcome-associated selective cohort loss in this dataset. This audit does not classify diagnosis-date missingness as MCAR, MAR, or MNAR and does not estimate a causal selection effect. In the fallback sensitivity, the original Stage D outcome and observability rules and empirical reproducibility tolerances were unchanged.")
+    t["S18"] = _table("Supplementary Table S18 | CDM structure and vocabulary version provenance", ["Version dimension", "Evidence used for this study"], [["Target structural CDM", "OHDSI OMOP Common Data Model 5.4.2 SQL Server schema; frozen configuration pinned to CommonDataModel release v5.4.2."], ["Target CDM_SOURCE metadata", "CDM_SOURCE table present but contained 0 rows; structural-version provenance therefore comes from the frozen build configuration/code rather than CDM_SOURCE."], ["Source PCORnet release", "No explicit HARVEST-style source version metadata were available; an exact PCORnet release was not inferred from table/column shape."], ["Athena vocabulary snapshot", "Database metadata included LOINC 2.80, RxNorm 20260105, ICD-10-CM FY2026, ICD-10-PCS 2026, HCPCS 20260101, NDC 20260222, and contemporaneous SNOMED CT editions, among other vocabularies."], ["Vocabulary file fingerprints", "Original Athena source-file fingerprints were not available in the audited publication output; component vocabulary_version metadata were retained in the target database."]], "The OMOP structural CDM release and the Athena vocabulary snapshot are separate version dimensions and should be reported separately.")
+    return t
 
 
 def export_all(data_path: str | Path, outdir: str | Path) -> dict[str, dict]:
     data = json.loads(Path(data_path).read_text(encoding="utf-8"))
+    validate_data(data)
     output_dir = Path(outdir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    specs = {
-        **main_tables(data),
-        **supplementary_tables(data),
-    }
-    (output_dir / "table_specs.json").write_text(
-        json.dumps(specs, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-
+    specs = {**main_tables(data), **supplementary_tables(data)}
+    (output_dir / "table_specs.json").write_text(json.dumps(specs, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     for key, table in specs.items():
-        with (output_dir / f"{key}.csv").open(
-            "w",
-            newline="",
-            encoding="utf-8-sig",
-        ) as stream:
+        with (output_dir / f"{key}.csv").open("w", newline="", encoding="utf-8-sig") as stream:
             writer = csv.writer(stream)
             writer.writerow(table["columns"])
             writer.writerows(table["rows"])
-
     return specs
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate canonical publication tables")
-    parser.add_argument(
-        "--data",
-        default="study_definitions/artifacts/publication_figure_data_v1.json",
-    )
-    parser.add_argument(
-        "--outdir",
-        default="results/publication_assets/tables",
-    )
+    parser.add_argument("--data", default=str(DEFAULT_DATA))
+    parser.add_argument("--outdir", default="results/publication_assets/tables")
     args = parser.parse_args()
-    export_all(args.data, args.outdir)
+    specs = export_all(args.data, args.outdir)
+    print(f"Generated {len(specs)} canonical tables")
 
 
 if __name__ == "__main__":
