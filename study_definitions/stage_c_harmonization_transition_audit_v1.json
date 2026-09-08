@@ -1,0 +1,57 @@
+{
+  "study_definition": "stage-c-harmonization-transition-audit-v1",
+  "status": "post_result_descriptive_audit_defined_after_primary_and_harmonized_stage_c_results",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Quantify patient membership and selected-episode transitions between the locked source-faithful Stage C phenotypes and the post-freeze harmonized diagnosis-date sensitivity, with special attention to why harmonized D0 can exceed the primary lineage-faithful OMOP D0 count.",
+  "scope": {
+    "phenotypes": ["D0", "D1", "D3"],
+    "primary_source_definitions": [
+      "study_definitions/stage_c_stroke_d0_v1.json",
+      "study_definitions/stage_c_stroke_d1_d3_v1.json"
+    ],
+    "harmonized_definition": "study_definitions/stage_c_stroke_harmonized_dxdate_sensitivity_v1.json",
+    "primary_rule": "Preserve the locked source-faithful episode selection, including encounter-date fallback when the selected principal stroke diagnosis has no recorded diagnosis date.",
+    "harmonized_rule": "Require a recorded diagnosis date before patient-level episode selection, then rerank qualifying episodes using all other locked phenotype rules unchanged."
+  },
+  "transition_metrics": [
+    "primary patients",
+    "harmonized patients",
+    "shared patients",
+    "primary-only patients",
+    "harmonized-only patients",
+    "same selected source episode among shared patients",
+    "different or reselected source episode among shared patients",
+    "same index date among shared patients",
+    "changed index date among shared patients",
+    "harmonized episode later than primary episode",
+    "harmonized episode earlier than primary episode",
+    "primary selected diagnosis date missing versus recorded"
+  ],
+  "target_transition_metrics": [
+    "primary lineage-faithful OMOP patients",
+    "harmonized lineage-faithful OMOP patients",
+    "retained patients",
+    "patients entering after harmonization",
+    "patients leaving after harmonization",
+    "same selected episode among retained patients",
+    "different selected episode among retained patients",
+    "same versus changed index date"
+  ],
+  "d0_mechanism_bridge": [
+    "For patients entering harmonized OMOP D0, determine whether the primary source-selected diagnosis lacked a recorded diagnosis date.",
+    "Determine whether harmonization selected a different source episode.",
+    "Determine whether the harmonized episode occurred later than the primary source-faithful episode."
+  ],
+  "expected_count_anchors": {
+    "source_primary": {"D0": 9815, "D1": 8624, "D3": 7565},
+    "source_harmonized": {"D0": 6198, "D1": 5246, "D3": 4710},
+    "omop_primary": {"D0": 6001, "D1": 5246, "D3": 4710},
+    "omop_harmonized": {"D0": 6198, "D1": 5246, "D3": 4710}
+  },
+  "interpretation_guardrails": [
+    "This is a post-result descriptive mechanism audit and does not replace the locked primary Stage C analysis.",
+    "The audit quantifies reselection and membership transitions; it does not redefine the phenotype or frozen ETL.",
+    "All aggregate transition results will be reported regardless of whether they support the proposed diagnosis-date mechanism.",
+    "Patient-level identifiers remain outside Git; committed outputs are aggregate only."
+  ]
+}
