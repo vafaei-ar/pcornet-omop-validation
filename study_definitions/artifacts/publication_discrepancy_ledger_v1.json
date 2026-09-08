@@ -141,7 +141,7 @@
     {
       "id": "vital_numeric_transformation_differences",
       "stage": "Stage B",
-      "classification": "analysis_definition_difference",
+      "classification": "etl_policy_effect",
       "status_in_frozen_etl": "fully_explained_not_unexplained_failure",
       "evidence": {
         "directly_comparable_numeric_values": 75769622,
