@@ -1,0 +1,60 @@
+{
+  "study_definition": "stage-d-source-only-complement-audit-v1",
+  "status": "post_outcome_audit_defined_after_primary_stage_d_results",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "parent_definitions": {
+    "d0": "study_definitions/stage_c_stroke_d0_v1.json",
+    "stage_d": "study_definitions/stage_d_stroke_analytical_equivalence_v1.json"
+  },
+  "purpose": "Describe, patient by patient, the source-defined D0 patients who contribute to the difference between the source end-to-end acute-care outcome population and the fixed/shared outcome population, and determine whether their downstream acute-care risk differs from the shared population.",
+  "timing_and_role": {
+    "primary_stage_d_results_known_before_definition": true,
+    "role": "post-outcome descriptive audit",
+    "does_not_redefine_primary_estimand": true,
+    "does_not_change_frozen_etl": true,
+    "does_not_change_d0_or_stage_d_outcome_rules": true
+  },
+  "known_aggregate_results_before_audit": {
+    "d0_source_patients": 9815,
+    "d0_lineage_faithful_omop_patients": 6001,
+    "30_day_source_end_to_end_eligible": 7277,
+    "30_day_source_end_to_end_events": 1178,
+    "30_day_fixed_eligible": 4374,
+    "30_day_fixed_events": 753,
+    "90_day_source_end_to_end_eligible": 6508,
+    "90_day_source_end_to_end_events": 1798,
+    "90_day_fixed_eligible": 3822,
+    "90_day_fixed_events": 1132
+  },
+  "audit_populations": {
+    "source_end_to_end": "Locked source D0 patients satisfying source-specific 30-day or 90-day observability.",
+    "fixed_shared": "Locked source D0 patients whose selected D0 episode materialized in lineage-faithful OMOP, whose source and OMOP index dates are exact, and who satisfy both source and OMOP observability for the outcome window.",
+    "source_only_complement": "Source end-to-end eligible patients who are not in the corresponding fixed/shared outcome population. This population is defined directly at patient level rather than only by subtracting aggregate counts."
+  },
+  "required_outputs": [
+    "D0 source, lineage-faithful OMOP, and source-only membership counts",
+    "source-only membership counts stratified by recorded versus missing selected diagnosis date",
+    "30-day source end-to-end, fixed/shared, and source-only-complement eligible counts, events, and risks",
+    "90-day source end-to-end, fixed/shared, and source-only-complement eligible counts, events, and risks",
+    "risk difference and risk ratio comparing source-only complement with fixed/shared source risk",
+    "decomposition of the source-only complement into loss of lineage-faithful OMOP D0 membership, target-observability-only loss, and index-date mismatch",
+    "explicit verification that fixed/shared plus source-only complement reconstructs the source end-to-end counts and events"
+  ],
+  "reporting_commitment": {
+    "report_regardless_of_direction_or_magnitude": true,
+    "report_if_complement_risk_equals_shared_risk": true,
+    "report_if_complement_risk_is_lower": true,
+    "report_if_complement_risk_is_higher": true,
+    "report_residual_non_diagnosis_date_mechanisms": true
+  },
+  "interpretation_guardrails": [
+    "Outcome differences in the source-only complement may demonstrate outcome-associated selective loss but do not by themselves identify a causal selection effect.",
+    "Do not classify missingness as MCAR, MAR, or MNAR from this audit.",
+    "Do not treat this post-outcome audit as a prespecified primary analysis.",
+    "Do not alter the frozen ETL, D0 definition, Stage D outcome definition, or empirical reproducibility tolerances in response to this audit."
+  ],
+  "privacy": {
+    "patient_level_outputs_committed_to_git": false,
+    "aggregate_outputs_only": true
+  }
+}
