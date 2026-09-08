@@ -1,0 +1,52 @@
+{
+  "artifact": "stage-b-validation-scope-v1",
+  "status": "post_result_interpretation_artifact",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Separate Stage B rule-consistency checks from stronger empirical tests of preserved target attributes so exact route agreement is not overstated as independent semantic validation.",
+  "scope_hierarchy": {
+    "internal_rule_consistency": {
+      "definition": "Comparisons whose source-side expected target concepts/domains are derived from the same frozen vocabulary mappings or routing rules used by the ETL. Exact agreement demonstrates faithful implementation of those prespecified rules, but the comparison is partly dependent on the rule system itself.",
+      "results": {
+        "condition_mapped_routes_exact": 8983621,
+        "procedure_mapped_routes_exact": 11121561,
+        "drug_mapped_standard_routes_exact": 30988400,
+        "measurement_observation_mapped_rows_exact": 92668145
+      },
+      "interpretation": "These are strong implementation-consistency results within the prespecified semantic framework, not an independent clinical or ontologic gold-standard validation."
+    },
+    "stronger_empirical_attribute_preservation": {
+      "definition": "Comparisons of independently materialized target attributes such as patient linkage, dates, numeric values, units, and categorical values. These tests are less circular than reapplying the same routing rules and therefore provide stronger empirical evidence of preserved representation.",
+      "results": {
+        "encounters_exact": 1510957,
+        "deaths_exact": 6955,
+        "numeric_directly_comparable": 75769622,
+        "numeric_direct_exact": 75644000,
+        "numeric_explained_vital_differences": 125622,
+        "numeric_unexplained": 0,
+        "uniquely_resolved_standard_ucum_rows": 58916347,
+        "unit_agreement_percent": 100.0,
+        "mapped_categorical_values": 809630,
+        "categorical_agreement_percent": 100.0
+      },
+      "interpretation": "These results support high preservation of patient-level target attributes, with the remaining numeric differences confined to vital-sign records and fully explained by the prespecified frozen transformation logic."
+    }
+  },
+  "coverage_reported_separately": {
+    "condition_concept_zero_fallback": 60148,
+    "procedure_unresolved_routes": 111660,
+    "procedure_non_event_semantic_components": 1642,
+    "drug_concept_zero_routes": 17469480,
+    "measurement_observation_unresolved_or_descriptive_concept_zero": 366371,
+    "principle": "Unresolved or concept-zero routes are quantified separately and are not included in mapped-route exactness percentages."
+  },
+  "recommended_methods_language": "Stage B combined two complementary forms of validation. Route-level concordance tested whether the frozen ETL reproduced the prespecified vocabulary and domain-routing rules; because the same mappings partly define the expected routes, this component assesses implementation consistency rather than independent semantic validity. Separately, patient-level comparisons of encounter linkage, death, numeric values, units, categorical values, and timing evaluated preservation of independently materialized target attributes.",
+  "recommended_results_language": "Among prespecified mapped-event denominators, semantic routes were reproduced exactly, while unresolved and concept-zero routes were quantified separately. Encounter and death representation were exact. Of 75,769,622 directly comparable numeric values, 75,644,000 were exact; the remaining 125,622 differences were confined to vital-sign records and fully explained by the prespecified transformation logic, leaving no unexplained numeric residuals. Units agreed for all 58,916,347 rows with uniquely resolved active Standard UCUM concepts, and 809,630 mapped categorical values agreed completely.",
+  "recommended_limitation_language": "Stage B was an internal source-to-target semantic reconciliation under prespecified rules and did not include an independent clinical gold standard, chart review, or second independently implemented converter. Exact route-level concordance therefore should not be interpreted as independent semantic validation.",
+  "manuscript_guardrails": [
+    "Do not describe exact route-level concordance as independent semantic validation.",
+    "Do not state that Stage B proves PCORnet and OMOP are semantically equivalent in general.",
+    "Report concept-zero and unresolved routes separately from mapped-event denominators.",
+    "Use encounter linkage, death, numeric values, units, categorical values, and timing as the stronger empirical preservation evidence.",
+    "Describe the 125,622 numeric differences as a prespecified transformation-policy effect confined to vital-sign records, not as unexplained ETL error."
+  ]
+}
