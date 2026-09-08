@@ -1,0 +1,171 @@
+{
+  "artifact": "publication-discrepancy-ledger-v1",
+  "status": "post_result_interpretation_artifact",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Provide a manuscript-facing taxonomy that separates implementation defects, transformation-policy effects, CDM representation limitations, vocabulary limitations, and analysis-definition differences without conflating them.",
+  "taxonomy": {
+    "etl_defect": "An implementation error in conversion code or packaging that causes behavior inconsistent with the intended transformation specification.",
+    "etl_policy_effect": "A reproducible consequence of an explicit transformation eligibility, dating, routing, provenance, or retention policy, even when the implementation correctly follows that policy.",
+    "cdm_representation_limitation": "A source semantic element that is not natively represented in the target OMOP core structure and therefore requires lineage, an extension, or an analytic approximation.",
+    "vocabulary_limitation": "A limitation caused by the available vocabulary snapshot or by the absence of an active Standard target mapping for a source code.",
+    "analysis_definition_difference": "A discrepancy caused by applying materially different analytic eligibility, episode-selection, timing, or endpoint definitions rather than by the underlying data transformation alone."
+  },
+  "ledger": [
+    {
+      "id": "historical_pre_freeze_conversion_implementation_issues",
+      "stage": "ETL development before publication freeze",
+      "classification": "etl_defect",
+      "status_in_frozen_etl": "corrected_before_freeze",
+      "evidence": [
+        "Earlier development versions included incomplete source-domain coverage, sentinel-date substitution, a mispackaged vital-sign conversion file, omitted source domains, and source-to-target routing assumptions that required correction.",
+        "The accepted publication ETL was subsequently rebuilt from a clean state and frozen at 887e6f4d60a6b185e58b3c9fe8887472b49777e3."
+      ],
+      "manuscript_guardrail": "Describe these as issues in the starting conversion implementation/package evaluated, not as intrinsic defects of PCORnet, OMOP, or all community converters. Do not attribute final frozen-analysis discrepancies to defects that were already corrected."
+    },
+    {
+      "id": "primary_stage_c_diagnosis_date_cohort_discordance",
+      "stage": "Stage C",
+      "classification": "etl_policy_effect",
+      "status_in_frozen_etl": "primary_observed_discrepancy",
+      "evidence": {
+        "D0": {
+          "source_patients": 9815,
+          "lineage_faithful_omop_patients": 6001,
+          "source_only_patients": 3814,
+          "source_only_selected_diagnosis_date_missing": 3814,
+          "source_only_selected_diagnosis_date_recorded": 0
+        },
+        "D1": {
+          "source_patients": 8624,
+          "lineage_faithful_omop_patients": 5246,
+          "shared_patients": 5245,
+          "source_only_patients": 3379,
+          "omop_only_patients": 1,
+          "shared_exact_index_percent": 97.4
+        },
+        "D3": {
+          "source_patients": 7565,
+          "lineage_faithful_omop_patients": 4710,
+          "shared_patients": 4709,
+          "source_only_patients": 2856,
+          "omop_only_patients": 1,
+          "shared_exact_index_percent": 97.5
+        },
+        "mechanistic_sensitivities": {
+          "restrictive_recorded_diagnosis_date": {
+            "D0": "6198 versus 6198; exact membership and index dates",
+            "D1": "5246 versus 5246; exact membership and index dates",
+            "D3": "4710 versus 4710; exact membership and index dates"
+          },
+          "preservative_encounter_admission_date_fallback": {
+            "D0": "9815 versus 9815; exact membership and index dates",
+            "D1": "8624 versus 8624; exact membership and index dates",
+            "D3": "7565 versus 7565; exact membership and index dates"
+          }
+        }
+      },
+      "mechanism": "The source phenotype could anchor a qualifying stroke episode to the linked encounter date when the selected diagnosis date was missing, whereas the frozen transformation excluded diagnosis records lacking the required diagnosis date before an OMOP condition event was materialized.",
+      "manuscript_guardrail": "Call this a transformation date-policy/eligibility effect interacting with phenotype logic. Do not call it an inherent inability of OMOP to use encounter dates, and do not call the fallback sensitivity uniquely correct or standard."
+    },
+    {
+      "id": "stage_d_end_to_end_risk_shift_from_selective_cohort_loss",
+      "stage": "Stage D",
+      "classification": "etl_policy_effect",
+      "status_in_frozen_etl": "downstream_propagation_of_stage_c_policy_effect",
+      "evidence": {
+        "primary_30_day": {
+          "source_eligible": 7277,
+          "source_events": 1178,
+          "source_risk_percent": 16.2,
+          "omop_eligible": 4374,
+          "omop_events": 753,
+          "omop_risk_percent": 17.2,
+          "absolute_difference_percentage_points": 1.03,
+          "risk_ratio_omop_over_source": 1.06
+        },
+        "primary_90_day": {
+          "source_eligible": 6508,
+          "source_events": 1798,
+          "source_risk_percent": 27.6,
+          "omop_eligible": 3822,
+          "omop_events": 1132,
+          "omop_risk_percent": 29.6,
+          "absolute_difference_percentage_points": 1.99,
+          "risk_ratio_omop_over_source": 1.07
+        },
+        "source_only_outcome_eligible_complement": {
+          "30_day": {
+            "eligible": 2903,
+            "events": 425,
+            "risk_percent": 14.6,
+            "shared_risk_percent": 17.2,
+            "risk_difference_percentage_points": -2.58,
+            "risk_ratio_source_only_over_shared": 0.85
+          },
+          "90_day": {
+            "eligible": 2686,
+            "events": 666,
+            "risk_percent": 24.8,
+            "shared_risk_percent": 29.6,
+            "risk_difference_percentage_points": -4.82,
+            "risk_ratio_source_only_over_shared": 0.84
+          }
+        },
+        "fallback_target_sensitivity": {
+          "30_day": "7277 eligible and 1178 events in both representations; risk difference 0.00 percentage points; risk ratio 1.00; 100% jointly observable label agreement",
+          "90_day": "6508 eligible and 1798 events in both representations; risk difference 0.00 percentage points; risk ratio 1.00; 100% jointly observable label agreement"
+        }
+      },
+      "mechanism": "The missing-diagnosis-date eligibility effect changed who entered the independently selected target cohort. The source-only outcome-eligible complement had lower downstream acute-care risk than the shared cohort, so the loss was outcome-associated rather than merely numerically large.",
+      "manuscript_guardrail": "Describe the loss as selective or outcome-associated in this dataset. Do not classify the missingness mechanism as MCAR/MAR/MNAR and do not claim a formal causal selection effect."
+    },
+    {
+      "id": "principal_diagnosis_source_semantics",
+      "stage": "Stage C",
+      "classification": "cdm_representation_limitation",
+      "status_in_frozen_etl": "known_portability_constraint",
+      "evidence": "The stroke phenotype requires the PCORnet principal-diagnosis indicator. That source semantic is not natively represented in the OMOP core fields used by the frozen target, so lineage to the qualifying source diagnosis is required for a source-faithful comparison.",
+      "manuscript_guardrail": "Do not imply that native OMOP core alone reproduces the PCORnet principal-diagnosis rule without additional provenance or an extension."
+    },
+    {
+      "id": "lipid_loinc_standard_target_coverage",
+      "stage": "Stage C",
+      "classification": "vocabulary_limitation",
+      "status_in_frozen_etl": "known_native_portability_constraint",
+      "evidence": {
+        "locked_lipid_loincs": 214,
+        "without_active_standard_measurement_or_observation_target": 22
+      },
+      "manuscript_guardrail": "Attribute this limitation to the vocabulary snapshot/mapping availability, not to the OMOP structural CDM version itself."
+    },
+    {
+      "id": "vital_numeric_transformation_differences",
+      "stage": "Stage B",
+      "classification": "analysis_definition_difference",
+      "status_in_frozen_etl": "fully_explained_not_unexplained_failure",
+      "evidence": {
+        "directly_comparable_numeric_values": 75769622,
+        "exact_numeric_values": 75644000,
+        "differences": 125622,
+        "scope_of_differences": "vital-sign records only"
+      },
+      "mechanism": "The remaining numeric differences were fully explained by the prespecified frozen transformation logic used for vital-sign expansion rather than by an unexplained value-transcription failure.",
+      "manuscript_guardrail": "State that the differences were confined to vital-sign records and fully explained by the prespecified transformation logic. Do not describe them as unexplained ETL errors."
+    }
+  ],
+  "validation_scope_notes": {
+    "stage_b_route_concordance": "Route-level concordance evaluates consistency with the prespecified vocabulary and domain-routing rules and is partly dependent on the same rule system; it should not be presented as independent semantic validation.",
+    "stronger_stage_b_empirical_tests": "Patient-level encounter linkage, death, numeric values, units, categorical values, and timing compare independently materialized target attributes and therefore provide stronger empirical evidence of preservation than rule-reapplication alone.",
+    "gold_standard_limitation": "The study does not include an independent clinical gold standard, chart review, or second independently implemented converter. Stage B is an internal source-to-target semantic reconciliation under prespecified rules, not external clinical validity."
+  },
+  "non_taxonomy_source_limitations": {
+    "provider_data": "Provider data were unavailable in the source extract. This is a source-data limitation rather than a cross-CDM transformation discrepancy."
+  },
+  "global_guardrails": [
+    "Do not state that PCORnet and OMOP are equivalent in general.",
+    "Do not use exact Stage B routing agreement as proof of independent semantic validity.",
+    "Do not attribute the primary end-to-end Stage D difference to poorer representation of outcomes among the shared patients; fixed-index outcome representation was exact.",
+    "Do not treat the post-freeze harmonized or fallback sensitivities as replacements for the primary frozen-ETL analyses.",
+    "Do not describe the empirical reproducibility tolerances as clinical equivalence or noninferiority margins."
+  ]
+}
