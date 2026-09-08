@@ -81,11 +81,29 @@ def test_publication_figure_registry_and_locked_invariants() -> None:
     assert set(figures.BUILDERS) == set(figures.FIGURE_NAMES)
 
 
-def test_publication_table_registry_accepts_current_aggregate() -> None:
+def test_publication_tables_match_reader_focused_plan() -> None:
     from pcornet_omop_validation.study import publication_tables as tables
 
     data = json.loads(DATA.read_text(encoding="utf-8"))
-    specs = {**tables.main_tables(data), **tables.supplementary_tables(data)}
-    assert list(tables.main_tables(data)) == ["Table1", "Table2", "Table3"]
-    assert list(tables.supplementary_tables(data)) == [f"S{i}" for i in range(1, 15)]
-    assert len(specs) == 17
+    tables.validate_data(data)
+    main = tables.main_tables(data)
+    supplementary = tables.supplementary_tables(data)
+
+    assert list(main) == ["Table1", "Table2", "Table3"]
+    assert list(supplementary) == [f"S{i}" for i in range(1, 19)]
+    assert len({**main, **supplementary}) == 21
+
+    table1_rows = main["Table1"]["rows"]
+    assert any(row[0] == "Routing + attributes" for row in table1_rows)
+    assert any(row[0] == "Encounter-date fallback sensitivity" for row in table1_rows)
+
+    table2_rows = main["Table2"]["rows"]
+    assert any(row[0] == "D0/D1/D3 encounter-date fallback" for row in table2_rows)
+    assert any(row[0] == "90-day fallback end-to-end risk" and row[4] == "0.00 pp" for row in table2_rows)
+
+    assert supplementary["S15"]["title"].endswith("diagnosis-date harmonization transition audit")
+    assert supplementary["S16"]["title"].endswith("encounter-admission-date fallback sensitivity")
+    assert supplementary["S17"]["title"].endswith("selective-loss audit and encounter-date fallback sensitivity")
+    assert supplementary["S18"]["title"].endswith("CDM structure and vocabulary version provenance")
+    assert "Reproducibility tolerance" in supplementary["S7"]["columns"]
+    assert "clinical equivalence or noninferiority margins" in supplementary["S7"]["note"]
