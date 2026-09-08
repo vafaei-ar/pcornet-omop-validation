@@ -43,6 +43,21 @@ Exact fixed-index outcomes can coexist with different end-to-end risks because t
 
 The completed publication execution uses `stage_e_statistical_model_reproducibility_anchorfix.py`. The first execution stopped before model fitting because an anchor assertion detected incorrect re-selection of the earliest surviving OMOP episode. The wrapper restores the locked Stage C episode-selection semantics and does not alter features, outcome, split, models, or metrics.
 
+## Manuscript source-date coverage audit
+
+To obtain the actual source-data calendar coverage for manuscript wording, run the read-only aggregate audit against the same ETL configuration used for the publication analyses:
+
+```bash
+python -m pcornet_omop_validation.study.manuscript_source_date_coverage \
+  --config config/etl_A.yaml
+```
+
+The audit reports full source encounter-date coverage, diagnosis and enrollment date coverage, and a descriptive adult EI/IP overnight-encounter coverage. It writes only aggregate dates/counts to:
+
+`results/publication_analysis/manuscript_metadata/manuscript_source_date_coverage.json`
+
+This is a metadata/documentation audit only. It must not be used to redefine the locked Stage C or Stage D analyses.
+
 ## Why anchor checks are strict
 
 Assertions on counts, hashes, and prior-stage anchors are intentional. They protect against silently running a later-stage analysis on a different ETL version or cohort definition.
