@@ -1,0 +1,29 @@
+{
+  "study_definition": "stage-c-harmonized-only-d0-followup-v1",
+  "status": "post_result_descriptive_followup_defined_after_transition_audit",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "purpose": "Explain the single patient present in harmonized source D0 but absent from primary source D0 without writing any patient identifier.",
+  "context": {
+    "primary_source_d0": 9815,
+    "harmonized_source_d0": 6198,
+    "shared_source_d0": 6197,
+    "harmonized_only_source_d0": 1,
+    "primary_omop_d0": 6001,
+    "harmonized_omop_d0": 6198
+  },
+  "rules": {
+    "primary": "Rank all qualifying source D0 episodes by COALESCE(diagnosis date, admission date, discharge date), select the first episode, then apply age >=18.",
+    "harmonized": "Require a recorded diagnosis date before patient-level ranking, rank by diagnosis date, select the first eligible episode, then apply age >=18.",
+    "followup": "For harmonized-only D0 patients, inspect the episode that would have been selected by the primary ranking before the adult-age filter and classify why that patient was absent from primary D0."
+  },
+  "outputs": [
+    "aggregate patient count only",
+    "whether a primary pre-age selected episode existed",
+    "whether that primary pre-age episode was under age 18",
+    "whether its diagnosis date was missing",
+    "whether the harmonized episode was later and different",
+    "no patient identifiers"
+  ],
+  "interpretation_guardrail": "This is a post-result mechanism audit. It does not alter the frozen ETL, primary Stage C analysis, or harmonized sensitivity.",
+  "report_regardless_of_direction": true
+}
