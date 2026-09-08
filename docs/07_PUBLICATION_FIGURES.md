@@ -28,6 +28,19 @@ The figure runner validates locked scientific invariants before rendering, inclu
 - exact 30-day and 90-day fallback Stage D outcome agreement;
 - complete Stage B numeric reconciliation with zero unexplained differences.
 
+## Reader-focused artifact freeze
+
+The publication assets follow the final reader-focused plan rather than the temporary emergency plotting repair:
+
+- **Figure 1 is preserved** in the previously approved breakpoint/fixed-versus-end-to-end design.
+- **Figure 2 is the planned mechanistic update.** It keeps the source-faithful phenotype-size panel, shows that both the recorded-date restriction and the encounter-date fallback restore exact D0/D1/D3 membership/index dates, and makes the two directionally opposite interventions visible in one compact mechanism diagram.
+- **Figure 3 is the planned outcome update.** It shows exact fixed-patient/index outcome representation, the lower 90-day risk in the source-only complement, the primary end-to-end drift, and restoration to 0.00 percentage-point difference under the encounter-date fallback sensitivity.
+- **Figure 4 is preserved** in the previously approved three-panel population/model design.
+- **Extended Data Figures 1–3 are preserved** in their previously approved three-panel/two-panel designs and remain consistent with the supplementary legends.
+- The canonical table generator produces **Main Tables 1–3 and Supplementary Tables S1–S18**, including the transition audit, fallback sensitivity, selective-loss audit, and CDM/vocabulary provenance tables.
+
+This freeze implements the manuscript's central scientific hierarchy: the Stage C/D mechanism is primary; Stage A/B supports it; Stage E demonstrates downstream propagation without becoming a second primary story.
+
 ## Canonical figure code
 
 There is one publication figure module:
@@ -95,7 +108,7 @@ python -m pcornet_omop_validation.study.publication_figures \
 
 ## Place Figures 2 and 3 into the tracked manuscript
 
-After generating the figures, use:
+Only Figures 2 and 3 should be replaced in the reader-focused v1.3 manuscript. After generating the figures, use:
 
 ```bash
 python scripts/place_publication_figures.py \
@@ -172,13 +185,15 @@ The manifest records:
 
 ## Publication tables
 
-The table generator continues to produce the current main and supplementary table specifications from the aggregate artifact:
+The table generator produces the reader-focused table set from the current aggregate artifact:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_tables \
   --data study_definitions/artifacts/publication_figure_data_v2.json \
   --outdir results/publication_assets/tables
 ```
+
+Expected output is Main Tables 1–3 plus Supplementary Tables S1–S18 and `table_specs.json`.
 
 ## Do not create parallel figure pipelines
 
