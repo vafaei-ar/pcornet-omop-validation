@@ -33,9 +33,9 @@ The figure runner validates locked scientific invariants before rendering, inclu
 The publication assets follow the final reader-focused plan rather than the temporary emergency plotting repair:
 
 - **Figure 1 is preserved** in the previously approved breakpoint/fixed-versus-end-to-end design.
-- **Figure 2 is the planned mechanistic update.** It keeps the source-faithful phenotype-size panel, shows that both the recorded-date restriction and the encounter-date fallback restore exact D0/D1/D3 membership/index dates, and makes the two directionally opposite interventions visible in one compact mechanism diagram.
-- **Figure 3 is the planned outcome update.** It shows exact fixed-patient/index outcome representation, the lower 90-day risk in the source-only complement, the primary end-to-end drift, and restoration to 0.00 percentage-point difference under the encounter-date fallback sensitivity.
-- **Figure 4 is preserved** in the previously approved three-panel population/model design.
+- **Figure 2 is the primary mechanism figure.** It keeps the source-faithful phenotype-size comparison, shows that both the recorded-date restriction and the encounter-date fallback restore exact D0/D1/D3 membership/index dates, and closes the D0 accounting (6,001 unchanged episodes + 196 later dated reselections + 1 age-boundary patient = 6,198 under the recorded-date sensitivity; 3,618 source-only patients had no dated alternative).
+- **Figure 3 is the primary outcome figure.** It shows exact fixed-patient/index outcome representation, the lower 90-day risk in the source-only complement, the primary end-to-end drift, and restoration to 0.00 percentage-point difference under the encounter-date fallback sensitivity.
+- **Figure 4 remains supporting evidence** but now makes the Stage E interpretation more explicit: feature-distribution shifts are described without clinical-severity language, and the AUROC shift is shown to be reproduced within PCORnet when the population is restricted to the shared/fixed cohort.
 - **Extended Data Figures 1–3 are preserved** in their previously approved three-panel/two-panel designs and remain consistent with the supplementary legends.
 - The canonical table generator produces **Main Tables 1–3 and Supplementary Tables S1–S18**, including the transition audit, fallback sensitivity, selective-loss audit, and CDM/vocabulary provenance tables.
 
@@ -175,7 +175,7 @@ The manifest records:
 
 **Figure 3:** fixed patient/index outcome representation is exact. The source-only D0 complement has lower 90-day risk than the shared cohort, demonstrating outcome-associated selective cohort loss. The primary end-to-end risk drift exceeds the prespecified empirical cross-CDM reproducibility tolerance, while the encounter-date fallback sensitivity restores exact 30-day and 90-day outcome agreement. The ±0.5 percentage-point band is not a clinical equivalence or noninferiority margin.
 
-**Figure 4:** the 0.10 SMD line is a conventional descriptive reference value, not a prespecified statistical threshold. Fixed-cohort and end-to-end model results answer different questions.
+**Figure 4:** the 0.10 SMD line is a conventional descriptive reference value, not a prespecified statistical threshold. The prior-ischemic-stroke feature requires a recorded diagnosis date in the locked Stage E feature builder and is therefore sensitive to the same date-availability mechanism; it should not be used as independent evidence of clinical severity. The AUROC panel contrasts the full PCORnet end-to-end population with the shared/fixed PCORnet population and the corresponding OMOP shared/fixed population, making the population-selection localization visible without a new model run.
 
 **Extended Data Figure 1:** mapped semantic agreement and mapping/coverage limitations are shown separately so unresolved or unmapped records are not misclassified as mapped-event disagreement.
 
@@ -185,7 +185,7 @@ The manifest records:
 
 ## Publication tables
 
-The table generator produces the reader-focused table set from the current aggregate artifact:
+The table generator produces the reader-focused table set from the current aggregate artifact. Main Table 1 is structured as a reusable analysis-aware validation checklist ("validation question" by layer), and Main Table 3/Supplementary Table S10 explicitly qualify the date-dependent prior-stroke feature:
 
 ```bash
 python -m pcornet_omop_validation.study.publication_tables \
