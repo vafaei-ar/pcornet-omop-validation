@@ -605,7 +605,7 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "a", x=-0.29, y=1.08)
     ax.tick_params(axis="y", labelsize=10.4)
-    ax.set_title("Feature distributions shift with independent cohort construction", loc="left", fontweight="bold", pad=15)
+    ax.set_title("Feature distributions shift with\nindependent cohort construction", loc="left", fontweight="bold", pad=10)
     ax.text(0.103, 5.25, "0.10 reference", fontsize=8.8, color=COLORS["mid"])
     ax.legend(
         handles=[
@@ -633,7 +633,7 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "b", x=-0.21, y=1.08)
     ax.tick_params(axis="y", labelsize=10.2)
-    ax.set_title("Population restriction reproduces the AUROC shift within PCORnet", loc="left", fontweight="bold", pad=15)
+    ax.set_title("Population restriction reproduces\nthe AUROC shift within PCORnet", loc="left", fontweight="bold", pad=10)
     ax.text(0.637, 2.28, "full PCORnet", ha="right", va="center", fontsize=8.8, color=COLORS["pcornet"], fontweight="bold")
     ax.text(0.592, 1.72, "shared/fixed PCORnet", ha="left", va="center", fontsize=8.8, color=COLORS["pcornet"])
 
