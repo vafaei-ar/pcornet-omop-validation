@@ -226,7 +226,7 @@ def figure1(data: dict) -> plt.Figure:
     xs = [0.03, 0.29, 0.54, 0.78]
     widths = [0.19, 0.19, 0.20, 0.19]
     texts = [
-        "Conventional checks\nhighly concordant\nroutes exact; attributes preserved",
+        "Conventional checks\nhighly concordant\nroutes exact;\nattributes highly preserved",
         "Independent base cohort (D0)\n" f"{stage_c['primary']['D0']['pcornet']:,} vs {stage_c['primary']['D0']['omop']:,}\n" f"Jaccard {stage_c['primary']['D0']['jaccard']:.3f}",
         "Mechanism localized\nmissing diagnosis date\nfallback vs exclusion",
         "Same diagnosis-date rule\n3 phenotypes: Jaccard 1.000\nindex dates 100% exact",
