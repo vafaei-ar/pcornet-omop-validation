@@ -490,7 +490,7 @@ def figure3(data: dict) -> plt.Figure:
         [0, 1],
         [
             f"Shared / retained\nn={complement['shared_eligible']:,}",
-            f"Source-only / lost\nn={complement['source_only_eligible']:,}",
+            f"Source-only\nn={complement['source_only_eligible']:,}",
         ],
     )
     ax.set_ylabel("90-day acute-care risk (%)")
