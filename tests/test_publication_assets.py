@@ -93,8 +93,10 @@ def test_publication_tables_match_reader_focused_plan() -> None:
     assert list(supplementary) == [f"S{i}" for i in range(1, 19)]
     assert len({**main, **supplementary}) == 21
 
+    assert main["Table1"]["columns"][1] == "Validation question"
     table1_rows = main["Table1"]["rows"]
-    assert any(row[0] == "Routing + attributes" for row in table1_rows)
+    assert any(row[0] == "Routing + attributes" and "technical checks" in row[4] for row in table1_rows)
+    assert any(row[0] == "Statistical models" and "Within-PCORnet" in row[3] for row in table1_rows)
     assert any(row[0] == "Encounter-date fallback sensitivity" for row in table1_rows)
 
     table2_rows = main["Table2"]["rows"]
@@ -107,3 +109,5 @@ def test_publication_tables_match_reader_focused_plan() -> None:
     assert supplementary["S18"]["title"].endswith("CDM structure and vocabulary version provenance")
     assert "Reproducibility tolerance" in supplementary["S7"]["columns"]
     assert "clinical equivalence or noninferiority margins" in supplementary["S7"]["note"]
+    assert "requires a recorded diagnosis date" in supplementary["S10"]["note"]
+    assert "Prior ischemic stroke" in main["Table3"]["note"]
