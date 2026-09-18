@@ -315,13 +315,14 @@ def figure2(data: dict) -> plt.Figure:
     ax.text(7470, 2.25, "OMOP", va="center", fontsize=9.7)
     d0 = primary["D0"]
     ax.text(
-        5200,
-        -0.18,
+        7200,
+        1.62,
         f"D0: {d0['source_only']:,} source-only ({100*d0['source_only']/d0['pcornet']:.1f}%)",
         fontsize=9.1,
         color=COLORS["omop"],
         fontweight="bold",
         va="center",
+        ha="center",
     )
 
     ax = fig.add_subplot(gs[0, 1])
@@ -343,18 +344,13 @@ def figure2(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "b", x=-0.19, y=1.10)
     ax.set_title("Opposite date policies both restore exact agreement", loc="left", fontweight="bold", pad=12)
-    ax.legend(
-        handles=[
-            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["dark"], ls="None", label="Primary"),
-            plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Require recorded date in both"),
-            plt.Line2D([], [], marker="s", color=COLORS["omop"], ls="None", label="Encounter-date fallback in target"),
-        ],
-        loc="upper center",
-        bbox_to_anchor=(0.50, -0.22),
-        frameon=False,
-        ncol=1,
-        handletextpad=0.35,
-        borderaxespad=0,
+    ax.text(
+        0.58,
+        -0.27,
+        "○ primary     ▲ recorded-date     ■ encounter-date fallback",
+        fontsize=8.8,
+        color=COLORS["mid"],
+        va="center",
     )
 
     ax = fig.add_subplot(gs[1, :])
@@ -364,7 +360,7 @@ def figure2(data: dict) -> plt.Figure:
     ax.text(
         0,
         1.01,
-        "The same missing-date mechanism explains the primary discordance and both exact rescues",
+        "Missing diagnosis-date handling explains the discordance and both exact rescues",
         fontsize=11.4,
         fontweight="bold",
         va="bottom",
@@ -424,7 +420,7 @@ def figure2(data: dict) -> plt.Figure:
         (0.04, 0.04),
         0.43,
         0.22,
-        "Restrictive rescue\nRequire recorded diagnosis date in both CDMs\nD0: 6,001 unchanged + 196 reselected + 1 age-boundary = 6,198\nD0/D1/D3 membership and index dates exact",
+        "Restrictive rescue\nRequire recorded diagnosis date in both CDMs\nD0 = 6,198: 6,001 same + 196 reselected + 1 age-boundary\nD0/D1/D3 exact",
         face=COLORS["green_fill"],
         fs=9.1,
         bold=True,
@@ -435,7 +431,7 @@ def figure2(data: dict) -> plt.Figure:
         (0.53, 0.04),
         0.43,
         0.22,
-        "Permissive rescue\nPreserve missing-date diagnosis in target using encounter admission date + provenance\nAll 3,814 missing-date D0 episodes restored\nD0/D1/D3 membership and index dates exact",
+        "Permissive rescue\nUse encounter admission date + provenance in target\nAll 3,814 missing-date D0 episodes restored\nD0/D1/D3 exact",
         face=COLORS["green_fill"],
         fs=9.1,
         bold=True,
@@ -609,7 +605,7 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "a", x=-0.29, y=1.08)
     ax.tick_params(axis="y", labelsize=10.4)
-    ax.set_title("Observed feature distributions shift when cohorts are built independently", loc="left", fontweight="bold", pad=15)
+    ax.set_title("Feature distributions shift with independent cohort construction", loc="left", fontweight="bold", pad=15)
     ax.text(0.103, 5.25, "0.10 reference", fontsize=8.8, color=COLORS["mid"])
     ax.legend(
         handles=[
@@ -626,31 +622,20 @@ def figure4(data: dict) -> plt.Figure:
     ax = fig.add_subplot(gs[0, 1])
     full_source_auc = [stage_e["models"][model]["end_pcornet_auroc"] for model in models]
     shared_source_auc = [stage_e["models"][model]["fixed_pcornet_auroc"] for model in models]
-    shared_omop_auc = [stage_e["models"][model]["fixed_omop_auroc"] for model in models]
-    for yi, full_value, shared_value, omop_value in zip(model_y, full_source_auc, shared_source_auc, shared_omop_auc):
+    for yi, full_value, shared_value in zip(model_y, full_source_auc, shared_source_auc):
         ax.plot([shared_value, full_value], [yi, yi], color=COLORS["light"], lw=2.0)
-        ax.scatter(full_value, yi + 0.10, s=62, color=COLORS["pcornet"], zorder=3)
-        ax.scatter(shared_value, yi, s=66, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.5, zorder=4)
-        ax.scatter(omop_value, yi - 0.10, s=54, marker="s", color=COLORS["omop"], zorder=4)
-        ax.text(full_value + 0.0015, yi + 0.10, f"{full_value:.2f}", va="center", fontsize=9.0, fontweight="bold")
-        ax.text(shared_value - 0.0015, yi - 0.02, f"{shared_value:.2f}", ha="right", va="center", fontsize=8.8)
+        ax.scatter(full_value, yi + 0.08, s=64, color=COLORS["pcornet"], zorder=3)
+        ax.scatter(shared_value, yi - 0.08, s=70, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.5, zorder=4)
+        ax.text(full_value + 0.0015, yi + 0.08, f"{full_value:.2f}", va="center", fontsize=9.0, fontweight="bold")
+        ax.text(shared_value - 0.0015, yi - 0.08, f"{shared_value:.2f}", ha="right", va="center", fontsize=8.8)
     ax.set(yticks=model_y, yticklabels=model_labels, xlabel="AUROC")
     ax.set_xlim(0.57, 0.65)
     clean(ax)
     panel(ax, "b", x=-0.21, y=1.08)
     ax.tick_params(axis="y", labelsize=10.2)
-    ax.set_title("Restricting PCORnet to shared patients reproduces the AUROC shift", loc="left", fontweight="bold", pad=15)
-    ax.legend(
-        handles=[
-            plt.Line2D([], [], marker="o", color=COLORS["pcornet"], ls="None", label="PCORnet end-to-end"),
-            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="PCORnet shared/fixed"),
-            plt.Line2D([], [], marker="s", color=COLORS["omop"], ls="None", label="OMOP shared/fixed"),
-        ],
-        loc="lower left",
-        bbox_to_anchor=(0.00, -0.07),
-        frameon=False,
-        handletextpad=0.35,
-    )
+    ax.set_title("Population restriction reproduces the AUROC shift within PCORnet", loc="left", fontweight="bold", pad=15)
+    ax.text(0.637, 2.28, "full PCORnet", ha="right", va="center", fontsize=8.8, color=COLORS["pcornet"], fontweight="bold")
+    ax.text(0.592, 1.72, "shared/fixed PCORnet", ha="left", va="center", fontsize=8.8, color=COLORS["pcornet"])
 
     ax = fig.add_subplot(gs[1, 1])
     ax.set(xlim=(0, 1), ylim=(-0.45, 2.68))
