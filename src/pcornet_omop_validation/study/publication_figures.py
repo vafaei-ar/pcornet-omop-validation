@@ -222,11 +222,11 @@ def figure1(data: dict) -> plt.Figure:
     ax.set(xlim=(0, 1), ylim=(0, 1))
     ax.axis("off")
     panel(ax, "a", x=-0.025, y=1.01)
-    ax.text(0.025, 0.99, "Reproducibility breaks at cohort selection, not downstream representation", fontsize=13.0, fontweight="bold", va="top")
+    ax.text(0.025, 0.99, "Conventional checks look reassuring; reproducibility breaks at cohort selection", fontsize=13.0, fontweight="bold", va="top")
     xs = [0.03, 0.29, 0.54, 0.78]
     widths = [0.19, 0.19, 0.20, 0.19]
     texts = [
-        "Mapped semantics\nexact within locked\nmapped denominators",
+        "Conventional technical checks\nhighly concordant\nroutes exact; attributes preserved",
         "Independent base cohort (D0)\n" f"{stage_c['primary']['D0']['pcornet']:,} vs {stage_c['primary']['D0']['omop']:,}\n" f"Jaccard {stage_c['primary']['D0']['jaccard']:.3f}",
         "Mechanism localized\nmissing diagnosis date\nfallback vs exclusion",
         "Same diagnosis-date rule\n3 phenotypes: Jaccard 1.000\nindex dates 100% exact",
