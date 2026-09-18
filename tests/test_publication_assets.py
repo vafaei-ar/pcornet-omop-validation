@@ -96,7 +96,7 @@ def test_publication_tables_match_reader_focused_plan() -> None:
     assert main["Table1"]["columns"][1] == "Validation question"
     table1_rows = main["Table1"]["rows"]
     assert any(row[0] == "Routing + attributes" and "technical checks" in row[4].lower() for row in table1_rows)
-    assert any(row[0] == "Statistical models" and "Within-PCORnet" in row[3] for row in table1_rows)
+    assert any(row[0] == "Statistical models" and "within pcornet" in row[3].lower() for row in table1_rows)
     assert any(row[0] == "Encounter-date fallback sensitivity" for row in table1_rows)
 
     table2_rows = main["Table2"]["rows"]
