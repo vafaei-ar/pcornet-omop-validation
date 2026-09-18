@@ -267,72 +267,198 @@ def figure2(data: dict) -> plt.Figure:
     keys = ["D0", "D1", "D3"]
     labels = {"D0": "Base (D0)", "D1": "CT/MRI + lipid (D1)", "D3": "MRI + lipid (D3)"}
     y = np.arange(3)[::-1]
-    fig = plt.figure(figsize=(10.5, 5.65))
-    gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.12], height_ratios=[0.92, 1.18], left=0.12, right=0.985, top=0.94, bottom=0.09, hspace=0.50, wspace=0.32)
+
+    fig = plt.figure(figsize=(10.5, 5.8))
+    gs = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=[0.98, 1.12],
+        height_ratios=[0.92, 1.22],
+        left=0.12,
+        right=0.985,
+        top=0.94,
+        bottom=0.08,
+        hspace=0.48,
+        wspace=0.34,
+    )
+
     ax = fig.add_subplot(gs[0, 0])
     for yi, key in zip(y, keys):
         pcornet_n = primary[key]["pcornet"]
         omop_n = primary[key]["omop"]
-        ax.plot([omop_n, pcornet_n], [yi, yi], color=COLORS["light"], lw=2.2)
-        ax.scatter(pcornet_n, yi, s=82, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.6, zorder=3)
-        ax.scatter(omop_n, yi, s=74, color=COLORS["omop"], zorder=3)
+        ax.plot([omop_n, pcornet_n], [yi, yi], color=COLORS["light"], lw=2.4)
+        ax.scatter(
+            pcornet_n,
+            yi,
+            s=84,
+            facecolor="white",
+            edgecolor=COLORS["pcornet"],
+            linewidth=1.6,
+            zorder=3,
+        )
+        ax.scatter(omop_n, yi, s=76, color=COLORS["omop"], zorder=3)
         ax.text(pcornet_n, yi + 0.13, f"{pcornet_n:,}", ha="center", va="bottom", fontsize=9.8)
-        if key == "D3":
-            ax.text(omop_n + 150, yi + 0.13, f"{omop_n:,}", ha="left", va="bottom", fontsize=9.8)
-        else:
-            ax.text(omop_n, yi - 0.13, f"{omop_n:,}", ha="center", va="top", fontsize=9.8)
-    ax.set(yticks=y, yticklabels=[labels[key] for key in keys], xlabel="Patients")
-    ax.set_xlim(4600, 10350)
-    ax.set_ylim(-0.30, 2.55)
-    ax.set_title("Primary source-faithful phenotype size", loc="left", fontweight="bold", pad=12)
+        ax.text(omop_n, yi - 0.13, f"{omop_n:,}", ha="center", va="top", fontsize=9.8)
+    ax.set(
+        yticks=y,
+        yticklabels=[labels[key] for key in keys],
+        xlabel="Patients",
+        xlim=(4500, 10350),
+        ylim=(-0.30, 2.45),
+    )
     clean(ax)
-    panel(ax, "a", x=-0.17, y=1.11)
-    ax.scatter(5300, 2.34, s=54, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.4, zorder=3)
-    ax.text(5420, 2.34, "PCORnet", va="center", fontsize=9.7)
-    ax.scatter(7550, 2.34, s=50, color=COLORS["omop"], zorder=3)
-    ax.text(7670, 2.34, "OMOP", va="center", fontsize=9.7)
+    panel(ax, "a", x=-0.17, y=1.10)
+    ax.set_title("Primary: cohort membership diverges", loc="left", fontweight="bold", pad=12)
+    ax.scatter(5200, 2.25, s=54, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.4)
+    ax.text(5320, 2.25, "PCORnet", va="center", fontsize=9.7)
+    ax.scatter(7350, 2.25, s=50, color=COLORS["omop"])
+    ax.text(7470, 2.25, "OMOP", va="center", fontsize=9.7)
+    d0 = primary["D0"]
+    ax.text(
+        5200,
+        -0.18,
+        f"D0: {d0['source_only']:,} source-only ({100*d0['source_only']/d0['pcornet']:.1f}%)",
+        fontsize=9.1,
+        color=COLORS["omop"],
+        fontweight="bold",
+        va="center",
+    )
+
     ax = fig.add_subplot(gs[0, 1])
     for yi, key in zip(y, keys):
         primary_j = primary[key]["jaccard"]
-        recorded_j = recorded[key]["jaccard"]
-        fallback_j = fallback[key]["jaccard"]
         ax.plot([primary_j, 1.0], [yi, yi], color=COLORS["light"], lw=2.2, zorder=1)
-        ax.scatter(primary_j, yi, s=64, facecolor="white", edgecolor=COLORS["dark"], linewidth=1.3, zorder=3)
-        ax.scatter(recorded_j, yi + 0.08, s=72, marker="^", color=COLORS["green"], zorder=4)
-        ax.scatter(fallback_j, yi - 0.08, s=62, marker="s", color=COLORS["omop"], zorder=4)
-        ax.text(primary_j, yi + 0.13, f"{primary_j:.3f}", ha="center", va="bottom", fontsize=9.3)
-        ax.text(0.995, yi + 0.22, "1.000 / 1.000", ha="right", va="bottom", fontsize=9.2, fontweight="bold")
-    ax.set(yticks=y, yticklabels=[labels[key] for key in keys], xlabel="Patient Jaccard")
-    ax.set_xlim(0.57, 1.03)
-    ax.set_ylim(-0.35, 2.38)
-    ax.set_title("Two opposite date-policy sensitivities restore exact membership", loc="left", fontweight="bold", pad=12)
+        ax.scatter(primary_j, yi, s=66, facecolor="white", edgecolor=COLORS["dark"], linewidth=1.3, zorder=3)
+        ax.scatter(recorded[key]["jaccard"], yi + 0.09, s=76, marker="^", color=COLORS["green"], zorder=4)
+        ax.scatter(fallback[key]["jaccard"], yi - 0.09, s=66, marker="s", color=COLORS["omop"], zorder=4)
+        ax.text(primary_j, yi + 0.14, f"{primary_j:.3f}", ha="center", va="bottom", fontsize=9.3)
+        ax.text(0.995, yi + 0.23, "1.000 / 1.000", ha="right", va="bottom", fontsize=9.2, fontweight="bold")
+    ax.set(
+        yticks=y,
+        yticklabels=[labels[key] for key in keys],
+        xlabel="Patient Jaccard",
+        xlim=(0.57, 1.03),
+        ylim=(-0.35, 2.40),
+    )
     clean(ax)
-    panel(ax, "b", x=-0.19, y=1.11)
-    ax.legend(handles=[plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["dark"], ls="None", label="Primary source-faithful"), plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Require recorded diagnosis date"), plt.Line2D([], [], marker="s", color=COLORS["omop"], ls="None", label="Encounter-date fallback in target")], loc="upper center", bbox_to_anchor=(0.50, -0.22), frameon=False, ncol=1, handletextpad=0.35, borderaxespad=0)
+    panel(ax, "b", x=-0.19, y=1.10)
+    ax.set_title("Opposite date policies both restore exact agreement", loc="left", fontweight="bold", pad=12)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["dark"], ls="None", label="Primary"),
+            plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Require recorded date in both"),
+            plt.Line2D([], [], marker="s", color=COLORS["omop"], ls="None", label="Encounter-date fallback in target"),
+        ],
+        loc="upper center",
+        bbox_to_anchor=(0.50, -0.22),
+        frameon=False,
+        ncol=1,
+        handletextpad=0.35,
+        borderaxespad=0,
+    )
+
     ax = fig.add_subplot(gs[1, :])
     ax.set(xlim=(0, 1), ylim=(0, 1))
     ax.axis("off")
-    panel(ax, "c", x=-0.055, y=1.06)
-    ax.text(0, 1.02, "Diagnosis-date handling is sufficient to explain the observed discordance", fontsize=11.3, fontweight="bold", va="bottom")
-    box(ax, (0.31, 0.78), 0.38, 0.15, "Selected stroke diagnosis has no\nrecorded diagnosis date", face=COLORS["gray_fill"], fs=10.1, bold=True)
-    arrow(ax, (0.50, 0.78), (0.50, 0.70), COLORS["mid"])
-    ax.plot([0.24, 0.76], [0.70, 0.70], color=COLORS["mid"], lw=0.95)
-    arrow(ax, (0.24, 0.70), (0.24, 0.60), COLORS["pcornet"])
-    arrow(ax, (0.76, 0.70), (0.76, 0.60), COLORS["omop"])
-    box(ax, (0.06, 0.43), 0.36, 0.16, "PCORnet source phenotype\nencounter-date fallback retains episode", face=COLORS["blue_fill"], fs=9.7, bold=True, edge=COLORS["pcornet"])
-    box(ax, (0.58, 0.43), 0.36, 0.16, "Frozen transformation\nmissing-date diagnosis excluded", face=COLORS["orange_fill"], fs=9.7, bold=True, edge=COLORS["omop"])
-    ax.text(0.50, 0.51, "PRIMARY\nDISCORDANCE", ha="center", va="center", fontsize=8.7, fontweight="bold", color=COLORS["omop"])
-    arrow(ax, (0.50, 0.43), (0.31, 0.30), COLORS["green"])
-    arrow(ax, (0.50, 0.43), (0.69, 0.30), COLORS["green"])
-    box(ax, (0.08, 0.05), 0.40, 0.23, "Restrict source eligibility\nrequire recorded diagnosis date in both\nD0/D1/D3 exact", face=COLORS["green_fill"], fs=9.7, bold=True, edge=COLORS["green"])
-    box(ax, (0.52, 0.05), 0.40, 0.23, "Preserve target evidence\nencounter admission date + provenance\nD0/D1/D3 exact", face=COLORS["green_fill"], fs=9.7, bold=True, edge=COLORS["green"])
+    panel(ax, "c", x=-0.055, y=1.05)
+    ax.text(
+        0,
+        1.01,
+        "The same missing-date mechanism explains the primary discordance and both exact rescues",
+        fontsize=11.4,
+        fontweight="bold",
+        va="bottom",
+    )
+
+    box(
+        ax,
+        (0.31, 0.80),
+        0.38,
+        0.13,
+        "Selected stroke diagnosis has no recorded DX_DATE\nD0 source-only: n=3,814",
+        face=COLORS["gray_fill"],
+        fs=10.0,
+        bold=True,
+    )
+    arrow(ax, (0.50, 0.80), (0.50, 0.73), COLORS["mid"])
+    ax.plot([0.24, 0.76], [0.73, 0.73], color=COLORS["mid"], lw=0.95)
+    arrow(ax, (0.24, 0.73), (0.24, 0.63), COLORS["pcornet"])
+    arrow(ax, (0.76, 0.73), (0.76, 0.63), COLORS["omop"])
+
+    box(
+        ax,
+        (0.04, 0.47),
+        0.40,
+        0.15,
+        "Source phenotype\nencounter-date fallback retains episode",
+        face=COLORS["blue_fill"],
+        fs=9.8,
+        bold=True,
+        edge=COLORS["pcornet"],
+    )
+    box(
+        ax,
+        (0.56, 0.47),
+        0.40,
+        0.15,
+        "Frozen transformation\nmissing-date diagnosis is not materialized",
+        face=COLORS["orange_fill"],
+        fs=9.8,
+        bold=True,
+        edge=COLORS["omop"],
+    )
+    ax.text(
+        0.50,
+        0.405,
+        "Among the 3,814 source-only D0 patients: 196 had a later dated qualifying episode; 3,618 had no dated alternative.",
+        ha="center",
+        va="center",
+        fontsize=9.0,
+        color=COLORS["dark"],
+    )
+    arrow(ax, (0.50, 0.36), (0.27, 0.28), COLORS["green"])
+    arrow(ax, (0.50, 0.36), (0.73, 0.28), COLORS["green"])
+
+    box(
+        ax,
+        (0.04, 0.04),
+        0.43,
+        0.22,
+        "Restrictive rescue\nRequire recorded diagnosis date in both CDMs\nD0: 6,001 unchanged + 196 reselected + 1 age-boundary = 6,198\nD0/D1/D3 membership and index dates exact",
+        face=COLORS["green_fill"],
+        fs=9.1,
+        bold=True,
+        edge=COLORS["green"],
+    )
+    box(
+        ax,
+        (0.53, 0.04),
+        0.43,
+        0.22,
+        "Permissive rescue\nPreserve missing-date diagnosis in target using encounter admission date + provenance\nAll 3,814 missing-date D0 episodes restored\nD0/D1/D3 membership and index dates exact",
+        face=COLORS["green_fill"],
+        fs=9.1,
+        bold=True,
+        edge=COLORS["green"],
+    )
     return fig
 
 
 def figure3(data: dict) -> plt.Figure:
     stage_d = data["stage_d"]
     fig = plt.figure(figsize=(10.2, 5.55))
-    gs = fig.add_gridspec(2, 2, height_ratios=[0.92, 1.08], left=0.10, right=0.985, top=0.92, bottom=0.13, hspace=0.46, wspace=0.34)
+    gs = fig.add_gridspec(
+        2,
+        2,
+        height_ratios=[0.92, 1.08],
+        left=0.10,
+        right=0.985,
+        top=0.92,
+        bottom=0.13,
+        hspace=0.46,
+        wspace=0.34,
+    )
+
     ax = fig.add_subplot(gs[0, 0])
     labels = ["30 days", "90 days"]
     y = np.array([1, 0])
@@ -347,25 +473,64 @@ def figure3(data: dict) -> plt.Figure:
     ax.set_ylim(-0.30, 1.30)
     clean(ax)
     panel(ax, "a", x=-0.16, y=1.08)
-    ax.set_title("Same patient + index: outcome representation is exact", loc="left", fontweight="bold", pad=12)
-    ax.legend(handles=[plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="PCORnet"), plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="OMOP")], loc="center right", bbox_to_anchor=(0.98, 0.55), frameon=False, handletextpad=0.35)
+    ax.set_title("Same patient + index: 30/90-day outcomes are exact", loc="left", fontweight="bold", pad=12)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="PCORnet"),
+            plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="OMOP"),
+        ],
+        loc="center right",
+        bbox_to_anchor=(0.98, 0.55),
+        frameon=False,
+        handletextpad=0.35,
+    )
+
     ax = fig.add_subplot(gs[0, 1])
     complement = stage_d["source_only_complement"]["90_day"]
     risks = [complement["shared_risk_percent"], complement["source_only_risk_percent"]]
     bars = ax.bar([0, 1], risks, width=0.55, color=[COLORS["pcornet"], COLORS["mid"]])
     ax.set_ylim(0, 34)
-    ax.set_xticks([0, 1], [f"Shared\nn={complement['shared_eligible']:,}", f"Source-only\nn={complement['source_only_eligible']:,}"])
+    ax.set_xticks(
+        [0, 1],
+        [
+            f"Shared / retained\nn={complement['shared_eligible']:,}",
+            f"Source-only / lost\nn={complement['source_only_eligible']:,}",
+        ],
+    )
     ax.set_ylabel("90-day acute-care risk (%)")
-    ax.set_title("Source-only patients had lower 90-day risk", loc="left", fontweight="bold", pad=12)
+    ax.set_title("Selective loss shifts the retained cohort toward higher observed risk", loc="left", fontweight="bold", pad=12)
     clean(ax)
     panel(ax, "b", x=-0.16, y=1.08)
     for bar, value in zip(bars, risks):
-        ax.text(bar.get_x() + bar.get_width() / 2, value + 0.7, f"{value:.1f}%", ha="center", va="bottom", fontsize=10.0, fontweight="bold")
-    ax.text(0.5, 8.5, f"source-only − shared = {complement['source_only_minus_shared_risk_difference_pp']:.2f} pp", ha="center", va="center", fontsize=9.5, fontweight="bold")
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            value + 0.7,
+            f"{value:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=10.0,
+            fontweight="bold",
+        )
+    ax.text(
+        0.5,
+        8.7,
+        f"source-only − shared = {complement['source_only_minus_shared_risk_difference_pp']:.2f} pp",
+        ha="center",
+        va="center",
+        fontsize=9.5,
+        fontweight="bold",
+    )
+
     ax = fig.add_subplot(gs[1, :])
     yy = np.array([1, 0])
-    primary_values = [stage_d["end_to_end"]["30_day"]["risk_difference_pp"], stage_d["end_to_end"]["90_day"]["risk_difference_pp"]]
-    fallback_values = [stage_d["fallback_end_to_end"]["30_day"]["risk_difference_pp"], stage_d["fallback_end_to_end"]["90_day"]["risk_difference_pp"]]
+    primary_values = [
+        stage_d["end_to_end"]["30_day"]["risk_difference_pp"],
+        stage_d["end_to_end"]["90_day"]["risk_difference_pp"],
+    ]
+    fallback_values = [
+        stage_d["fallback_end_to_end"]["30_day"]["risk_difference_pp"],
+        stage_d["fallback_end_to_end"]["90_day"]["risk_difference_pp"],
+    ]
     margin = stage_d["reproducibility_tolerances"]["risk_difference_pp"]
     ax.axvspan(-margin, margin, color=COLORS["green_fill"], zorder=0)
     ax.axvline(0, color=COLORS["dark"], lw=0.85)
@@ -374,14 +539,36 @@ def figure3(data: dict) -> plt.Figure:
         ax.scatter(primary_value, yi + 0.07, s=70, color=COLORS["omop"], zorder=3)
         ax.scatter(fallback_value, yi - 0.07, s=74, marker="^", color=COLORS["green"], zorder=3)
         ax.text(primary_value + 0.06, yi + 0.07, f"{primary_value:+.2f}", va="center", fontsize=9.7, fontweight="bold")
-        ax.text(fallback_value + 0.06, yi - 0.07, f"{fallback_value:+.2f}", va="center", fontsize=9.7, fontweight="bold", color=COLORS["green"])
-    ax.set(yticks=yy, yticklabels=["30 days", "90 days"], xlabel="OMOP − PCORnet risk difference (percentage points)")
-    ax.set_xlim(-0.62, 2.16)
-    ax.set_ylim(-0.40, 1.40)
+        ax.text(
+            fallback_value + 0.06,
+            yi - 0.07,
+            f"{fallback_value:+.2f}",
+            va="center",
+            fontsize=9.7,
+            fontweight="bold",
+            color=COLORS["green"],
+        )
+    ax.set(
+        yticks=yy,
+        yticklabels=["30 days", "90 days"],
+        xlabel="OMOP − PCORnet risk difference (percentage points)",
+        xlim=(-0.62, 2.16),
+        ylim=(-0.40, 1.40),
+    )
     clean(ax)
     panel(ax, "c", x=-0.055, y=1.08)
-    ax.set_title("Primary end-to-end drift exceeds tolerance; encounter-date fallback restores exact agreement", loc="left", fontweight="bold", pad=12)
-    ax.legend(handles=[plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="Primary end-to-end"), plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Fallback sensitivity")], loc="center left", bbox_to_anchor=(0.48, 0.56), frameon=False, ncol=1, handletextpad=0.35)
+    ax.set_title("Changing the date policy eliminates the end-to-end risk difference", loc="left", fontweight="bold", pad=12)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="Primary end-to-end"),
+            plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Encounter-date fallback"),
+        ],
+        loc="center left",
+        bbox_to_anchor=(0.48, 0.56),
+        frameon=False,
+        ncol=1,
+        handletextpad=0.35,
+    )
     ax.text(-0.50, -0.28, "±0.5 pp empirical reproducibility tolerance", fontsize=8.9, color=COLORS["mid"], va="top")
     return fig
 
@@ -393,8 +580,20 @@ def figure4(data: dict) -> plt.Figure:
     models = list(stage_e["models"])
     model_labels = ["Logistic", "Ridge logistic", "Gradient boosting"]
     model_y = np.arange(3)[::-1]
-    fig = plt.figure(figsize=(9.8, 5.75))
-    gs = fig.add_gridspec(2, 2, width_ratios=[1.05, 1], left=0.19, right=0.985, top=0.92, bottom=0.13, hspace=0.40, wspace=0.28)
+
+    fig = plt.figure(figsize=(9.8, 5.9))
+    gs = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=[1.05, 1],
+        left=0.19,
+        right=0.985,
+        top=0.92,
+        bottom=0.16,
+        hspace=0.40,
+        wspace=0.30,
+    )
+
     ax = fig.add_subplot(gs[:, 0])
     fixed_smd = [abs(stage_e["fixed_feature_smd"][feature]) for feature in features]
     end_smd = [abs(stage_e["end_to_end_feature_smd"][feature]) for feature in features]
@@ -410,26 +609,49 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "a", x=-0.29, y=1.08)
     ax.tick_params(axis="y", labelsize=10.4)
-    ax.set_title("Case mix shifts only when cohorts are built independently", loc="left", fontweight="bold", pad=15)
+    ax.set_title("Observed feature distributions shift when cohorts are built independently", loc="left", fontweight="bold", pad=15)
     ax.text(0.103, 5.25, "0.10 reference", fontsize=8.8, color=COLORS["mid"])
-    ax.legend(handles=[plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="Fixed cohort"), plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="End-to-end")], loc="upper right", bbox_to_anchor=(0.98, 0.96), frameon=False, ncol=1, handletextpad=0.4)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="Fixed cohort"),
+            plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="End-to-end"),
+        ],
+        loc="upper right",
+        bbox_to_anchor=(0.98, 0.96),
+        frameon=False,
+        ncol=1,
+        handletextpad=0.4,
+    )
+
     ax = fig.add_subplot(gs[0, 1])
-    fixed_auc = [stage_e["models"][model]["fixed_auroc_difference"] for model in models]
-    end_auc = [stage_e["models"][model]["end_auroc_difference"] for model in models]
-    ax.axvline(0, color=COLORS["dark"], lw=0.85)
-    for yi, fixed_value, end_value in zip(model_y, fixed_auc, end_auc):
-        ax.plot([fixed_value, end_value], [yi, yi], color=COLORS["light"], lw=2)
-        ax.scatter(fixed_value, yi, s=63, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.5, zorder=3)
-        ax.scatter(end_value, yi, s=58, color=COLORS["omop"], zorder=3)
-        label_y = yi - 0.16 if yi > 0 else yi + 0.14
-        label_va = "top" if yi > 0 else "bottom"
-        ax.text(end_value - 0.001, label_y, f"{end_value:.2f}", ha="right", va=label_va, fontsize=9.3, fontweight="bold")
-    ax.set(yticks=model_y, yticklabels=model_labels, xlabel="AUROC difference (OMOP − PCORnet)")
-    ax.set_xlim(-0.052, 0.004)
+    full_source_auc = [stage_e["models"][model]["end_pcornet_auroc"] for model in models]
+    shared_source_auc = [stage_e["models"][model]["fixed_pcornet_auroc"] for model in models]
+    shared_omop_auc = [stage_e["models"][model]["fixed_omop_auroc"] for model in models]
+    for yi, full_value, shared_value, omop_value in zip(model_y, full_source_auc, shared_source_auc, shared_omop_auc):
+        ax.plot([shared_value, full_value], [yi, yi], color=COLORS["light"], lw=2.0)
+        ax.scatter(full_value, yi + 0.10, s=62, color=COLORS["pcornet"], zorder=3)
+        ax.scatter(shared_value, yi, s=66, facecolor="white", edgecolor=COLORS["pcornet"], linewidth=1.5, zorder=4)
+        ax.scatter(omop_value, yi - 0.10, s=54, marker="s", color=COLORS["omop"], zorder=4)
+        ax.text(full_value + 0.0015, yi + 0.10, f"{full_value:.2f}", va="center", fontsize=9.0, fontweight="bold")
+        ax.text(shared_value - 0.0015, yi - 0.02, f"{shared_value:.2f}", ha="right", va="center", fontsize=8.8)
+    ax.set(yticks=model_y, yticklabels=model_labels, xlabel="AUROC")
+    ax.set_xlim(0.57, 0.65)
     clean(ax)
     panel(ax, "b", x=-0.21, y=1.08)
     ax.tick_params(axis="y", labelsize=10.2)
-    ax.set_title("Discrimination is stable fixed, shifted end-to-end", loc="left", fontweight="bold", pad=15)
+    ax.set_title("Restricting PCORnet to shared patients reproduces the AUROC shift", loc="left", fontweight="bold", pad=15)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker="o", color=COLORS["pcornet"], ls="None", label="PCORnet end-to-end"),
+            plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="PCORnet shared/fixed"),
+            plt.Line2D([], [], marker="s", color=COLORS["omop"], ls="None", label="OMOP shared/fixed"),
+        ],
+        loc="lower left",
+        bbox_to_anchor=(0.00, -0.07),
+        frameon=False,
+        handletextpad=0.35,
+    )
+
     ax = fig.add_subplot(gs[1, 1])
     ax.set(xlim=(0, 1), ylim=(-0.45, 2.68))
     ax.axis("off")
@@ -441,9 +663,27 @@ def figure4(data: dict) -> plt.Figure:
     brier_diff = [stage_e["models"][model]["end_omop_brier"] - stage_e["models"][model]["end_pcornet_brier"] for model in models]
     for yi, label, mad_value, brier_value in zip(model_y, model_labels, mad, brier_diff):
         ax.text(0, yi, label, va="center", fontsize=10.0)
-        ax.text(0.48, yi, "<0.001" if mad_value < 0.001 else f"{mad_value:.3f}", ha="right", va="center", fontsize=10.0, fontweight="bold" if mad_value < 0.001 else "normal", color=COLORS["pcornet"])
+        ax.text(
+            0.48,
+            yi,
+            "<0.001" if mad_value < 0.001 else f"{mad_value:.3f}",
+            ha="right",
+            va="center",
+            fontsize=10.0,
+            fontweight="bold" if mad_value < 0.001 else "normal",
+            color=COLORS["pcornet"],
+        )
         ax.text(0.96, yi, f"{brier_value:+.2f}", ha="right", va="center", fontsize=10.0, color=COLORS["omop"])
         ax.plot([0.03, 0.96], [yi - 0.30, yi - 0.30], color="#EEEEEE", lw=0.8)
+
+    fig.text(
+        0.19,
+        0.035,
+        "Note: the prior-ischemic-stroke feature requires a recorded diagnosis date and is therefore sensitive to the same date-availability mechanism.",
+        fontsize=8.4,
+        color=COLORS["mid"],
+        ha="left",
+    )
     return fig
 
 
