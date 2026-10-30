@@ -120,7 +120,7 @@ def preflight_admin(master_engine, target_engine, plan: dict[str, str]) -> None:
     read_anchors(target_engine, target_db, plan["target_schema"])
 
 
-def provision(master_engine, target_engine, plan: dict[str, str], password: str) -> None:
+def provision(master_engine, target_engine, cfg, plan: dict[str, str], password: str) -> None:
     db = plan["target_db"]
     schema = plan["target_schema"]
     qcdb = plan["qc_db"]
@@ -162,7 +162,7 @@ def provision(master_engine, target_engine, plan: dict[str, str], password: str)
             )
 
         stage = "create restricted results and scratch schemas"
-        qc_engine = make_engine(load_etl_config(PLAN_CONFIG_PATH), database=qcdb)
+        qc_engine = make_engine(cfg, database=qcdb)
         try:
             with qc_engine.begin() as conn:
                 conn.exec_driver_sql(
@@ -200,17 +200,12 @@ def provision(master_engine, target_engine, plan: dict[str, str], password: str)
         raise SystemExit(1) from None
 
 
-PLAN_CONFIG_PATH = "config/etl_A.yaml"
-
-
 def main() -> None:
-    global PLAN_CONFIG_PATH
     parser = argparse.ArgumentParser(description="Guarded OHDSI QC SQL Server account provisioning")
     parser.add_argument("--config", default="config/etl_A.yaml")
     parser.add_argument("--apply", action="store_true",
                         help="Apply login and schema changes after explicit interactive authorization")
     args = parser.parse_args()
-    PLAN_CONFIG_PATH = args.config
 
     try:
         plan = plan_from_config(args.config)
@@ -255,7 +250,7 @@ def main() -> None:
                 file=sys.stderr,
             )
             raise SystemExit(2) from None
-        provision(master_engine, target_engine, plan, password)
+        provision(master_engine, target_engine, cfg, plan, password)
     finally:
         target_engine.dispose()
         master_engine.dispose()
