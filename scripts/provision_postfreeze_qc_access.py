@@ -129,13 +129,10 @@ def provision(master_engine, target_engine, cfg, plan: dict[str, str], password:
     qcscratch = plan["scratch_schema"]
     stage = "starting"
     try:
-        # CREATE DATABASE must not run inside a user transaction.
-        stage = "create isolated QC output database"
-        with master_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            conn.exec_driver_sql(f"CREATE DATABASE [{qcdb}]")
-
         # The password is passed as an ODBC-bound parameter. It is quoted
         # inside SQL Server and never interpolated into a client SQL string.
+        # Create the login first, so password-policy rejection cannot leave
+        # an otherwise empty QC database behind.
         stage = "create dedicated QC login"
         with master_engine.begin() as conn:
             conn.exec_driver_sql(
@@ -149,6 +146,11 @@ def provision(master_engine, target_engine, cfg, plan: dict[str, str], password:
                 """,
                 (password,),
             )
+
+        # CREATE DATABASE must not run inside a user transaction.
+        stage = "create isolated QC output database"
+        with master_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.exec_driver_sql(f"CREATE DATABASE [{qcdb}]")
 
         stage = "grant frozen CDM read-only access"
         # A database user and grants change security metadata, not CDM row data.
