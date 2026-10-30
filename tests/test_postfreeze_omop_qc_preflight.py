@@ -56,5 +56,5 @@ def test_does_not_connect_when_password_environment_missing(tmp_path, monkeypatc
 def test_rejects_unfrozen_cdm_version(tmp_path, monkeypatch):
     cfg, jar = make_inputs(tmp_path, cdm_version="5.3")
     monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-example-password")
-    with pytest.raises(ValueError, match="v5.4"):
+    with pytest.raises(ValueError, match=r"OMOP CDM 5\.4"):
         module.build_environment(cfg, jar)
