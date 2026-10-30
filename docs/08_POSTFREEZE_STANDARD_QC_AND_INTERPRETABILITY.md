@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: CODE/PREPARATION ONLY, NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment.
+**State: database backup and restricted QC account provisioning completed locally on 2026-10-30; DQD, Achilles, and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -34,7 +34,7 @@ This uses the existing ETL SQLAlchemy/pyodbc connection and only issues `SELECT 
 
 The Python wrapper loads only the existing protected ETL YAML and its named password environment variable. It passes connection details privately in process environment to the read-only R preflight, without printing, persisting or requesting credentials in source files. The preflight **only runs SELECT queries** to verify the configured SQL database, frozen target counts (person 27,089, visit_occurrence 1,510,957, condition_occurrence 7,315,572), and selected login write privileges. A count mismatch **blocks QC**. If the existing ETL account is `sa`/sysadmin or has write rights to the frozen tables, a successful connection is **not** evidence that the QC privilege gate passed. Provision a dedicated least-privilege principal before running the full DQD/Achilles tasks. The query is intentionally small and does not test broad analytical workloads.
 
-**Protected full backup prerequisite (not executed by the repository):**
+**Protected full backup prerequisite (completed locally):**
 
 The prior ad hoc SQLAlchemy/pyodbc BACKUP attempt was canceled because it
 closed the cursor before exhausting SQL Server's progress/status results.
@@ -71,7 +71,7 @@ substitute for an isolated test restore and an off-machine protected copy.
 Do not upload `.bak` files, backup transcripts with secrets or row-level
 clinical data to Git, chats, public storage or RunRelay artifacts.
 
-**Restricted QC login provisioning (not executed):**
+**Restricted QC login provisioning (completed locally):**
 
 Use a **separate QC output database**, not writable schemas inside the frozen CDM database. The default provisioner only prints a plan, with no SQL connection or writes:
 
@@ -99,7 +99,33 @@ python scripts/preflight_postfreeze_omop_qc.py \
   --qc-login
 ```
 
-The expected privilege status for this new login is `NO` for sysadmin, db_owner and CDM INSERT/UPDATE/DELETE/ALTER, with frozen counts unchanged. Never use `SA` for DQD or Achilles. A successful restricted-login preflight is necessary but not, by itself, complete permission verification.
+The restricted-login JDBC preflight completed successfully on 2026-10-30. Database identity and person/visit_occurrence/condition_occurrence reference counts passed; sysadmin, db_owner and selected CDM write permissions were NO. Never use `SA` for DQD or Achilles. This first preflight is necessary but not a complete grant audit.
+
+**Next read-only permissions audit (pending):**
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export R_LIBS_USER="$PWD/results/ohdsi_r_lib"
+
+# OHDSI_QC_PASSWORD must already be set securely in this shell.
+python scripts/preflight_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml \
+  --driver-dir results/ohdsi_jdbc \
+  --qc-login \
+  --audit-qc-access
+```
+
+This SELECT-only second audit reconnects as the restricted login to the frozen
+CDM and then to the independent QC output database. It verifies the login
+identity, server/database role restrictions, denied write permissions for
+**all visible frozen tables**, the three frozen count anchors, database-level
+CREATE TABLE in the QC output database, and schema-scoped CRUD/ALTER
+permissions only on `qc_results` and `qc_scratch` (not `dbo`). It reports
+the number of existing output tables and warns if any are present; review
+those before Achilles with `createTable=TRUE`. This audit does not create
+test tables or execute DQD/Achilles. `QC ACCESS AUDIT: PASS` is the required
+completion signal. None of these permissions are inferred merely from a
+successful JDBC connection.
 
 **Preparation by the local database/R administrator**:
 
