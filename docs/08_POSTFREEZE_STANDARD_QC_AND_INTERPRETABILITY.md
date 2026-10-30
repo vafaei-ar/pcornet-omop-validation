@@ -16,14 +16,14 @@ The R packages support OMOP **v5.4**. The frozen target is OMOP v5.4.2, so use `
 **Preparation by the local database/R administrator**:
 
 1. Confirm that the configured server/database holds the exact **frozen publication target**, not another OMOP build. Record source snapshot and database identity privately.
-2. Install and review R (>=4), Java, a local SQL Server JDBC driver and OHDSI `DatabaseConnector`, `DataQualityDashboard`, `Achilles`, `jsonlite`. Use institution-approved package versions.
+2. Install and review R (>=4), Java, a local SQL Server JDBC driver and OHDSI `DatabaseConnector`, `DataQualityDashboard`, `Achilles`, `jsonlite`. Use institution-approved package versions. Existing R 4.1.2 meets published minimum versions, although OHDSI HADES recommends R 4.4.1 for maximum compatibility. Avoid replacing the system R without testing an isolated local library first.
 3. Provision a dedicated **results** schema and separate **scratch** schema writable by the QC account. Neither may be the frozen target schema. DQD runs with `writeToTable=FALSE`; Achilles writes to the results/scratch schemas only.
 4. Confirm expected duration/resource impact with database administration. DQD can run thousands of checks. Achilles can execute substantial queries. Do not execute during ETL or competing heavy jobs.
 5. Set environment variables locally (never commit values):
 
-    `OHDSI_DB_SERVER` = SQL Server connection endpoint including database as required by DatabaseConnector  
+    `OHDSI_DB_SERVER` = SQL Server **hostname only**, e.g. `localhost` (not `hostname/database`; the latter format applies to PostgreSQL in DatabaseConnector)  
     `OHDSI_DB_USER` and `OHDSI_DB_PASSWORD` = institution-authorized credentials  
-    `OHDSI_JDBC_DRIVER_PATH` = local JDBC driver directory  
+    `OHDSI_JDBC_DRIVER_PATH` = local folder containing Microsoft SQL Server JDBC `.jar` files (may be populated with `DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver=...)`)  
     `OHDSI_CDM_SCHEMA` = `database.schema` containing frozen OMOP  
     `OHDSI_RESULTS_SCHEMA` = `database.schema` for QC results  
     `OHDSI_SCRATCH_SCHEMA` = `database.schema` for scratch work  
