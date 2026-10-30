@@ -57,7 +57,7 @@ The complete raw DQD JSON and Achilles tables/logs are **private** until institu
 
 **Important:** Input extraction and provenance verification are separate development tasks. The analysis engine intentionally **does not** query the clinical database or save patient-level rows. No model results can be claimed until local Parquet extracts have been independently reviewed for locked cohort/outcome/feature semantics. The original prior-ischemic-stroke feature requires a recorded diagnosis date, and the planned 5-feature sensitivity excludes it rather than silently redefining it.
 
-Install local analysis dependencies in the existing environment: `pip install -e '.[analysis]' shap xgboost`. Record package versions in the local run manifest before manuscript reporting.
+Install local analysis dependencies in the existing environment: `pip install -e '.[analysis,interpretability]'`. Record package versions in the local run manifest before manuscript reporting.
 
 Then run (paths below are schematic and must stay inside a protected, ignored local directory):
 
