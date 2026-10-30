@@ -58,3 +58,63 @@ def test_rejects_unfrozen_cdm_version(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-example-password")
     with pytest.raises(ValueError, match=r"OMOP CDM 5\.4"):
         module.build_environment(cfg, jar)
+
+
+def test_odbc_diagnostic_is_select_only(tmp_path, monkeypatch, capsys):
+    from pcornet_omop_validation.etl import database
+
+    cfg, _ = make_inputs(tmp_path)
+    monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-example-password")
+    calls = []
+
+    class ScalarResult:
+        def scalar_one(self):
+            return "OMOP_VALIDATED"
+
+    class ReadOnlyConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def execute(self, statement):
+            calls.append(str(statement))
+            return ScalarResult()
+
+    class MockEngine:
+        def connect(self):
+            return ReadOnlyConnection()
+
+        def dispose(self):
+            calls.append("DISPOSE")
+
+    monkeypatch.setattr(database, "make_engine", lambda cfg: MockEngine())
+    assert module.diagnose_odbc(cfg) == 0
+    assert calls == ["SELECT DB_NAME()", "DISPOSE"]
+    output = capsys.readouterr().out
+    assert "connection and database identity PASS" in output
+    assert "synthetic-example-password" not in output
+
+
+def test_odbc_failure_never_prints_provider_secrets(tmp_path, monkeypatch, capsys):
+    from pcornet_omop_validation.etl import database
+
+    cfg, _ = make_inputs(tmp_path)
+    monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-example-password")
+
+    class FailingEngine:
+        def connect(self):
+            raise RuntimeError(
+                "Login failed for user QC_READ; PWD=synthetic-example-password"
+            )
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr(database, "make_engine", lambda cfg: FailingEngine())
+    assert module.diagnose_odbc(cfg) == 1
+    captured = capsys.readouterr()
+    assert "SQL Server login rejected" in captured.err
+    assert "synthetic-example-password" not in captured.err
+    assert "QC_READ" not in captured.err
