@@ -96,6 +96,32 @@ def find_completed_copy_only_backup(conn, database: str, path: Path):
     ).first()
 
 
+
+def verify_backup_directory_precondition() -> None:
+    """Do not require the operator to stat a service-owned mode-0700 directory.
+
+    SQL Server writes backup files as the mssql service account, not as the
+    user running Python. A PermissionError here is expected on a protected
+    folder. The operator must independently confirm service-account write
+    access, and SQL Server itself will validate access during BACKUP.
+    """
+    try:
+        directory_exists = BACKUP_DIRECTORY.is_dir()
+    except PermissionError:
+        print(
+            "Backup directory is protected from this login (expected). "
+            "Confirm 'sudo -u mssql test -w /var/opt/mssql/backup' passed; "
+            "SQL Server will check write access during BACKUP.",
+            flush=True,
+        )
+        return
+    if not directory_exists:
+        raise RuntimeError(
+            "Backup directory does not exist; "
+            "configure a protected directory owned by mssql"
+        )
+
+
 def execute_backup(config_path: str) -> None:
     cfg = load_etl_config(config_path)
     db = str(cfg.raw["sqlserver"]["database"])
@@ -107,8 +133,7 @@ def execute_backup(config_path: str) -> None:
     if not cfg.sql_password:
         raise RuntimeError("Backup blocked: SQL Server password environment variable missing")
 
-    if not BACKUP_DIRECTORY.is_dir():
-        raise RuntimeError("Backup directory does not exist; configure as protected mssql directory")
+    verify_backup_directory_precondition()
     free_gib = shutil.disk_usage("/var/opt/mssql").free / (1024 ** 3)
     if free_gib < MIN_FREE_GIB:
         raise RuntimeError("Backup blocked: insufficient free disk space")
