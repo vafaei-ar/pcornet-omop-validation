@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: database backup and restricted QC account provisioning completed locally on 2026-10-30; DQD, Achilles, and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. First DQD launch attempted but stopped during the pre-run frozen count snapshot before any DQD checks. No DQD results yet. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -127,7 +127,35 @@ test tables or execute DQD/Achilles. `QC ACCESS AUDIT: PASS` is the required
 completion signal. None of these permissions are inferred merely from a
 successful JDBC connection.
 
-**Controlled local DQD launch (not yet executed):**
+**DQD first-attempt diagnosis and fix (2026-10-30):**
+
+The first `--tool dqd --execute` launch repeated the 75-table SELECT-only
+permissions audit successfully. The R runner then passed the sampled
+privilege gate but failed **before** calling `executeDqChecks` while reading
+the first frozen count from `DatabaseConnector::querySql`.
+The original snapshot code assumed the column alias is always uppercase
+`N` and used `$N[[1]]`. On this JDBC path the returned object did not
+contain that exact column name, so the count had length zero and
+`vapply` rejected it. This is not a DQD data-quality failure.
+
+The runner now reads the single count column by position, independently
+of SQL alias case/name, and validates one row, one column, finite nonnegative
+integer count. The same parser is used for the pre- and post-run snapshots.
+Synthetic Python/R tests include lowercase, uppercase and arbitrary aliases,
+empty results, NA and malformed counts. The original three publication
+anchors still block the run on disagreement.
+
+Before the next attempt, run `git pull --ff-only`, `pytest -q`, and:
+```bash
+Rscript -e 'invisible(parse(file="scripts/run_postfreeze_omop_qc.R")); source("scripts/postfreeze_qc_count_helpers.R"); stopifnot(identical(read_postfreeze_count_result(data.frame(n=27089),"person"),27089)); cat("Snapshot parser: PASS\\n")'
+find results/postfreeze_standard_qc/dqd -mindepth 1 -maxdepth 2 -printf '%P\\n'
+```
+The first R invocation may have created an empty output directory. If
+the `find` command lists files or subdirectories, preserve and inspect
+them first; the guarded launcher intentionally refuses overwriting
+existing output. Do not delete generated results to force a retry.
+
+**Controlled local DQD launch (first attempt blocked; retry pending):**
 
 The DQD runner uses OHDSI v2.9.1, `cdmVersion="5.4"`, all three
 check levels, and unmodified DQD default thresholds. Its
