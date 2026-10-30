@@ -118,3 +118,21 @@ def test_odbc_failure_never_prints_provider_secrets(tmp_path, monkeypatch, capsy
     assert "SQL Server login rejected" in captured.err
     assert "synthetic-example-password" not in captured.err
     assert "QC_READ" not in captured.err
+
+
+def test_restricted_qc_jdbc_uses_separate_env_password(tmp_path, monkeypatch):
+    cfg, jar = make_inputs(tmp_path)
+    monkeypatch.delenv("LOCAL_TEST_OMOP_PASSWORD", raising=False)
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic-qc-secret")
+    env = module.build_environment(cfg, jar, qc_login=True)
+    assert env["OHDSI_DB_USER"] == "ohdsi_postfreeze_qc"
+    assert env["OHDSI_DB_PASSWORD"] == "synthetic-qc-secret"
+    assert env["OHDSI_DB_NAME"] == "OMOP_VALIDATED"
+
+
+def test_restricted_qc_jdbc_never_falls_back_to_sa_password(tmp_path, monkeypatch):
+    cfg, jar = make_inputs(tmp_path)
+    monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-admin-secret")
+    monkeypatch.delenv("OHDSI_QC_PASSWORD", raising=False)
+    with pytest.raises(ValueError, match="OHDSI_QC_PASSWORD"):
+        module.build_environment(cfg, jar, qc_login=True)
