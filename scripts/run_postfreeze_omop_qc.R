@@ -78,6 +78,9 @@ connection_details <- DatabaseConnector::createConnectionDetails(
 )
 output_folder <- file.path("results", "postfreeze_standard_qc", tool)
 dir.create(output_folder, recursive = TRUE, showWarnings = FALSE)
+# COUNT_BIG column aliases can be normalized differently across JDBC drivers.
+# Keep snapshot parsing identical for both pre- and post-analysis checks.
+source(file.path("scripts", "postfreeze_qc_count_helpers.R"), local = TRUE)
 qualified <- function(schema, table) {
   parts <- strsplit(schema, ".", fixed = TRUE)[[1]]
   sprintf("[%s].[%s].[%s]", parts[[1]], parts[[2]], table)
@@ -89,8 +92,8 @@ snapshot <- function(details) {
               "drug_exposure", "measurement", "observation", "death")
   counts <- lapply(tables, function(tbl) {
     sql <- sprintf("SELECT COUNT_BIG(*) AS n FROM %s", qualified(cdm_schema, tbl))
-    n <- DatabaseConnector::querySql(connection, sql)$N[[1]]
-    as.numeric(n)
+    result <- DatabaseConnector::querySql(connection, sql)
+    read_postfreeze_count_result(result, tbl)
   })
   names(counts) <- tables
   counts
