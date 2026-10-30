@@ -34,24 +34,56 @@ This uses the existing ETL SQLAlchemy/pyodbc connection and only issues `SELECT 
 
 The Python wrapper loads only the existing protected ETL YAML and its named password environment variable. It passes connection details privately in process environment to the read-only R preflight, without printing, persisting or requesting credentials in source files. The preflight **only runs SELECT queries** to verify the configured SQL database, frozen target counts (person 27,089, visit_occurrence 1,510,957, condition_occurrence 7,315,572), and selected login write privileges. A count mismatch **blocks QC**. If the existing ETL account is `sa`/sysadmin or has write rights to the frozen tables, a successful connection is **not** evidence that the QC privilege gate passed. Provision a dedicated least-privilege principal before running the full DQD/Achilles tasks. The query is intentionally small and does not test broad analytical workloads.
 
+**Restricted QC login provisioning (not executed):**
+
+Use a **separate QC output database**, not writable schemas inside the frozen CDM database. The default provisioner only prints a plan, with no SQL connection or writes:
+
+```bash
+python scripts/provision_postfreeze_qc_access.py --config config/etl_A.yaml
+```
+
+After confirming an administrator-authorized maintenance window, verified backup, and the plan, the operator can explicitly choose:
+
+```bash
+python scripts/provision_postfreeze_qc_access.py --config config/etl_A.yaml --apply
+```
+
+`--apply` is an **administrative security change**, not an ordinary analysis. It requires exact interactive confirmation and a newly chosen password entered without echo. It checks the existing frozen target count anchors before DDL, refuses pre-existing login/database names, creates the restricted `ohdsi_postfreeze_qc` login, creates `<frozen_database>_postfreeze_qc` as a separate output database with `qc_results` and `qc_scratch`, and grants read-only CDM schema access (explicit DML/ALTER denial) plus QC-output database scoped table-creation permissions. Only a new user and its SQL permission metadata are added to the frozen database. **No frozen CDM table is modified.** Provisioning has not been exercised against the actual instance; an administrator must review it before the first `--apply`. If execution partially fails, stop and inspect manually. Do not repeat `--apply` or delete existing resources automatically. Store the newly selected QC password only in an approved secret manager.
+
+For subsequent **read-only restricted-login verification**:
+
+```bash
+read -r -s -p "QC account password: " OHDSI_QC_PASSWORD
+printf '\n'
+export OHDSI_QC_PASSWORD
+python scripts/preflight_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml \
+  --driver-dir results/ohdsi_jdbc \
+  --qc-login
+```
+
+The expected privilege status for this new login is `NO` for sysadmin, db_owner and CDM INSERT/UPDATE/DELETE/ALTER, with frozen counts unchanged. Never use `SA` for DQD or Achilles. A successful restricted-login preflight is necessary but not, by itself, complete permission verification.
+
 **Preparation by the local database/R administrator**:
 
 1. Confirm that the configured server/database holds the exact **frozen publication target**, not another OMOP build. Record source snapshot and database identity privately.
 2. Install and review R (>=4), Java, a local SQL Server JDBC driver and OHDSI `DatabaseConnector`, `DataQualityDashboard`, `Achilles`, `jsonlite`. Use institution-approved package versions. Existing R 4.1.2 meets published minimum versions, although OHDSI HADES recommends R 4.4.1 for maximum compatibility. Avoid replacing the system R without testing an isolated local library first.
-3. Provision a dedicated **results** schema and separate **scratch** schema writable by the QC account. Neither may be the frozen target schema. DQD runs with `writeToTable=FALSE`; Achilles writes to the results/scratch schemas only.
+3. Provision a separate **QC output database** containing dedicated **results** and **scratch** schemas writable by the QC login. Neither schema may be in the frozen target database. DQD runs with `writeToTable=FALSE`; Achilles writes only to the designated QC output database. Avoid adding QC results tables to the frozen publication database.
 4. Confirm expected duration/resource impact with database administration. DQD can run thousands of checks. Achilles can execute substantial queries. Do not execute during ETL or competing heavy jobs.
 5. Set environment variables locally (never commit values):
 
     `OHDSI_DB_SERVER` = SQL Server **hostname only**, e.g. `localhost` (not `hostname/database`; the latter format applies to PostgreSQL in DatabaseConnector)  
-    `OHDSI_DB_USER` and `OHDSI_DB_PASSWORD` = institution-authorized credentials  
+    `OHDSI_DB_USER` and `OHDSI_DB_PASSWORD` = restricted QC login and corresponding secret, never `SA`  
+    `OHDSI_DB_NAME` = frozen database name from protected ETL configuration  
+    `OHDSI_TLS_TRUST_SERVER_CERTIFICATE` = `true` or `false`, matching approved local TLS trust settings  
     `OHDSI_JDBC_DRIVER_PATH` = local folder containing Microsoft SQL Server JDBC `.jar` files (may be populated with `DatabaseConnector::downloadJdbcDrivers('sql server', pathToDriver=...)`)  
     `OHDSI_CDM_SCHEMA` = `database.schema` containing frozen OMOP  
-    `OHDSI_RESULTS_SCHEMA` = `database.schema` for QC results  
-    `OHDSI_SCRATCH_SCHEMA` = `database.schema` for scratch work  
+    `OHDSI_RESULTS_SCHEMA` = `qc_output_database.qc_results` for QC results  
+    `OHDSI_SCRATCH_SCHEMA` = `qc_output_database.qc_scratch` for scratch work  
     `OHDSI_QC_EXPECTED_PACKAGE_VERSION` = verified installed version for whichever tool runs  
     `OHDSI_QC_CONFIRM` = `RUN_POSTFREEZE_QC_ON_FROZEN_TARGET`
 
-Run separately after authorization:
+Run separately **only after** the restricted-login preflight, full schema privilege review, and explicit operator authorization. The runner now independently blocks privileged logins, mismatched frozen counts and output schemas inside the CDM database:
 
 ```bash
 Rscript scripts/run_postfreeze_omop_qc.R dqd
