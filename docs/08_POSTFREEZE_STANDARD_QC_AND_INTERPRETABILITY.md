@@ -99,7 +99,7 @@ python scripts/preflight_postfreeze_omop_qc.py \
   --qc-login
 ```
 
-The restricted-login JDBC preflight completed successfully on 2026-10-30. Database identity and person/visit_occurrence/condition_occurrence reference counts passed; sysadmin, db_owner and selected CDM write permissions were NO. Never use `SA` for DQD or Achilles. This first preflight is necessary but not a complete grant audit.
+The restricted-login JDBC preflight completed successfully on 2026-10-30. Database identity and person/visit_occurrence/condition_occurrence reference counts passed; sysadmin, db_owner and selected CDM write permissions were NO. The follow-on read-only full permissions audit also PASSED on 2026-10-30: 75 frozen tables readable without write privileges, reference row counts unchanged, restricted permissions on separate QC results and scratch schemas verified, with zero pre-existing QC output tables. Never use `SA` for DQD or Achilles. This first preflight is necessary but not a complete grant audit.
 
 **Next read-only permissions audit (pending):**
 
@@ -126,6 +126,45 @@ those before Achilles with `createTable=TRUE`. This audit does not create
 test tables or execute DQD/Achilles. `QC ACCESS AUDIT: PASS` is the required
 completion signal. None of these permissions are inferred merely from a
 successful JDBC connection.
+
+**Controlled local DQD launch (not yet executed):**
+
+The DQD runner uses OHDSI v2.9.1, `cdmVersion="5.4"`, all three
+check levels, and unmodified DQD default thresholds. Its
+`writeToTable=FALSE` setting saves the output JSON and logs locally rather
+than inserting DQD results into SQL Server. The launcher pins the installed
+package version, derives all database/schema settings from
+`config/etl_A.yaml`, requires the dedicated `OHDSI_QC_PASSWORD`, and excludes
+the ETL administrator password from R's environment. The launcher first
+reruns the complete SELECT-only 75-table permission audit and then invokes the
+R runner, which independently verifies target identity, selected write
+permissions and frozen count anchors. The default invocation is a no-database
+preview:
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export R_LIBS_USER="$PWD/results/ohdsi_r_lib"
+
+# Preview: no SQL queries and no execution
+python scripts/launch_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml --tool dqd
+
+# Explicitly execute, only with local institutional approval and
+# OHDSI_QC_PASSWORD set securely in the current shell:
+python scripts/launch_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml --tool dqd --execute
+```
+
+Output files are under ignored `results/postfreeze_standard_qc/dqd/` with a
+restricted file-creation mask. Existing output files block automatic reruns
+to prevent accidental overwrite. A successful execution will produce a
+private execution manifest. The raw DQD JSON may contain sensitive small
+counts and SQL error details. Review and aggregate it locally before sharing
+any findings. Do not run Achilles until the DQD execution and output have
+been reviewed.
 
 **Preparation by the local database/R administrator**:
 
