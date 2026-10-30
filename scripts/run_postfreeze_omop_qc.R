@@ -36,6 +36,12 @@ for (package in c("DatabaseConnector", "jsonlite", if (tool == "dqd") "DataQuali
   }
 }
 cdm_version <- "5.4"  # Required argument for this frozen OMOP v5.4.2 target
+tool_package <- if (tool == "dqd") "DataQualityDashboard" else "Achilles"
+expected_package_version <- required_env("OHDSI_QC_EXPECTED_PACKAGE_VERSION")
+installed_version <- as.character(utils::packageVersion(tool_package))
+if (installed_version != expected_package_version) {
+  stop(sprintf("Package version mismatch: expected %s, installed %s", expected_package_version, installed_version))
+}
 dbms <- Sys.getenv("OHDSI_DBMS", "sql server")
 if (dbms != "sql server") stop("This project is pinned to SQL Server")
 connection_details <- DatabaseConnector::createConnectionDetails(
