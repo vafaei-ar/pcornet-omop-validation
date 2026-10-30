@@ -8,7 +8,9 @@ Stage E analyses. Data extraction is a separate, reviewed prerequisite.
 """
 import argparse
 import hashlib
+import importlib.metadata
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +38,7 @@ EXPECTED = {
     "omop_fallback": (6508, 1798),
 }
 SEED = 20261029
+STUDY_PATH = Path("study_definitions/postfreeze_standard_qc_interpretability_v1.json")
 
 
 def is_train(person: object) -> bool:
@@ -284,6 +287,17 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
 
 
 def main() -> None:
+    study = json.loads(STUDY_PATH.read_text(encoding="utf-8"))
+    if study.get("status") != "proposed_postfreeze_protocol_not_executed":
+        raise ValueError("Post-freeze protocol status changed unexpectedly")
+    if study.get("frozen_etl_sha") != FROZEN_SHA:
+        raise ValueError("Frozen ETL SHA mismatch")
+    if study["interpretability"]["features"] != FEATURES:
+        raise ValueError("Post-freeze protocol feature list mismatch")
+    if {entry["key"]: entry["expected_n"] for entry in study["interpretability"]["populations"]} != {
+        key: EXPECTED[key][0] for key in EXPECTED
+    }:
+        raise ValueError("Post-freeze protocol population sizes mismatch")
     p = argparse.ArgumentParser(description="Exploratory post-freeze RF/XGBoost SHAP analysis")
     for key in EXPECTED:
         p.add_argument("--" + key.replace("_", "-"), required=True,
@@ -296,6 +310,14 @@ def main() -> None:
         key: read_population(getattr(args, key), key) for key in EXPECTED
     }
     result = analyze(populations, args.max_eval, args.permutation_repeats)
+    result["study_definition_sha256"] = hashlib.sha256(STUDY_PATH.read_bytes()).hexdigest()
+    result["software_versions"] = {
+        "python": sys.version.split()[0],
+        **{package: importlib.metadata.version(package)
+           for package in ("numpy", "pandas", "scikit-learn", "xgboost", "shap")},
+    }
+    result["permutation_repeats"] = args.permutation_repeats
+    result["importance_max_evaluation_n"] = args.max_eval
     path = Path(args.output)
     if "results" not in path.parts:
         raise ValueError("Write only to ignored local results/ directory")
