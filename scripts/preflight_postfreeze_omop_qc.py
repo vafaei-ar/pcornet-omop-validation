@@ -54,11 +54,62 @@ def build_environment(config_path: str, driver_folder: str) -> dict[str, str]:
     return env
 
 
+
+def diagnose_odbc(config_path: str) -> int:
+    """Read-only control check through the existing ETL ODBC connection stack.
+
+    Report only a safe failure category. SQLAlchemy/pyodbc errors may contain
+    server names, connection strings or secrets, so never print raw exceptions.
+    """
+    from sqlalchemy import text
+    from pcornet_omop_validation.etl.database import make_engine
+
+    engine = None
+    try:
+        cfg = load_etl_config(config_path)
+        if str(cfg.raw["etl"]["cdm_version"]) != "5.4.2":
+            raise ValueError("ODBC diagnostic requires frozen CDM v5.4.2")
+        if not cfg.sql_password:
+            raise ValueError("Configured password environment variable is missing")
+        engine = make_engine(cfg)
+        with engine.connect() as con:
+            actual_db = str(con.execute(text("SELECT DB_NAME()")).scalar_one())
+        expected_db = str(cfg.raw["sqlserver"]["database"])
+        if actual_db.casefold() != expected_db.casefold():
+            print("ODBC DIAGNOSTIC: connected, but database identity mismatch", file=sys.stderr)
+            return 2
+        print("ODBC DIAGNOSTIC: connection and database identity PASS")
+        if str(cfg.raw["sqlserver"]["user"]).casefold() == "sa":
+            print("SA is privileged: this is connectivity only, NOT QC authorization")
+        return 0
+    except Exception as exc:
+        # Inspect in memory solely to classify. Do not print potentially
+        # secret-bearing provider exception strings or connection URLs.
+        detail = str(exc).lower()
+        if "login failed for user" in detail or "18456" in detail or "28000" in detail:
+            reason = "SQL Server login rejected"
+        elif "driver" in detail or "im002" in detail:
+            reason = "ODBC driver issue"
+        elif "timeout" in detail or "network" in detail or "08001" in detail:
+            reason = "Network or server connectivity issue"
+        else:
+            reason = "Connection or configuration error"
+        print("ODBC DIAGNOSTIC: " + reason + " (raw error suppressed)", file=sys.stderr)
+        return 1
+    finally:
+        if engine is not None:
+            engine.dispose()
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Read-only frozen OMOP SQL Server JDBC preflight")
     p.add_argument("--config", default="config/etl_A.yaml")
     p.add_argument("--driver-dir", default="results/ohdsi_jdbc")
+    p.add_argument("--diagnose-odbc", action="store_true",
+                   help="SELECT-only ODBC connectivity test; do not start JDBC")
     args = p.parse_args()
+
+    if args.diagnose_odbc:
+        raise SystemExit(diagnose_odbc(args.config))
 
     try:
         environment = build_environment(args.config, args.driver_dir)
