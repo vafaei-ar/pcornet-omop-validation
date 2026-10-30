@@ -46,7 +46,7 @@ dbms <- Sys.getenv("OHDSI_DBMS", "sql server")
 if (dbms != "sql server") stop("This project is pinned to SQL Server")
 connection_details <- DatabaseConnector::createConnectionDetails(
   dbms = dbms,
-  server = required_env("OHDSI_DB_SERVER"), # SQL Server 'hostname/database'
+  server = required_env("OHDSI_DB_SERVER"), # SQL Server hostname only (not hostname/database)
   user = required_env("OHDSI_DB_USER"),
   password = required_env("OHDSI_DB_PASSWORD"),
   pathToDriver = required_env("OHDSI_JDBC_DRIVER_PATH")
