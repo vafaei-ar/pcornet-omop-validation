@@ -34,6 +34,37 @@ This uses the existing ETL SQLAlchemy/pyodbc connection and only issues `SELECT 
 
 The Python wrapper loads only the existing protected ETL YAML and its named password environment variable. It passes connection details privately in process environment to the read-only R preflight, without printing, persisting or requesting credentials in source files. The preflight **only runs SELECT queries** to verify the configured SQL database, frozen target counts (person 27,089, visit_occurrence 1,510,957, condition_occurrence 7,315,572), and selected login write privileges. A count mismatch **blocks QC**. If the existing ETL account is `sa`/sysadmin or has write rights to the frozen tables, a successful connection is **not** evidence that the QC privilege gate passed. Provision a dedicated least-privilege principal before running the full DQD/Achilles tasks. The query is intentionally small and does not test broad analytical workloads.
 
+**Protected full backup prerequisite (not executed by the repository):**
+
+The prior ad hoc SQLAlchemy/pyodbc BACKUP attempt was canceled because it
+closed the cursor before exhausting SQL Server's progress/status results.
+The SQL Server backup directory was empty after this failure. Do not infer
+backup success from a Python print message. The corrected code explicitly
+drains `cursor.nextset()` until completion, checks `msdb` for a completed
+`COPY_ONLY` backup with checksums and nonzero compressed media size, then
+runs `RESTORE VERIFYONLY ... WITH CHECKSUM, STOP_ON_ERROR` using the same
+safe cursor handling. This is based on the documented pyodbc issue:
+<https://github.com/mkleehammer/pyodbc/issues/471>.
+
+Only use an institution-authorized encrypted storage location. The backup
+directory remains owned by the SQL Server service and outside the repository.
+A compressed backup can still be large. Verify ample free disk space and
+no competing long-running analyses. An operator must explicitly request
+execution; default invocation is a preview with no SQL connection:
+
+```bash
+python scripts/backup_frozen_omop.py --config config/etl_A.yaml
+# Once server backup directory/permissions and protected storage are checked:
+python scripts/backup_frozen_omop.py --config config/etl_A.yaml --execute
+sudo ls -lh /var/opt/mssql/backup/
+```
+
+Do not interrupt a live BACKUP/VERIFYONLY; keep the client connected until
+it reports `BACKUP AND VERIFICATION: PASS`. The verified backup is not a
+substitute for an isolated test restore and an off-machine protected copy.
+Do not upload `.bak` files, backup transcripts with secrets or row-level
+clinical data to Git, chats, public storage or RunRelay artifacts.
+
 **Restricted QC login provisioning (not executed):**
 
 Use a **separate QC output database**, not writable schemas inside the frozen CDM database. The default provisioner only prints a plan, with no SQL connection or writes:
