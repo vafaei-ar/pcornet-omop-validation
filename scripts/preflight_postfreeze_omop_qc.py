@@ -110,7 +110,12 @@ def main() -> None:
                    help="SELECT-only ODBC connectivity test; do not start JDBC")
     p.add_argument("--qc-login", action="store_true",
                    help="Use only the restricted ohdsi_postfreeze_qc login and OHDSI_QC_PASSWORD")
+    p.add_argument("--audit-qc-access", action="store_true",
+                   help="SELECT-only audit of all frozen tables and isolated QC output permissions")
     args = p.parse_args()
+
+    if args.audit_qc_access and not args.qc_login:
+        raise SystemExit("--audit-qc-access requires --qc-login")
 
     if args.diagnose_odbc:
         if args.qc_login:
@@ -124,7 +129,8 @@ def main() -> None:
         print(f"PRECHECK BLOCKED: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
 
-    script = Path(__file__).with_suffix(".R").resolve()
+    script = (Path(__file__).with_name("audit_postfreeze_qc_permissions.R")
+              if args.audit_qc_access else Path(__file__).with_suffix(".R")).resolve()
     if not script.is_file():
         raise SystemExit("PRECHECK BLOCKED: required R script is absent")
     subprocess.run(["Rscript", "--vanilla", str(script)], check=True, env=environment)
