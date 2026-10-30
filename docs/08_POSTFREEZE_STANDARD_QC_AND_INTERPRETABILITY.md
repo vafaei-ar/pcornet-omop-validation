@@ -13,6 +13,19 @@
 
 The R packages support OMOP **v5.4**. The frozen target is OMOP v5.4.2, so use `cdmVersion = "5.4"`. See upstream official documentation: <https://ohdsi.github.io/DataQualityDashboard/reference/executeDqChecks.html>, <https://ohdsi.github.io/Achilles/reference/achilles.html>.
 
+**Read-only JDBC and frozen-target preflight (run BEFORE both tools):**
+
+```bash
+# From repository root, with the same local R library used for installations:
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export R_LIBS_USER="$PWD/results/ohdsi_r_lib"
+python scripts/preflight_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml \
+  --driver-dir results/ohdsi_jdbc
+```
+
+The Python wrapper loads only the existing protected ETL YAML and its named password environment variable. It passes connection details privately in process environment to the read-only R preflight, without printing, persisting or requesting credentials in source files. The preflight **only runs SELECT queries** to verify the configured SQL database, frozen target counts (person 27,089, visit_occurrence 1,510,957, condition_occurrence 7,315,572), and selected login write privileges. A count mismatch **blocks QC**. If the existing ETL account is `sa`/sysadmin or has write rights to the frozen tables, a successful connection is **not** evidence that the QC privilege gate passed. Provision a dedicated least-privilege principal before running the full DQD/Achilles tasks. The query is intentionally small and does not test broad analytical workloads.
+
 **Preparation by the local database/R administrator**:
 
 1. Confirm that the configured server/database holds the exact **frozen publication target**, not another OMOP build. Record source snapshot and database identity privately.
