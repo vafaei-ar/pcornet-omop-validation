@@ -24,6 +24,14 @@ python scripts/preflight_postfreeze_omop_qc.py \
   --driver-dir results/ohdsi_jdbc
 ```
 
+**When JDBC reports `Login failed for user 'SA'`, first run the ODBC-only comparison:**
+
+```bash
+python scripts/preflight_postfreeze_omop_qc.py --config config/etl_A.yaml --diagnose-odbc
+```
+
+This uses the existing ETL SQLAlchemy/pyodbc connection and only issues `SELECT DB_NAME()`. The output is a sanitized success or broad error category and never includes raw connection strings, credentials, or server addresses. If both ODBC and JDBC reject the login, check the local password environment variable and SQL Server authentication configuration. If ODBC succeeds and JDBC fails, investigate driver/protocol, server instance, login database and JDBC settings. Do not change the SQL login password or enable elevated permissions just to satisfy the preflight.
+
 The Python wrapper loads only the existing protected ETL YAML and its named password environment variable. It passes connection details privately in process environment to the read-only R preflight, without printing, persisting or requesting credentials in source files. The preflight **only runs SELECT queries** to verify the configured SQL database, frozen target counts (person 27,089, visit_occurrence 1,510,957, condition_occurrence 7,315,572), and selected login write privileges. A count mismatch **blocks QC**. If the existing ETL account is `sa`/sysadmin or has write rights to the frozen tables, a successful connection is **not** evidence that the QC privilege gate passed. Provision a dedicated least-privilege principal before running the full DQD/Achilles tasks. The query is intentionally small and does not test broad analytical workloads.
 
 **Preparation by the local database/R administrator**:
