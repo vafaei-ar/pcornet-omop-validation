@@ -30,6 +30,29 @@ if (cdm_schema %in% c(result_schema, scratch_schema)) {
 if (result_schema == scratch_schema) {
   stop("Use separate Achilles results and scratch schemas")
 }
+parts <- function(value) strsplit(value, ".", fixed = TRUE)[[1]]
+cdm_parts <- parts(cdm_schema)
+results_parts <- parts(result_schema)
+scratch_parts <- parts(scratch_schema)
+if (cdm_parts[[1]] == results_parts[[1]] ||
+    cdm_parts[[1]] == scratch_parts[[1]]) {
+  stop("QC results/scratch MUST be in a different database from the frozen CDM")
+}
+if (results_parts[[1]] != scratch_parts[[1]]) {
+  stop("QC results and scratch must be separate schemas in the same QC database")
+}
+expected_database <- required_env("OHDSI_DB_NAME")
+if (!grepl("^[A-Za-z][A-Za-z0-9_]*$", expected_database) ||
+    expected_database != cdm_parts[[1]]) {
+  stop("OHDSI_DB_NAME must exactly match the frozen CDM database")
+}
+tls_trust <- required_env("OHDSI_TLS_TRUST_SERVER_CERTIFICATE")
+if (!(tls_trust %in% c("true", "false"))) {
+  stop("OHDSI_TLS_TRUST_SERVER_CERTIFICATE must be true or false")
+}
+if (tolower(required_env("OHDSI_DB_USER")) == "sa") {
+  stop("Refusing to run standard QC with SA; use a dedicated restricted account")
+}
 for (package in c("DatabaseConnector", "jsonlite", if (tool == "dqd") "DataQualityDashboard" else "Achilles")) {
   if (!requireNamespace(package, quietly = TRUE)) {
     stop(sprintf("R package '%s' is not installed; install and pin it before running", package))
@@ -49,6 +72,8 @@ connection_details <- DatabaseConnector::createConnectionDetails(
   server = required_env("OHDSI_DB_SERVER"), # SQL Server hostname only (not hostname/database)
   user = required_env("OHDSI_DB_USER"),
   password = required_env("OHDSI_DB_PASSWORD"),
+  extraSettings = paste0("databaseName=", expected_database,
+                         ";encrypt=true;trustServerCertificate=", tls_trust),
   pathToDriver = required_env("OHDSI_JDBC_DRIVER_PATH")
 )
 output_folder <- file.path("results", "postfreeze_standard_qc", tool)
@@ -70,7 +95,73 @@ snapshot <- function(details) {
   names(counts) <- tables
   counts
 }
+# Independent database identity/privilege check. Prior read-only preflight is
+# not sufficient authorization, because environment variables may change.
+validate_access <- function(details) {
+  connection <- DatabaseConnector::connect(details)
+  on.exit(DatabaseConnector::disconnect(connection), add = TRUE)
+  roles <- DatabaseConnector::querySql(
+    connection,
+    paste(
+      "SELECT DB_NAME() AS connected_db,",
+      "IS_SRVROLEMEMBER('sysadmin') AS sysadmin_flag,",
+      "IS_SRVROLEMEMBER('securityadmin') AS securityadmin_flag,",
+      "IS_MEMBER('db_owner') AS db_owner_flag,",
+      "IS_MEMBER('db_ddladmin') AS ddl_admin_flag,",
+      "IS_MEMBER('db_datawriter') AS datawriter_flag"
+    )
+  )
+  names(roles) <- toupper(names(roles))
+  if (nrow(roles) != 1L ||
+      tolower(as.character(roles$CONNECTED_DB[[1]])) != tolower(expected_database)) {
+    stop("Refusing QC: connected SQL Server database identity is wrong")
+  }
+  for (flag in c("SYSADMIN_FLAG", "SECURITYADMIN_FLAG", "DB_OWNER_FLAG",
+                 "DDL_ADMIN_FLAG", "DATAWRITER_FLAG")) {
+    value <- suppressWarnings(as.integer(roles[[flag]][[1]]))
+    if (is.na(value) || value != 0L) {
+      stop(paste("Refusing QC: privileged or unknown SQL Server role", flag))
+    }
+  }
+  schema <- cdm_parts[[2]]
+  for (tbl in c("person", "visit_occurrence", "condition_occurrence",
+                "drug_exposure", "measurement", "observation", "death")) {
+    query <- sprintf(
+      paste0("SELECT ",
+             "HAS_PERMS_BY_NAME('%s.%s','OBJECT','INSERT') AS can_insert,",
+             "HAS_PERMS_BY_NAME('%s.%s','OBJECT','UPDATE') AS can_update,",
+             "HAS_PERMS_BY_NAME('%s.%s','OBJECT','DELETE') AS can_delete,",
+             "HAS_PERMS_BY_NAME('%s.%s','OBJECT','ALTER') AS can_alter"),
+      schema, tbl, schema, tbl, schema, tbl, schema, tbl
+    )
+    rights <- DatabaseConnector::querySql(connection, query)
+    names(rights) <- toupper(names(rights))
+    if (nrow(rights) != 1L) stop("Unexpected permission query result")
+    for (permission in c("CAN_INSERT", "CAN_UPDATE", "CAN_DELETE", "CAN_ALTER")) {
+      value <- suppressWarnings(as.integer(rights[[permission]][[1]]))
+      if (is.na(value) || value != 0L) {
+        stop(paste("Refusing QC: write privilege or unknown state on CDM", tbl, permission))
+      }
+    }
+  }
+  message("QC login privilege gate: PASS (sampled CDM tables)")
+}
+validate_access(connection_details)
+
+expected_frozen_counts <- c(
+  person = 27089,
+  visit_occurrence = 1510957,
+  condition_occurrence = 7315572
+)
+validate_frozen_anchors <- function(counts) {
+  actual <- vapply(names(expected_frozen_counts),
+                   function(tbl) as.numeric(counts[[tbl]]), numeric(1))
+  if (!identical(unname(actual), unname(as.numeric(expected_frozen_counts)))) {
+    stop("Frozen publication row-count anchors mismatch: QC execution blocked")
+  }
+}
 before <- snapshot(connection_details)
+validate_frozen_anchors(before)
 if (tool == "dqd") {
   DataQualityDashboard::executeDqChecks(
     connectionDetails = connection_details,
@@ -107,6 +198,7 @@ if (tool == "dqd") {
   )
 }
 after <- snapshot(connection_details)
+validate_frozen_anchors(after)
 if (!identical(before, after)) {
   stop("FROZEN TARGET ROW COUNT CHANGED; investigate immediately before using outputs")
 }
