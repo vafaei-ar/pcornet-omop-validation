@@ -94,3 +94,30 @@ def test_preview_does_not_call_execute(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "PREVIEW ONLY" in output
     assert "No SQL connection" in output
+
+
+def test_service_owned_directory_permission_error_does_not_block_backup(monkeypatch, capsys):
+    """The operator lacks access, but mssql's own write access was checked separately."""
+    original = Path.is_dir
+
+    def protected_directory(self):
+        if self == backup.BACKUP_DIRECTORY:
+            raise PermissionError(13, "Permission denied", str(self))
+        return original(self)
+
+    monkeypatch.setattr(Path, "is_dir", protected_directory)
+    backup.verify_backup_directory_precondition()
+    assert "protected from this login" in capsys.readouterr().out
+
+
+def test_missing_backup_directory_blocks_execution(monkeypatch):
+    original = Path.is_dir
+
+    def missing_directory(self):
+        if self == backup.BACKUP_DIRECTORY:
+            return False
+        return original(self)
+
+    monkeypatch.setattr(Path, "is_dir", missing_directory)
+    with pytest.raises(RuntimeError, match="does not exist"):
+        backup.verify_backup_directory_precondition()
