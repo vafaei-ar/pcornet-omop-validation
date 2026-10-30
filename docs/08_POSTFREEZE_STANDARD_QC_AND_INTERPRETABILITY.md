@@ -48,6 +48,12 @@ safe cursor handling. This is based on the documented pyodbc issue:
 
 Only use an institution-authorized encrypted storage location. The backup
 directory remains owned by the SQL Server service and outside the repository.
+In particular, directory mode `0700` owned by `mssql` is expected. The
+regular operator may receive `PermissionError` when trying to stat this
+directory: the backup script now tolerates this and leaves SQL Server to
+validate its own filesystem access. Before `--execute`, independently
+verify `sudo -u mssql test -w /var/opt/mssql/backup`. Do not loosen permissions
+and do not run the Python script with `sudo`.
 A compressed backup can still be large. Verify ample free disk space and
 no competing long-running analyses. An operator must explicitly request
 execution; default invocation is a preview with no SQL connection:
