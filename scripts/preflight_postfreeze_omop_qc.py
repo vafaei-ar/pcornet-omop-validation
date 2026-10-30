@@ -15,7 +15,7 @@ import sys
 from pcornet_omop_validation.etl.config import load_etl_config
 
 
-def build_environment(config_path: str, driver_folder: str) -> dict[str, str]:
+def build_environment(config_path: str, driver_folder: str, *, qc_login: bool = False) -> dict[str, str]:
     cfg = load_etl_config(config_path)
     raw = cfg.raw
     sql = raw["sqlserver"]
@@ -26,7 +26,9 @@ def build_environment(config_path: str, driver_folder: str) -> dict[str, str]:
         raise ValueError("Expected frozen publication CDM version is 5.4.2")
     if raw["etl"]["backend"] != "sqlserver":
         raise ValueError("Only SQL Server is supported")
-    password_env = str(sql.get("password_env", "OMOP_SQL_PASSWORD"))
+    password_env = ("OHDSI_QC_PASSWORD" if qc_login else
+                    str(sql.get("password_env", "OMOP_SQL_PASSWORD")))
+    login_name = "ohdsi_postfreeze_qc" if qc_login else str(sql["user"])
     if not password_env.isidentifier():
         raise ValueError("Unsafe password environment variable name")
     if not os.environ.get(password_env):
@@ -44,7 +46,7 @@ def build_environment(config_path: str, driver_folder: str) -> dict[str, str]:
         "OHDSI_DB_SERVER": str(sql["server"]),
         "OHDSI_DB_NAME": str(sql["database"]),
         "OHDSI_TARGET_SCHEMA": str(sql.get("target_schema", "dbo")),
-        "OHDSI_DB_USER": str(sql["user"]),
+        "OHDSI_DB_USER": login_name,
         "OHDSI_DB_PASSWORD": os.environ[password_env],
         "OHDSI_JDBC_DRIVER_PATH": str(path),
         "OHDSI_TLS_TRUST_SERVER_CERTIFICATE": (
@@ -106,13 +108,18 @@ def main() -> None:
     p.add_argument("--driver-dir", default="results/ohdsi_jdbc")
     p.add_argument("--diagnose-odbc", action="store_true",
                    help="SELECT-only ODBC connectivity test; do not start JDBC")
+    p.add_argument("--qc-login", action="store_true",
+                   help="Use only the restricted ohdsi_postfreeze_qc login and OHDSI_QC_PASSWORD")
     args = p.parse_args()
 
     if args.diagnose_odbc:
+        if args.qc_login:
+            raise SystemExit("--qc-login and --diagnose-odbc cannot be combined")
         raise SystemExit(diagnose_odbc(args.config))
 
     try:
-        environment = build_environment(args.config, args.driver_dir)
+        environment = build_environment(args.config, args.driver_dir,
+                                        qc_login=args.qc_login)
     except (ValueError, FileNotFoundError, KeyError) as exc:
         print(f"PRECHECK BLOCKED: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
