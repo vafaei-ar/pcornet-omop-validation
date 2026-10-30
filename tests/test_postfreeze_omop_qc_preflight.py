@@ -136,3 +136,43 @@ def test_restricted_qc_jdbc_never_falls_back_to_sa_password(tmp_path, monkeypatc
     monkeypatch.delenv("OHDSI_QC_PASSWORD", raising=False)
     with pytest.raises(ValueError, match="OHDSI_QC_PASSWORD"):
         module.build_environment(cfg, jar, qc_login=True)
+
+
+
+def test_qc_access_audit_uses_only_restricted_login_and_read_only_script(
+    tmp_path, monkeypatch,
+):
+    import sys
+
+    cfg, jar = make_inputs(tmp_path)
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic-qc-secret")
+    monkeypatch.delenv("LOCAL_TEST_OMOP_PASSWORD", raising=False)
+    called = []
+
+    def capture_run(command, *, check, env):
+        called.append((command, check, env))
+
+    monkeypatch.setattr(module.subprocess, "run", capture_run)
+    monkeypatch.setattr(sys, "argv", [
+        "preflight_postfreeze_omop_qc.py",
+        "--config", cfg, "--driver-dir", jar,
+        "--qc-login", "--audit-qc-access",
+    ])
+    module.main()
+    assert len(called) == 1
+    command, strict, env = called[0]
+    assert strict is True
+    assert command[0:2] == ["Rscript", "--vanilla"]
+    assert command[2].endswith("audit_postfreeze_qc_permissions.R")
+    assert env["OHDSI_DB_USER"] == "ohdsi_postfreeze_qc"
+    assert env["OHDSI_DB_PASSWORD"] == "synthetic-qc-secret"
+
+
+def test_qc_access_audit_requires_restricted_login(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", [
+        "preflight_postfreeze_omop_qc.py", "--audit-qc-access",
+    ])
+    with pytest.raises(SystemExit, match="requires --qc-login"):
+        module.main()
