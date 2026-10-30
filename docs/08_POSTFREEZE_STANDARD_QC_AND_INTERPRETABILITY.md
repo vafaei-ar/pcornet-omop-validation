@@ -46,7 +46,7 @@ The complete raw DQD JSON and Achilles tables/logs are **private** until institu
 
 ## B. Random Forest / XGBoost model attribution
 
-**Input prerequisite, NOT yet built/executed:** four institutional local Parquet extracts with the **exact same six locked predictors**, a stable common patient key `patid`, `index_date` and the locked 90-day binary `outcome`. Only one row per patient. The extracts MUST be independently derived using the already completed Stage C/D/E definitions (including the provenance-aware target-date fallback overlay). Do not fill missing values or manufacture fallback records just to satisfy expected row counts.
+**Input prerequisite, exporter implemented but NOT executed against institutional data:** four institutional local Parquet extracts with the **exact same six locked predictors**, a stable common patient key `patid`, `index_date` and the locked 90-day binary `outcome`. Only one row per patient. The extracts MUST be independently derived using the already completed Stage C/D/E definitions (including the provenance-aware target-date fallback overlay). Do not fill missing values or manufacture fallback records just to satisfy expected row counts.
 
 | Local private input | Expected 90-day eligible / events | Required relationship |
 | --- | ---: | --- |
@@ -55,7 +55,18 @@ The complete raw DQD JSON and Achilles tables/logs are **private** until institu
 | `omop_frozen` | 3,822 / 1,132 | Same patients, index dates and 90-day labels as shared PCORnet |
 | `omop_fallback` | 6,508 / 1,798 | Same patients, index dates and 90-day labels as full PCORnet, using source-lineage-preserving encounter-date overlay |
 
-**Important:** Input extraction and provenance verification are separate development tasks. The analysis engine intentionally **does not** query the clinical database or save patient-level rows. No model results can be claimed until local Parquet extracts have been independently reviewed for locked cohort/outcome/feature semantics. The original prior-ischemic-stroke feature requires a recorded diagnosis date, and the planned 5-feature sensitivity excludes it rather than silently redefining it.
+**Private input exporter (explicit authorization required, not yet run):**
+
+```bash
+python -m pcornet_omop_validation.study.postfreeze_interpretability_extract \
+  --config config/etl_A.yaml \
+  --output-dir results/private_inputs \
+  --confirm-private
+```
+
+This exporter re-executes the unchanged, anchor-checked Stage E analysis and the separate completed Stage D fallback sensitivity through narrowly scoped read hooks, capturing the native features while their SQL Server temporary tables exist. It does **not** modify those scripts. It requires the completed, locked Stage E preflight and Stage C fallback result in the original local `results/` tree. Any missing outputs, SQL changes, or failed anchor verification stop the export. The four row-level Parquet files are retained only under ignored `results/private_inputs/`; do not attach, commit, or publish them.
+
+**Important:** The private exporter has not yet been exercised against the institution's frozen database and requires a supervised first run. Independent review must verify that the feature capture exactly preserves the locked feature definitions, especially the native prior-stroke code and fallback overlay. The model analysis engine itself intentionally **does not** query the clinical database or save patient-level rows. No model results can be claimed until that extraction is reviewed and verified. The original prior-ischemic-stroke feature requires a recorded diagnosis date, and the planned 5-feature sensitivity excludes it rather than silently redefining it.
 
 Install local analysis dependencies in the existing environment: `pip install -e '.[analysis,interpretability]'`. Record package versions in the local run manifest before manuscript reporting.
 
