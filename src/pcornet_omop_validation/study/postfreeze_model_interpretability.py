@@ -147,8 +147,17 @@ def make_model(name: str):
     raise ValueError(f"Unexpected model: {name}")
 
 
-def performance(y: np.ndarray, probability: np.ndarray) -> dict[str, float | int]:
+def performance(y: np.ndarray, probability: np.ndarray) -> dict[str, float | int | None]:
     from sklearn.metrics import roc_auc_score, average_precision_score, brier_score_loss
+    from sklearn.linear_model import LogisticRegression
+    p = np.clip(probability, 1e-6, 1 - 1e-6)
+    logit = np.log(p / (1 - p)).reshape(-1, 1)
+    intercept, slope = None, None
+    if len(np.unique(y)) == 2 and float(np.std(logit)) > 0:
+        calibration = LogisticRegression(C=1e6, solver="lbfgs", max_iter=2000)
+        calibration.fit(logit, y)
+        intercept = float(calibration.intercept_[0])
+        slope = float(calibration.coef_[0][0])
     return {
         "n": int(len(y)),
         "events": int(np.sum(y)),
@@ -156,6 +165,8 @@ def performance(y: np.ndarray, probability: np.ndarray) -> dict[str, float | int
         "auroc": float(roc_auc_score(y, probability)),
         "auprc": float(average_precision_score(y, probability)),
         "brier": float(brier_score_loss(y, probability)),
+        "calibration_intercept": intercept,
+        "calibration_slope": slope,
     }
 
 
