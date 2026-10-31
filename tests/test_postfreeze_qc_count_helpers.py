@@ -24,6 +24,10 @@ def test_qc_runner_uses_alias_independent_snapshot_parser():
     assert "DatabaseConnector::querySql(connection, sql)$N" not in code
     assert "validate_frozen_anchors(before)" in code
     assert "validate_frozen_anchors(after)" in code
+    assert '"cdm_source"' in code
+    assert "check_postfreeze_cdm_source(before$cdm_source, tool)" in code
+    assert "cdm_source_metadata_gap_unresolved" in code
+    assert 'sourceName = "Frozen PCORnet-to-OMOP validation"' in code
 
 
 @pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript not installed")
@@ -77,3 +81,60 @@ def test_count_big_parser_rejects_empty_multiple_and_nonnumeric_results():
     )
     assert result.returncode == 0, result.stderr
     assert "INVALID COUNT RESULT REJECTION: PASS" in result.stdout
+
+
+
+@pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript not installed")
+def test_cdm_source_gate_blocks_dqd_but_allows_caveated_achilles():
+    script = r'''
+        source("scripts/postfreeze_qc_count_helpers.R")
+        blocked <- try(check_postfreeze_cdm_source(0, "dqd"), silent = TRUE)
+        stopifnot(inherits(blocked, "try-error"))
+        stopifnot(grepl("DQD blocked: frozen CDM_SOURCE is empty",
+                       as.character(blocked), fixed = TRUE))
+        messages <- capture.output(
+          stopifnot(identical(
+            check_postfreeze_cdm_source(0, "achilles"), 0)),
+          type = "message"
+        )
+        stopifnot(any(grepl(
+          "WARNING: frozen CDM_SOURCE has zero records",
+          messages, fixed = TRUE
+        )))
+        stopifnot(identical(check_postfreeze_cdm_source(1, "dqd"), 1))
+        stopifnot(identical(check_postfreeze_cdm_source(1, "achilles"), 1))
+        cat("CDM_SOURCE GATE: PASS\n")
+    '''
+    result = subprocess.run(
+        ["Rscript", "--vanilla", "-e", script],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CDM_SOURCE GATE: PASS" in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript not installed")
+def test_cdm_source_gate_rejects_malformed_counts_and_tool_names():
+    script = r'''
+        source("scripts/postfreeze_qc_count_helpers.R")
+        rejected <- function(count, tool) {
+          inherits(try(check_postfreeze_cdm_source(count, tool),
+                       silent = TRUE), "try-error")
+        }
+        stopifnot(
+          rejected(NA_real_, "dqd"),
+          rejected(-1, "achilles"),
+          rejected(c(0, 1), "achilles"),
+          rejected(1.3, "dqd"),
+          rejected(0, "wrong"),
+          rejected(0, c("dqd", "achilles")),
+          rejected(0, NA_character_)
+        )
+        cat("CDM_SOURCE INVALID GATE: PASS\n")
+    '''
+    result = subprocess.run(
+        ["Rscript", "--vanilla", "-e", script],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CDM_SOURCE INVALID GATE: PASS" in result.stdout
