@@ -130,21 +130,35 @@ class FakeCursor:
             )
         elif "FROM sys.tables" in normalized:
             self.rows = [
-                ("qc_results", "achilles_analysis"),
+                # Achilles 1.7.2 SQL Server DDL uses upper-case ACHILLES_ANALYSIS.
+                ("qc_results", "ACHILLES_ANALYSIS"),
                 ("qc_results", "achilles_results"),
                 ("qc_results", "achilles_results_dist"),
             ]
             if self.connection.with_scratch:
                 self.rows.append(("qc_scratch", "tmpach_dummy"))
             if self.connection.missing_results:
-                self.rows.remove(("qc_results", "achilles_results_dist"))
+                self.rows = [
+                    (schema, name) for schema, name in self.rows
+                    if name.casefold() != "achilles_results_dist"
+                ]
+            if self.connection.missing_analysis:
+                self.rows = [
+                    (schema, name) for schema, name in self.rows
+                    if name.casefold() != "achilles_analysis"
+                ]
+            if self.connection.upper_names:
+                self.rows = [(schema.upper(), name.upper())
+                             for schema, name in self.rows]
+            if self.connection.duplicate_case:
+                self.rows.append(("QC_RESULTS", "achilles_analysis"))
         elif "UNION" in normalized:
             self.value = (150,)
-        elif "[qc_results].[achilles_analysis]" in normalized:
+        elif "[qc_results].[achilles_analysis]" in normalized.casefold():
             self.value = (194,)
-        elif "[qc_results].[achilles_results_dist]" in normalized:
+        elif "[qc_results].[achilles_results_dist]" in normalized.casefold():
             self.value = (7000,)
-        elif "[qc_results].[achilles_results]" in normalized:
+        elif "[qc_results].[achilles_results]" in normalized.casefold():
             self.value = (20000,)
         elif "[dbo].[person]" in normalized:
             self.value = (27089,)
@@ -169,12 +183,18 @@ class FakeCursor:
 
 
 class FakeConn:
-    def __init__(self, database, missing_results=False, with_scratch=False):
+    def __init__(
+        self, database, missing_results=False, with_scratch=False,
+        upper_names=False, missing_analysis=False, duplicate_case=False
+    ):
         self.database = database
         self.statements = []
         self.closed_cursors = 0
         self.missing_results = missing_results
         self.with_scratch = with_scratch
+        self.upper_names = upper_names
+        self.missing_analysis = missing_analysis
+        self.duplicate_case = duplicate_case
 
     def cursor(self):
         return FakeCursor(self)
@@ -261,3 +281,46 @@ def test_wrong_sql_principal_blocks_inspection_even_with_result_tables():
     with pytest.raises(audit.AuditBlocked, match="restricted login identity"):
         audit.inspect_results(qc)
     assert not any("FROM sys.tables" in x for x in qc.statements)
+
+
+
+def test_exact_upstream_uppercase_achilles_analysis_name_is_found():
+    qc = FakeConn(audit.QC_DATABASE)
+    totals = audit.inspect_results(qc)
+    assert totals["achilles_analysis"] == 194
+    # The query must preserve the actual SQL Server identifier casing.
+    assert any(
+        "[qc_results].[ACHILLES_ANALYSIS]" in statement
+        for statement in qc.statements
+    )
+
+
+def test_all_uppercase_result_schema_and_table_names_resolve():
+    qc = FakeConn(audit.QC_DATABASE, upper_names=True)
+    totals = audit.inspect_results(qc)
+    assert totals["achilles_results_dist"] == 7000
+    assert any(
+        "[QC_RESULTS].[ACHILLES_RESULTS_DIST]" in statement
+        for statement in qc.statements
+    )
+
+
+def test_truly_missing_achilles_analysis_remains_blocked(capsys):
+    qc = FakeConn(audit.QC_DATABASE, missing_analysis=True)
+    with pytest.raises(audit.AuditBlocked, match="achilles_analysis"):
+        audit.inspect_results(qc)
+    output = capsys.readouterr().out
+    assert "QC results schema table names (metadata only)" in output
+    assert "qc_results.achilles_results" in output
+
+
+def test_case_equivalent_metadata_collision_is_rejected():
+    qc = FakeConn(audit.QC_DATABASE, duplicate_case=True)
+    with pytest.raises(audit.AuditBlocked, match="Ambiguous case-equivalent"):
+        audit.inspect_results(qc)
+
+
+def test_quoted_actual_sql_identifiers_escape_closing_brackets():
+    assert audit.quote_sqlserver_name("a]b") == "[a]]b]"
+    with pytest.raises(audit.AuditBlocked, match="Unexpected"):
+        audit.quote_sqlserver_name("")
