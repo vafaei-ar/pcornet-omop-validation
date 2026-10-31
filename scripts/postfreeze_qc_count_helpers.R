@@ -20,3 +20,33 @@ read_postfreeze_count_result <- function(result, table_name) {
   }
   count
 }
+
+
+# A missing CDM_SOURCE row is a data-provenance finding. DQD requires this
+# record and MUST NOT proceed. Achilles can characterize the other frozen
+# tables using an explicitly supplied sourceName/cdmVersion, but its outputs
+# cannot be interpreted as resolution of the provenance deficiency.
+check_postfreeze_cdm_source <- function(row_count, tool) {
+  count <- suppressWarnings(as.numeric(row_count))
+  if (length(count) != 1L || !is.finite(count) ||
+      count < 0 || count != floor(count)) {
+    stop("Invalid frozen CDM_SOURCE row count")
+  }
+  if (!(tool %in% c("dqd", "achilles")) || length(tool) != 1L) {
+    stop("Unsupported OHDSI QC tool")
+  }
+  if (count == 0) {
+    if (tool == "dqd") {
+      stop(paste(
+        "DQD blocked: frozen CDM_SOURCE is empty.",
+        "Do not change the frozen publication database.",
+        "Use documented metadata provenance on a separately restored analysis copy."
+      ))
+    }
+    message(paste(
+      "WARNING: frozen CDM_SOURCE has zero records.",
+      "Achilles is exploratory characterization and does not resolve this metadata gap."
+    ))
+  }
+  invisible(count)
+}
