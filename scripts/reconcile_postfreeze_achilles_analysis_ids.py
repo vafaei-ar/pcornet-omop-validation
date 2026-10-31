@@ -25,6 +25,13 @@ from inspect_postfreeze_achilles import (  # noqa: E402
 )
 
 REQUIRED_TABLES = ("achilles_analysis", "achilles_results", "achilles_results_dist")
+PERFORMANCE_ID_OFFSET = 2_000_000  # Verified upstream Achilles 1.7.2 performance SQL
+PERFORMANCE_METRICS = (
+    "performance_ids", "unexplained_ids",
+    "default_definitions", "nondefault_definitions", "other_definitions",
+    "default_performance_ids", "nondefault_performance_ids", "other_performance_ids",
+    "default_data_ids", "nondefault_data_ids", "other_data_ids",
+)
 METRICS = (
     "results_ids", "distribution_ids", "combined_ids", "overlap_ids",
     "definition_rows", "definition_ids", "unmatched_results_ids",
@@ -105,21 +112,113 @@ def reconciliation_sql(tables: dict[str, str]) -> str:
     """
 
 
-def unmatched_id_sample_sql(tables: dict[str, str]) -> str:
+def performance_namespace_sql(tables: dict[str, str]) -> str:
+    """Validate the performance-ID namespace documented in Achilles 1.7.2.
+
+    OHDSI/Achilles inst/sql/sql_server/export/performance/sqlAchillesPerformance.sql
+    explicitly joins ACHILLES_ANALYSIS to results using analysis_id + 2000000.
+    This query reads only analysis_id and is_default metadata.
+    """
     analysis, results, dist = (tables[name] for name in REQUIRED_TABLES)
     return f"""
-    ;WITH result_ids AS (
+    ;WITH stored_ids AS (
         SELECT analysis_id FROM {results} WHERE analysis_id IS NOT NULL
-        UNION
-        SELECT analysis_id FROM {dist} WHERE analysis_id IS NOT NULL
+        UNION SELECT analysis_id FROM {dist} WHERE analysis_id IS NOT NULL
+    ), definitions AS (
+        SELECT DISTINCT analysis_id, is_default FROM {analysis}
+        WHERE analysis_id IS NOT NULL
+    ), definition_ids AS (
+        SELECT DISTINCT analysis_id FROM definitions
+    ), unmatched AS (
+        SELECT analysis_id FROM stored_ids
+        EXCEPT SELECT analysis_id FROM definition_ids
+    ), performance_ids AS (
+        SELECT DISTINCT u.analysis_id, d.is_default FROM unmatched u
+        JOIN definitions d ON u.analysis_id = d.analysis_id + {PERFORMANCE_ID_OFFSET}
+    ), unexplained AS (
+        SELECT analysis_id FROM unmatched
+        EXCEPT SELECT analysis_id FROM performance_ids
+    ), defined_data AS (
+        SELECT d.analysis_id, d.is_default FROM definitions d
+        JOIN stored_ids s ON d.analysis_id = s.analysis_id
+    )
+    SELECT
+        (SELECT COUNT_BIG(DISTINCT analysis_id) FROM performance_ids)
+            AS performance_ids,
+        (SELECT COUNT_BIG(*) FROM unexplained) AS unexplained_ids,
+        (SELECT COUNT_BIG(*) FROM definitions WHERE is_default = 1)
+            AS default_definitions,
+        (SELECT COUNT_BIG(*) FROM definitions WHERE is_default = 0)
+            AS nondefault_definitions,
+        (SELECT COUNT_BIG(*) FROM definitions
+         WHERE is_default IS NULL OR is_default NOT IN (0, 1))
+            AS other_definitions,
+        (SELECT COUNT_BIG(*) FROM performance_ids WHERE is_default = 1)
+            AS default_performance_ids,
+        (SELECT COUNT_BIG(*) FROM performance_ids WHERE is_default = 0)
+            AS nondefault_performance_ids,
+        (SELECT COUNT_BIG(*) FROM performance_ids
+         WHERE is_default IS NULL OR is_default NOT IN (0, 1))
+            AS other_performance_ids,
+        (SELECT COUNT_BIG(*) FROM defined_data WHERE is_default = 1)
+            AS default_data_ids,
+        (SELECT COUNT_BIG(*) FROM defined_data WHERE is_default = 0)
+            AS nondefault_data_ids,
+        (SELECT COUNT_BIG(*) FROM defined_data
+         WHERE is_default IS NULL OR is_default NOT IN (0, 1))
+            AS other_data_ids
+    """
+
+
+def validate_performance_namespace(values, base: dict[str, int]) -> dict[str, int]:
+    if values is None or len(values) != len(PERFORMANCE_METRICS):
+        raise AuditBlocked("Unexpected Achilles performance-ID aggregate result")
+    try:
+        parsed = {k: int(v) for k, v in zip(PERFORMANCE_METRICS, values)}
+    except (ValueError, TypeError, OverflowError):
+        raise AuditBlocked("Non-numeric Achilles performance summary") from None
+    if any(v < 0 or v != original for v, original in zip(parsed.values(), values)):
+        raise AuditBlocked("Invalid Achilles performance-ID aggregate")
+    n = parsed
+    if n["performance_ids"] + n["unexplained_ids"] != base["unmatched_results_ids"]:
+        raise AuditBlocked("Performance ID grouping does not reconcile with unmatched stored IDs")
+    if (n["default_definitions"] + n["nondefault_definitions"] +
+            n["other_definitions"] != base["definition_ids"]):
+        raise AuditBlocked("Default/non-default definitions do not sum to metadata IDs")
+    if (n["default_performance_ids"] + n["nondefault_performance_ids"] +
+            n["other_performance_ids"] != n["performance_ids"]):
+        raise AuditBlocked("Performance ID categories are inconsistent")
+    if (n["default_data_ids"] + n["nondefault_data_ids"] +
+            n["other_data_ids"] !=
+            base["definition_ids"] - base["definitions_without_results"]):
+        raise AuditBlocked("Defined data IDs do not reconcile with stored result IDs")
+    if n["default_performance_ids"] > n["default_definitions"]:
+        raise AuditBlocked("More default performance IDs than defined default analyses")
+    if n["default_data_ids"] > n["default_definitions"]:
+        raise AuditBlocked("More default result IDs than defined default analyses")
+    if n["nondefault_data_ids"] > n["nondefault_definitions"]:
+        raise AuditBlocked("More non-default result IDs than defined non-default analyses")
+    return n
+
+
+def unexplained_id_sample_sql(tables: dict[str, str]) -> str:
+    """Only sample truly unexplained OHDSI analysis IDs, not performance records."""
+    analysis, results, dist = (tables[name] for name in REQUIRED_TABLES)
+    return f"""
+    ;WITH stored_ids AS (
+        SELECT analysis_id FROM {results} WHERE analysis_id IS NOT NULL
+        UNION SELECT analysis_id FROM {dist} WHERE analysis_id IS NOT NULL
     ), definition_ids AS (
         SELECT DISTINCT analysis_id FROM {analysis}
         WHERE analysis_id IS NOT NULL
-    )
-    SELECT TOP (20) analysis_id FROM (
-        SELECT analysis_id FROM result_ids
+    ), unmatched AS (
+        SELECT analysis_id FROM stored_ids
         EXCEPT SELECT analysis_id FROM definition_ids
-    ) AS unmatched ORDER BY analysis_id
+    )
+    SELECT TOP (20) u.analysis_id FROM unmatched u
+    LEFT JOIN definition_ids d
+      ON u.analysis_id = d.analysis_id + {PERFORMANCE_ID_OFFSET}
+    WHERE d.analysis_id IS NULL ORDER BY u.analysis_id
     """
 
 
@@ -174,24 +273,59 @@ def reconcile(conn) -> dict[str, int]:
           summary["null_definition_ids"], "/",
           summary["null_result_ids"], "/",
           summary["null_distribution_ids"])
-    if summary["unmatched_results_ids"]:
+    cursor = conn.cursor()
+    try:
+        cursor.execute(performance_namespace_sql(tables))
+        performance = validate_performance_namespace(cursor.fetchone(), summary)
+    finally:
+        cursor.close()
+    print("Achilles v1.7.2 performance namespace (+2,000,000):")
+    print("  Unmatched stored IDs that map to defined performance IDs:",
+          performance["performance_ids"])
+    print("  Truly unexplained stored IDs:", performance["unexplained_ids"])
+    print("  Default/non-default definitions:",
+          performance["default_definitions"], "/",
+          performance["nondefault_definitions"])
+    print("  Performance IDs for default/non-default analyses:",
+          performance["default_performance_ids"], "/",
+          performance["nondefault_performance_ids"])
+    print("  Default analyses with data-bearing result IDs:",
+          performance["default_data_ids"])
+    print("  Default analyses without data-bearing result IDs:",
+          performance["default_definitions"] - performance["default_data_ids"])
+    print("  Non-default analyses with data-bearing result IDs:",
+          performance["nondefault_data_ids"])
+    if performance["unexplained_ids"]:
         cursor = conn.cursor()
         try:
-            cursor.execute(unmatched_id_sample_sql(tables))
+            cursor.execute(unexplained_id_sample_sql(tables))
             sample = [int(row[0]) for row in cursor.fetchall()]
         finally:
             cursor.close()
         if not sample:
-            raise AuditBlocked("Unmatched ID count positive but sample is empty")
-        print("  First unmatched OHDSI analysis IDs (NOT patient IDs):",
+            raise AuditBlocked("Unexplained ID count positive but sample is empty")
+        print("  Truly unexplained OHDSI analysis IDs (NOT patient IDs):",
               ", ".join(str(value) for value in sample))
-        print("RECONCILIATION: REVIEW REQUIRED for IDs absent from metadata definitions")
-    elif (summary["null_definition_ids"] or summary["null_result_ids"] or
-          summary["null_distribution_ids"]):
-        print("RECONCILIATION: REVIEW REQUIRED for NULL analysis identifiers")
+    clean = (
+        performance["unexplained_ids"] == 0
+        and performance["default_definitions"] == 194
+        and performance["nondefault_definitions"] == 100
+        and performance["other_definitions"] == 0
+        and performance["default_performance_ids"] == 194
+        and performance["nondefault_performance_ids"] == 0
+        and performance["other_performance_ids"] == 0
+        and performance["nondefault_data_ids"] == 0
+        and performance["other_data_ids"] == 0
+        and summary["null_definition_ids"] == 0
+        and summary["null_result_ids"] == 0
+        and summary["null_distribution_ids"] == 0
+        and summary["definition_rows"] == summary["definition_ids"]
+    )
+    if clean:
+        print("RECONCILIATION: PASS; all unmatched IDs are defined +2,000,000 performance records")
+        print("Analyses without data-bearing rows are not automatically execution failures.")
     else:
-        print("RECONCILIATION: all persisted analysis IDs have definitions")
-    print("Defined analyses with no result rows may be expected with defaultAnalysesOnly=TRUE.")
+        print("RECONCILIATION: REVIEW REQUIRED; unexpected IDs or metadata/coverage discrepancy")
     print("DIAGNOSTIC COMPLETE: SELECT only, no data modified or exported")
     return summary
 
