@@ -149,6 +149,13 @@ def verify_identity(conn, database: str) -> None:
         cursor.close()
 
 
+def quote_sqlserver_name(identifier: str) -> str:
+    """Quote an actual server-returned identifier, preserving its exact case."""
+    if not identifier or len(identifier) > 128 or "\x00" in identifier:
+        raise AuditBlocked("Unexpected SQL Server metadata identifier")
+    return "[" + identifier.replace("]", "]]") + "]"
+
+
 def inspect_results(conn) -> dict[str, int]:
     verify_identity(conn, QC_DATABASE)
     cursor = conn.cursor()
@@ -157,32 +164,71 @@ def inspect_results(conn) -> dict[str, int]:
             SELECT s.name, t.name
             FROM sys.tables AS t
             INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
-            WHERE s.name IN ('qc_results', 'qc_scratch')
+            WHERE LOWER(s.name) IN ('qc_results', 'qc_scratch')
         """)
-        tables = {(str(s), str(t)) for s, t in cursor.fetchall()}
+        rows = cursor.fetchall()
     finally:
         cursor.close()
-    absent = [name for name in REQUIRED_RESULT_TABLES
-              if ("qc_results", name) not in tables]
+
+    # Achilles v1.7.2 creates ACHILLES_ANALYSIS in uppercase on SQL Server,
+    # while achilles_results may use a different case. Resolve the *actual*
+    # table and schema names instead of assuming Python string-case equality.
+    # Fail closed on casefold collisions, missing tables or empty result sets.
+    tables: dict[tuple[str, str], tuple[str, str]] = {}
+    for raw_schema, raw_name in rows:
+        schema, name = str(raw_schema), str(raw_name)
+        key = (schema.casefold(), name.casefold())
+        if key in tables:
+            raise AuditBlocked("Ambiguous case-equivalent Achilles table names")
+        tables[key] = (schema, name)
+
+    absent = [
+        name for name in REQUIRED_RESULT_TABLES
+        if ("qc_results", name.casefold()) not in tables
+    ]
     if absent:
-        raise AuditBlocked("Missing core Achilles result table(s): " + ", ".join(absent))
+        # These are table identifiers, never patient or analytical values.
+        visible_names = sorted(
+            f"{schema}.{name}" for schema, name in tables.values()
+            if schema.casefold() == "qc_results"
+        )
+        print("QC results schema table names (metadata only):")
+        for name in visible_names:
+            print(" ", name)
+        raise AuditBlocked(
+            "Missing core Achilles result table(s): " + ", ".join(absent)
+        )
+
+    def actual_table(name: str) -> str:
+        schema, table = tables[("qc_results", name.casefold())]
+        return (
+            f"{quote_sqlserver_name(schema)}."
+            f"{quote_sqlserver_name(table)}"
+        )
+
     totals = {}
     for name in REQUIRED_RESULT_TABLES:
-        n = single_scalar(conn, f"SELECT COUNT_BIG(*) FROM [qc_results].[{name}]")
+        n = single_scalar(
+            conn, f"SELECT COUNT_BIG(*) FROM {actual_table(name)}"
+        )
         if n == 0:
             raise AuditBlocked(f"Core Achilles results table is empty: {name}")
         totals[name] = n
-    ids = single_scalar(conn, """
+
+    ids = single_scalar(conn, f"""
         SELECT COUNT_BIG(*)
         FROM (
-            SELECT analysis_id FROM [qc_results].[achilles_results]
+            SELECT analysis_id FROM {actual_table("achilles_results")}
             UNION
-            SELECT analysis_id FROM [qc_results].[achilles_results_dist]
+            SELECT analysis_id FROM {actual_table("achilles_results_dist")}
         ) AS distinct_ids
     """)
     if ids <= 0:
         raise AuditBlocked("No analysis IDs represented in saved Achilles result rows")
-    scratch_count = sum(1 for schema, _ in tables if schema == "qc_scratch")
+    scratch_count = sum(
+        1 for schema, _ in tables.values()
+        if schema.casefold() == "qc_scratch"
+    )
     print("Achilles results inspection: PASS")
     print("Core Achilles result table row counts (not patient counts):")
     for name, n in totals.items():
