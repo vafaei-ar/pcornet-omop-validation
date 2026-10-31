@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. The completed read-only analysis-ID reconciliation PASSED: all 194 unmatched IDs are documented Achilles performance records (analysis_id + 2,000,000), none are unexplained, and 140 of 194 default analyses have data-bearing result rows. The remaining 54 default analyses lack stored data-bearing result rows, which is not automatically an execution or quality failure. The read-only category inventory PASSED: missing results concentrate in Visit Detail (11), Payer Plan Period (9), Condition Era (8), Drug Era (8), Care Site/Location/Provider (12 total), Note (2), Visit Occurrence (2), Observation (1), and Observation Period (1). Source-table presence triage PENDING. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. The completed read-only analysis-ID reconciliation PASSED: all 194 unmatched IDs are documented Achilles performance records (analysis_id + 2,000,000), none are unexplained, and 140 of 194 default analyses have data-bearing result rows. The remaining 54 default analyses lack stored data-bearing result rows, which is not automatically an execution or quality failure. The read-only category inventory PASSED: missing results concentrate in Visit Detail (11), Payer Plan Period (9), Condition Era (8), Drug Era (8), Care Site/Location/Provider (12 total), Note (2), Visit Occurrence (2), Observation (1), and Observation Period (1). Source-table presence triage PASSED: eight OMOP tables are empty (visit_detail, payer_plan_period, condition_era, drug_era, care_site, location, provider, note); visit_occurrence, observation and observation_period contain rows. Frozen-source ETL scope analysis identified a discrepancy between the original design and the 11-target freeze acceptance gate. Targeted missing-result ID review remains pending. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -406,35 +406,71 @@ some gaps. The single Visit Detail analysis with a result does not establish
 that `visit_detail` has records. A zero-count summary can persist on an
 empty table.
 
-**Next: binary CDM source-table presence triage (pending local execution)**
+**Source-table presence triage (completed, read-only):**
 
-The new SELECT-only diagnostic checks 11 CDM domain tables linked to the
-missing Achilles categories, plus three reference source tables
-(`condition_occurrence`, `drug_exposure`, `person`). It uses `EXISTS`
-rather than collecting clinical data or running full row-count scans,
-reports only `YES`/`NO` table population status, and compares this to
-the prior 54 missing analyses. It verifies the dedicated QC login and
-original frozen publication counts, queries the independent QC database
-only for analysis definition metadata and result-ID presence, and never
-writes either database:
+The local run on 2026-10-30 passed with 144 tests passed, 1 skipped.
+The independent QC and frozen anchor checks remained successful.
+The diagnostic showed **zero rows** in eight OMOP tables:
+`visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`,
+`care_site`, `location`, `provider`, and `note`.
+`visit_occurrence`, `observation`, `observation_period`,
+`condition_occurrence`, `drug_exposure` and `person` each
+contained one or more rows. The diagnostic used SQL `EXISTS` and printed
+YES/NO only, not source counts or clinical values. Importantly, one
+Visit Detail Achilles output exists despite the empty CDM table, likely
+because a high-level count analysis can emit a result for an empty table.
+No data-bearing row for an Achilles analysis does **not** establish that
+the source domain is empty, and a successful Achilles run does not certify
+ETL completeness.
+
+**Frozen ETL implementation-versus-design review:**
+
+We inspected the immutable ETL code at
+`887e6f4d60a6b185e58b3c9fe8887472b49777e3` and its archived
+design/freeze documentation. This is a **scope audit**, not a clinical
+data comparison:
+
+| Tables / feature | Frozen implementation evidence | Interpretation and risk |
+| --- | --- | --- |
+| `condition_era`, `drug_era` | Source event tables populated; neither derived era appears in the 11-table Phase 12 target requirements or clean-reset target list; no era materialization stage among the frozen phase modules | Confirmed absent in this build. Analyses requiring native OMOP era tables cannot be assumed reproducible. Whether this was explicitly approved for the study requires documenting scope. |
+| `visit_detail`, `payer_plan_period`, `note` | Empty in SQL; omitted from Phase 12 accepted target list; no dedicated phase materializes these tables | Unimplemented/unsupported in the publication build. Do not label as source-record loss without establishing source coverage and original ETL obligations. |
+| `care_site`, `location` | Empty in SQL; omitted from Phase 12 target list. The original `docs/etl_redesign.md` proposed ENCOUNTER-to-`care_site`/`location` and LDS_ADDRESS_HISTORY-to-`location`, and source preflight requires `lds_address_history.parquet` | **Design versus frozen-implementation gap.** Source file requirement is not proof it contains eligible rows. Missing dimension materialization must be disclosed and reconciled against approved scope, not silently called intentional. |
+| `provider` | Empty in SQL; original PCORnet `provider.parquet` is optional in source preflight, and `docs/04_REPRODUCIBILITY_AND_RERUN.md` explicitly records its absence from this dataset | Input limitation. Do not attribute empty OMOP provider to a dropped populated PCORnet provider table. Other provider fields/semantics remain unverified. |
+| `cdm_source` | Empty in SQL, while the original redesign explicitly proposed recording ETL and vocabulary provenance there; absent from Phase 12 required targets | **Confirmed provenance/ETL metadata gap.** DQD cannot run on the frozen publication target. |
+| `visit_occurrence`, `observation`, `observation_period` | Tables have records but 2, 1, and 1 default Achilles analyses, respectively, lack data-bearing results | Requires inspection of those particular OHDSI analysis IDs. Could reflect zero-row SQL, suppression, or missing qualifying strata; do not infer missing source data. |
+
+More specifically, frozen `etl/visit_occurrence.py` inserts `NULL`
+for `provider_id` and `care_site_id`, while `etl/person.py` does
+not populate `location_id`. This confirms that at least those
+cross-domain links are not materialized by the frozen core transforms.
+The frozen Phase 12 validator requires exactly these 11 core OMOP
+targets: `person`, `observation_period`, `visit_occurrence`,
+`condition_occurrence`, `procedure_occurrence`, `measurement`,
+`observation`, `drug_exposure`, `device_exposure`,
+`specimen` and `death`. Its pass does **not** claim full-table OMOP
+population. The earlier redesign was a plan, not evidence that every
+planned domain reached the frozen release.
+
+**Prioritized next interpretation step:**
+
+Determine the exact OHDSI analysis identifiers behind the four missing
+results in **nonempty** domains, then compare their published analysis
+definitions and SQL to the available source. The existing script already
+offers safe ID-only metadata output:
 
 ```bash
 cd ~/works/repos/pcornet-omop-validation
-git pull --ff-only
-pytest -q
-# Use the dedicated OHDSI_QC_PASSWORD set securely in this shell.
-python scripts/triage_postfreeze_achilles_source_tables.py \
-  --config config/etl_A.yaml
+python scripts/summarize_postfreeze_achilles_coverage.py \
+  --config config/etl_A.yaml --show-missing-analysis-ids
 ```
 
-The findings are descriptive. A nonempty OMOP table with no stored Achilles
-analysis results requires a targeted per-analysis review. An empty era
-table when its source event table contains records requires checking the
-approved frozen ETL specification and code. Do not repair, rebuild or
-backfill the frozen publication database based on this triage. Do not
-interpret missing output as a quality-check failure or proof of suppression.
-The empty `CDM_SOURCE` remains a separate provenance deficiency and DQD
-remains blocked.
+Only OHDSI analysis IDs are displayed, not patient identifiers or
+clinical values. We should not classify these four outputs as quality
+failures before reviewing their analysis semantics. Separately, resolve
+the `cdm_source` provenance requirement only in a documented,
+institution-authorized **analysis copy** with verified original
+metadata. Do not fill the frozen publication table, rerun Achilles,
+or alter the frozen study's published source-to-target estimands.
 
 Do not rerun Achilles with `createTable=TRUE` while completed results exist,
 because that could overwrite them. Preserve raw results privately pending
