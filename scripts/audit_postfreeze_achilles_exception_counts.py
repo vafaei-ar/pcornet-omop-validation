@@ -200,6 +200,94 @@ def save_private_counts(counts: dict[int, int], path: Path = PRIVATE_OUTPUT) -> 
         raise AuditBlocked("Could not safely write private result file") from None
 
 
+def verify_existing_private_output(path: Path | None = None) -> None:
+    """Check an existing local file without SQL, changes, or count disclosure.
+
+    This establishes schema/permissions only, NOT that the saved values came
+    from a particular database execution or remain current.
+    """
+    path = PRIVATE_OUTPUT if path is None else path
+    if path != PRIVATE_OUTPUT or path.parent != PRIVATE_DIR:
+        raise AuditBlocked("Unapproved private output path")
+    for parent in (ROOT / "results", ROOT / "results" / "postfreeze_standard_qc",
+                   PRIVATE_DIR):
+        if parent.is_symlink():
+            raise AuditBlocked("Private result path contains an unsafe symlink")
+    if not PRIVATE_DIR.is_dir() or (
+        stat.S_IMODE(PRIVATE_DIR.stat().st_mode) != 0o700
+    ):
+        raise AuditBlocked("Private result directory must have mode 0700")
+    try:
+        file_stat = path.lstat()
+    except OSError:
+        raise AuditBlocked("Expected private result file not found") from None
+    if (not stat.S_ISREG(file_stat.st_mode)
+            or stat.S_IMODE(file_stat.st_mode) != 0o600
+            or file_stat.st_nlink != 1
+            or file_stat.st_uid != os.getuid()
+            or not 0 < file_stat.st_size <= 16384):
+        raise AuditBlocked("Unsafe private result file type, size or permissions")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+            data_stat = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(data_stat.st_mode)
+                    or (data_stat.st_dev, data_stat.st_ino)
+                    != (file_stat.st_dev, file_stat.st_ino)):
+                raise AuditBlocked("Private result file changed during read")
+            payload = json.load(stream)
+    except AuditBlocked:
+        raise
+    except (OSError, ValueError, UnicodeError, TypeError):
+        raise AuditBlocked("Unreadable or malformed private result file") from None
+
+    expected = {
+        "status": "private_read_only_achilles_exception_triage",
+        "achilles_version": "1.7.2",
+        "cdm_version": "5.4.2",
+        "small_cell_threshold": THRESHOLD,
+        "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+    }
+    if not isinstance(payload, dict) or any(
+        type(payload.get(k)) is not type(v) or payload.get(k) != v
+        for k, v in expected.items()
+    ):
+        raise AuditBlocked("Private result provenance fields mismatch")
+    try:
+        recorded = datetime.fromisoformat(payload["recorded_at_utc"])
+        if recorded.tzinfo is None or recorded.utcoffset() is None:
+            raise ValueError("Timestamp must be timezone-aware")
+    except (KeyError, ValueError, TypeError, OverflowError):
+        raise AuditBlocked("Private result has invalid recorded timestamp") from None
+    if not isinstance(payload.get("interpretation"), str) or not payload["interpretation"]:
+        raise AuditBlocked("Private result has invalid interpretation metadata")
+    entries = payload.get("analyses")
+    if not isinstance(entries, dict) or set(entries) != {
+        str(k) for k in EXCEPTION_SQL
+    }:
+        raise AuditBlocked("Private result has incomplete analysis IDs")
+    for entry in entries.values():
+        if (not isinstance(entry, dict)
+                or set(entry) != {"exception_count", "classification"}):
+            raise AuditBlocked("Private result has malformed analysis entries")
+        count = entry["exception_count"]
+        if type(count) is not int or not 0 <= count <= THRESHOLD:
+            raise AuditBlocked("Private result has invalid analysis count")
+        if entry["classification"] != (
+            "ZERO" if count == 0 else "SUPPRESSED_NONZERO"
+        ):
+            raise AuditBlocked("Private result classification mismatch")
+
+    print("EXISTING PRIVATE ACHILLES FILE: STRUCTURE/PERMISSIONS PASS")
+    print("Only the local file was checked; no SQL connection or rerun occurred.")
+    print("This does not independently authenticate saved counts or prove cohort impact.")
+    print("Do NOT upload, paste, commit or publish the private file.")
+
+
 def inspect(config_path: str) -> None:
     verify_manifest()
     config = verified_server_config(config_path)
@@ -244,9 +332,16 @@ def main() -> None:
         description="SELECT-only, private exact-count check of suppressed Achilles IDs"
     )
     parser.add_argument("--config", default="config/etl_A.yaml")
+    parser.add_argument(
+        "--verify-existing", action="store_true",
+        help="Validate existing private JSON format/permissions without SQL or count disclosure",
+    )
     args = parser.parse_args()
     try:
-        inspect(args.config)
+        if args.verify_existing:
+            verify_existing_private_output()
+        else:
+            inspect(args.config)
     except AuditBlocked as error:
         print("FOUR-ANALYSIS TRIAGE BLOCKED:", str(error), file=sys.stderr)
         raise SystemExit(1) from None
