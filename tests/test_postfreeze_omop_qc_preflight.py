@@ -176,3 +176,56 @@ def test_qc_access_audit_requires_restricted_login(monkeypatch):
     ])
     with pytest.raises(SystemExit, match="requires --qc-login"):
         module.main()
+
+
+
+def test_cdm_source_inspection_uses_restricted_login_and_select_only_script(
+    tmp_path, monkeypatch,
+):
+    import sys
+
+    cfg, jar = make_inputs(tmp_path)
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic-qc-secret")
+    monkeypatch.delenv("LOCAL_TEST_OMOP_PASSWORD", raising=False)
+    calls = []
+
+    def fake_run(command, *, check, env):
+        calls.append((command, check, env))
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", [
+        "preflight_postfreeze_omop_qc.py",
+        "--config", cfg, "--driver-dir", jar,
+        "--qc-login", "--inspect-cdm-source",
+    ])
+    module.main()
+    assert len(calls) == 1
+    command, strict, environment = calls[0]
+    assert strict is True
+    assert command[:2] == ["Rscript", "--vanilla"]
+    assert command[2].endswith("inspect_postfreeze_cdm_source.R")
+    assert environment["OHDSI_DB_USER"] == "ohdsi_postfreeze_qc"
+    assert environment["OHDSI_DB_PASSWORD"] == "synthetic-qc-secret"
+
+
+def test_cdm_source_inspection_rejects_admin_login(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", [
+        "preflight_postfreeze_omop_qc.py", "--inspect-cdm-source",
+    ])
+    with pytest.raises(SystemExit, match="require --qc-login"):
+        module.main()
+
+
+def test_cdm_source_inspection_cannot_be_combined_with_full_access_audit(
+    monkeypatch,
+):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", [
+        "preflight_postfreeze_omop_qc.py",
+        "--qc-login", "--audit-qc-access", "--inspect-cdm-source",
+    ])
+    with pytest.raises(SystemExit, match="Choose one"):
+        module.main()
