@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. First DQD launch attempted but stopped during the pre-run frozen count snapshot before any DQD checks. No DQD results yet. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. The initial DQD attempt stopped on a snapshot parsing bug that was corrected. The second DQD attempt passed the snapshot and then stopped at the CDM_SOURCE metadata prerequisite. No DQD results yet. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -155,7 +155,49 @@ the `find` command lists files or subdirectories, preserve and inspect
 them first; the guarded launcher intentionally refuses overwriting
 existing output. Do not delete generated results to force a retry.
 
-**Controlled local DQD launch (first attempt blocked; retry pending):**
+**DQD second-attempt metadata blocker (2026-10-30):**
+
+After correcting the snapshot parser (all local tests passed, 81 passed,
+1 skipped), DQD passed the fresh 75-table read-only permissions audit,
+privilege gate and frozen count anchors. It then refused initialization
+with `Please populate the cdm_source table before executing data quality checks.`
+No DQD check results were generated. OHDSI explicitly requires at least
+one properly populated `CDM_SOURCE` record for DQD metadata:
+<https://ohdsi.github.io/DataQualityDashboard/index.html>.
+The `cdmSourceName` argument does **not** replace this requirement.
+
+The frozen `CDM_SOURCE` table must **not** be populated in place to make
+DQD run, and QC SELECT-only privileges must not be loosened. A missing
+or incomplete CDM_SOURCE is itself a provenance/data quality finding.
+First run the read-only metadata inspection, which reports the row count,
+presence (not contents) of source/version fields, and whether vocabulary
+version metadata are available:
+
+```bash
+# Reuse the securely set OHDSI_QC_PASSWORD and existing R/JDBC setup.
+python scripts/preflight_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml \
+  --driver-dir results/ohdsi_jdbc \
+  --qc-login \
+  --inspect-cdm-source
+
+# Inspect only names of any locally generated, private partial DQD outputs.
+find results/postfreeze_standard_qc/dqd -mindepth 1 -maxdepth 2 -printf '%P\\n'
+```
+
+Only after confirming the exact missing metadata should an analyst consider a
+separately restored **analysis copy** of the frozen database with a documented,
+authentically sourced CDM_SOURCE record. Such a copy is not the original
+publication target. It must remain institution-local, be permission-isolated,
+and have all source clinical tables independently checked for concordance.
+No missing dates, version concept identifiers, vocabulary versions, or
+institutional source metadata should be invented. A metadata-overlay
+workaround or bypassing the DQD prerequisite would change what is measured
+and would need explicit scientific justification. Until a valid isolated
+target exists, DQD stays blocked and Achilles should not be started under
+the misleading assumption that standard QC succeeded.
+
+**Controlled local DQD launch (blocked pending metadata diagnosis):**
 
 The DQD runner uses OHDSI v2.9.1, `cdmVersion="5.4"`, all three
 check levels, and unmodified DQD default thresholds. Its
