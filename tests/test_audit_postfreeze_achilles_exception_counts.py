@@ -182,7 +182,10 @@ def test_private_directory_refuses_symlink_and_insecure_permissions(
         module.save_private_counts({207: 0, 209: 0, 210: 0, 814: 0}, path)
 
 
-def test_diagnostic_never_exposes_exact_counts_on_stdout(monkeypatch, capsys):
+def test_diagnostic_never_exposes_exact_counts_on_stdout(tmp_path, monkeypatch, capsys):
+    # Isolate the path checked by inspect() itself, even when the mocked save
+    # function never writes. Never depend on institutional results/ files.
+    _private_test_path(tmp_path, monkeypatch)
     monkeypatch.setattr(module, "verify_manifest", lambda: None)
     monkeypatch.setattr(module, "verified_server_config", lambda p: {"server": "localhost"})
     monkeypatch.setenv("OHDSI_QC_PASSWORD", "private_dummy")
