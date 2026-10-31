@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. DQD cannot initialize because frozen CDM_SOURCE contains zero rows, confirmed by read-only metadata inspection. No DQD check results. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. DQD cannot initialize because frozen CDM_SOURCE contains zero rows, confirmed by read-only metadata inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with all 194 distinct analysis IDs marked complete in the transcript. Stored-result audit PENDING. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -85,7 +85,7 @@ After confirming an administrator-authorized maintenance window, verified backup
 python scripts/provision_postfreeze_qc_access.py --config config/etl_A.yaml --apply
 ```
 
-`--apply` is an **administrative security change**, not an ordinary analysis. It requires exact interactive confirmation and a newly chosen password entered without echo. It checks the existing frozen target count anchors before DDL, refuses pre-existing login/database names, creates the restricted `ohdsi_postfreeze_qc` login, creates `<frozen_database>_postfreeze_qc` as a separate output database with `qc_results` and `qc_scratch`, and grants read-only CDM schema access (explicit DML/ALTER denial) plus QC-output database scoped table-creation permissions. Only a new user and its SQL permission metadata are added to the frozen database. **No frozen CDM table is modified.** Provisioning has not been exercised against the actual instance; an administrator must review it before the first `--apply`. If execution partially fails, stop and inspect manually. Do not repeat `--apply` or delete existing resources automatically. Store the newly selected QC password only in an approved secret manager.
+`--apply` is an **administrative security change**, not an ordinary analysis. It requires exact interactive confirmation and a newly chosen password entered without echo. It checks the existing frozen target count anchors before DDL, refuses pre-existing login/database names, creates the restricted `ohdsi_postfreeze_qc` login, creates `<frozen_database>_postfreeze_qc` as a separate output database with `qc_results` and `qc_scratch`, and grants read-only CDM schema access (explicit DML/ALTER denial) plus QC-output database scoped table-creation permissions. Only a new user and its SQL permission metadata are added to the frozen database. **No frozen CDM table is modified.** Provisioning was executed once successfully on the local instance on 2026-10-30, followed by successful JDBC and full permissions audits; do not run provisioning again. If execution partially fails, stop and inspect manually. Do not repeat `--apply` or delete existing resources automatically. Store the newly selected QC password only in an approved secret manager.
 
 For subsequent **read-only restricted-login verification**:
 
@@ -101,7 +101,7 @@ python scripts/preflight_postfreeze_omop_qc.py \
 
 The restricted-login JDBC preflight completed successfully on 2026-10-30. Database identity and person/visit_occurrence/condition_occurrence reference counts passed; sysadmin, db_owner and selected CDM write permissions were NO. The follow-on read-only full permissions audit also PASSED on 2026-10-30: 75 frozen tables readable without write privileges, reference row counts unchanged, restricted permissions on separate QC results and scratch schemas verified, with zero pre-existing QC output tables. Never use `SA` for DQD or Achilles. This first preflight is necessary but not a complete grant audit.
 
-**Next read-only permissions audit (pending):**
+**Read-only permissions audit (completed; retained for reproducibility):**
 
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
@@ -257,8 +257,41 @@ python scripts/launch_postfreeze_omop_qc.py \
 ```
 
 Achilles writes only to the separate QC database (results/scratch) with
-`smallCellCount=10`, not to the frozen CDM. If it fails after creating
-partial output tables, preserve them and inspect before rerunning.
+`smallCellCount=10`, not to the frozen CDM. The first local Achilles execution
+on 2026-10-30 completed with an R runner success message. The full terminal
+transcript contains 194 distinct Achilles analysis IDs, with all 194 marked
+`[COMPLETE]` and no `[FAILED]` or `[ERROR]` lines. Total Achilles runtime:
+3.631022 minutes. Terminal messages reported merged results under
+`OMOP_VALIDATED_A_postfreeze_qc.qc_results` and temporary scratch cleanup.
+The post-run frozen table snapshot also completed and the runner generated
+its local execution manifest. The missing `CDM_SOURCE` record was explicitly
+reported and is NOT repaired by Achilles. These logs alone do not verify
+persisted table contents or constitute a DQD pass.
+
+**Achilles post-run audit (pending local execution):**
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+# Reuse the dedicated OHDSI_QC_PASSWORD; never use the SA login.
+python scripts/inspect_postfreeze_achilles.py --config config/etl_A.yaml
+```
+
+This `SELECT`-only Python auditor uses the dedicated QC login, not the ETL
+administrator credential. It checks the local completion manifest and the
+reported unresolved CDM_SOURCE deficiency, confirms saved core Achilles result
+tables and table-row counts (metadata only, NOT patient counts), counts the
+distinct analysis IDs represented in result rows, checks any remaining
+permanent scratch tables, and re-verifies all three frozen publication counts.
+It does NOT display concept-level results, stratum labels, individual patient
+values, raw Achilles outputs, or suppressed cells. The necessary final signal
+is `ACHILLES READ-ONLY POST-RUN AUDIT: PASS`. A result-table analysis-ID
+count smaller than the number of completed execution log IDs is not
+automatically a failure: some analyses can legitimately return no rows.
+Do not rerun Achilles with `createTable=TRUE` while completed results exist,
+because that could overwrite them. Retain raw results privately pending
+disclosure review and independent scientific interpretation.
 
 **Preparation by the local database/R administrator**:
 
