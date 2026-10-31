@@ -212,7 +212,19 @@ def test_diagnostic_never_exposes_exact_counts_on_stdout(tmp_path, monkeypatch, 
     stdout = capsys.readouterr().out
     assert "READ-ONLY TRIAGE: PASS" in stdout
     assert "DO NOT upload" in stdout
-    assert "exception_count" not in stdout
+    # "exception_count" is part of the intended *filename*, not a value.
+    # Permit it only in the documented path while rejecting a printed field.
+    private_path = (
+        "results/postfreeze_standard_qc/private_achilles_exception_counts/"
+        "four_analysis_exact_counts.json"
+    )
+    assert private_path in stdout
+    redacted_stdout = stdout.replace(private_path, "")
+    assert "exception_count" not in redacted_stdout
+    assert "SUPPRESSED_NONZERO" not in redacted_stdout
+    assert "'207': 2" not in redacted_stdout
+    assert "207: 2" not in redacted_stdout
+    assert '"207": 2' not in redacted_stdout
     assert saved == [{207: 2, 209: 0, 210: 10, 814: 1}]
 
 
