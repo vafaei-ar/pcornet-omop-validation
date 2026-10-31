@@ -496,9 +496,9 @@ the original results remain unchanged.
 **Executable, restricted, exact-count diagnostic (implemented; NOT YET RUN
 on the institutional SQL Server):**
 
-The new \`scripts/audit_postfreeze_achilles_exception_counts.py\`
-implements literal \`SELECT COUNT_BIG\` versions of the official OHDSI
-v1.7.2 predicates for 207, 209, 210 and 814, without \`INTO\` scratch
+The new `scripts/audit_postfreeze_achilles_exception_counts.py`
+implements literal `SELECT COUNT_BIG` versions of the official OHDSI
+v1.7.2 predicates for 207, 209, 210 and 814, without `INTO` scratch
 tables. Before querying any exception counts it verifies the ignored local
 Achilles manifest, all 194 default performance statuses and 54 missing
 outputs, the four specific missing IDs, the restricted login/database
@@ -506,24 +506,24 @@ identity and the frozen anchor counts plus empty CDM_SOURCE.
 Only the already-provisioned read-only QC login can connect.
 
 The script blocks if an exception count exceeds the original
-\`smallCellCount=10\` threshold. It never prints any of the four counts,
+`smallCellCount=10` threshold. It never prints any of the four counts,
 identifiers, strata or clinical values. It writes the four exact counts
 and zero-versus-low-count classifications to a **new private local file**
-with mode \`0600\` in a \`0700\` directory. The output is ignored by Git.
+with mode `0600` in a `0700` directory. The output is ignored by Git.
 Existing files are never overwritten, and symlinked or less-restricted
 private directories block the script. The only output to the terminal is
 the status and private file path. These local small counts remain
 confidential and require formal institutional disclosure review before
 use elsewhere.
 
-\`\`\`bash
+```bash
 cd ~/works/repos/pcornet-omop-validation
 git pull --ff-only
 pytest -q
 
 # Set the already provisioned restricted QC password securely in this
 # terminal if it is not already present. Do NOT paste it into chat.
-if [ -z "\${OHDSI_QC_PASSWORD:-}" ]; then
+if [ -z "${OHDSI_QC_PASSWORD:-}" ]; then
   read -r -s -p 'QC password: ' OHDSI_QC_PASSWORD
   printf '\n'
   export OHDSI_QC_PASSWORD
@@ -531,14 +531,14 @@ fi
 
 python scripts/audit_postfreeze_achilles_exception_counts.py \
   --config config/etl_A.yaml
-\`\`\`
+```
 
-Successful local execution reports \`FOUR-ANALYSIS READ-ONLY TRIAGE: PASS\`
+Successful local execution reports `FOUR-ANALYSIS READ-ONLY TRIAGE: PASS`
 and stores the private JSON at
-\`results/postfreeze_standard_qc/private_achilles_exception_counts/four_analysis_exact_counts.json\`.
+`results/postfreeze_standard_qc/private_achilles_exception_counts/four_analysis_exact_counts.json`.
 Do **not** paste, email, upload, publish, or commit the JSON. A repeat
 invocation deliberately refuses to overwrite it. If a status is
-\`SUPPRESSED_NONZERO\`, investigation must remain within the approved local
+`SUPPRESSED_NONZERO`, investigation must remain within the approved local
 environment; no specific patient or encounter is inferred from the
 aggregate. Analysis 210 must be interpreted against the locked cohort
 logic **before** making any claim about scientific impact. This
