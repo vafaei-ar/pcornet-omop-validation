@@ -1,6 +1,9 @@
 """Synthetic tests for SELECT-only Achilles analysis-ID metadata reconciliation.
 
-Uses mock SQL cursors only. No database connection or clinical records.
+The upstream Achilles v1.7.2 SQL Server performance export joins the
+metadata definitions on analysis_id + 2000000. These tests verify that
+bookkeeping is classified separately from persisted data-bearing results.
+No SQL connections or clinical fields are used in this test suite.
 """
 from __future__ import annotations
 
@@ -9,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "reconcile_postfreeze_achilles_analysis_ids.py"
 SPEC = importlib.util.spec_from_file_location("achilles_id_reconciliation", SCRIPT)
@@ -17,41 +19,60 @@ assert SPEC is not None and SPEC.loader is not None
 module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
 
+# Synthetic case matches the user's reported ID set sizes. It contains
+# numbers of distinct *analysis identifiers*, not person/patient counts.
+SUMMARY = (
+    259, 77, 334, 2,
+    294, 294, 194, 154,
+    0, 0, 0,
+)
+PERFORMANCE = (
+    194, 0,
+    194, 100, 0,
+    194, 0, 0,
+    140, 0, 0,
+)
+
 
 class FakeCursor:
     def __init__(self, conn):
         self.conn = conn
-        self.type = ""
+        self.kind = ""
 
     def execute(self, sql):
         text = " ".join(sql.strip().split())
         self.conn.queries.append(text)
         assert not any(
             forbidden in text.upper()
-            for forbidden in ("INSERT INTO", "DELETE FROM", "UPDATE ", "DROP TABLE",
-                              "CREATE TABLE", "ALTER TABLE", "TRUNCATE TABLE")
-        )
+            for forbidden in ("INSERT INTO", "DELETE FROM", "UPDATE ",
+                              "DROP TABLE", "CREATE TABLE",
+                              "ALTER TABLE", "TRUNCATE TABLE")
+        ), "The diagnostic must issue SELECT-only queries"
         if "DB_NAME(), ORIGINAL_LOGIN()" in text:
-            self.type = "identity"
+            self.kind = "identity"
         elif "FROM sys.tables" in text:
-            self.type = "metadata"
-        elif "SELECT TOP (20) analysis_id" in text:
-            self.type = "sample"
+            self.kind = "metadata"
+        elif "SELECT TOP (20) u.analysis_id" in text:
+            self.kind = "sample"
+        elif "AS unexplained_ids" in text:
+            self.kind = "performance"
         elif "AS unmatched_results_ids" in text:
-            self.type = "summary"
+            self.kind = "summary"
         else:
-            raise AssertionError(f"Unexpected query: {text[:100]}")
+            raise AssertionError(f"Unexpected query: {text[:150]}")
         return self
 
     def fetchone(self):
-        if self.type == "identity":
+        if self.kind == "identity":
             return (self.conn.database, "ohdsi_postfreeze_qc")
-        if self.type == "summary":
+        if self.kind == "summary":
             return self.conn.values
+        if self.kind == "performance":
+            return self.conn.performance
         return None
 
     def fetchall(self):
-        if self.type == "metadata":
+        if self.kind == "metadata":
             tables = [
                 ("qc_results", "ACHILLES_ANALYSIS"),
                 ("qc_results", "achilles_results"),
@@ -63,8 +84,8 @@ class FakeCursor:
             if self.conn.collision:
                 tables.append(("QC_RESULTS", "achilles_results"))
             return tables
-        if self.type == "sample":
-            return [(2007,), (2010,), (2900,)]
+        if self.kind == "sample":
+            return [(2999999,)]
         return []
 
     def close(self):
@@ -72,51 +93,83 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, values=None, missing_analysis=False, collision=False):
+    def __init__(
+        self, values=None, performance=None, missing_analysis=False,
+        collision=False,
+    ):
         self.database = "OMOP_VALIDATED_A_postfreeze_qc"
         self.queries = []
         self.closed_cursors = 0
         self.missing_analysis = missing_analysis
         self.collision = collision
-        self.values = values or (
-            310, 130, 334, 106,
-            294, 294, 40, 0,
-            0, 0, 0,
-        )
+        self.values = SUMMARY if values is None else values
+        self.performance = PERFORMANCE if performance is None else performance
 
     def cursor(self):
         return FakeCursor(self)
 
 
-def test_reconciliation_computes_orphan_definition_coverage(capsys):
+def test_realistic_performance_offset_classified_without_patient_data(capsys):
     conn = FakeConnection()
     summary = module.reconcile(conn)
     assert summary["combined_ids"] == 334
     assert summary["definition_rows"] == 294
-    assert summary["unmatched_results_ids"] == 40
+    assert summary["unmatched_results_ids"] == 194
     assert len(conn.queries) == 4
     assert conn.closed_cursors == len(conn.queries)
     assert all("COUNT_VALUE" not in query.upper() for query in conn.queries)
     assert all("STRATUM_" not in query.upper() for query in conn.queries)
-    out = capsys.readouterr().out
-    assert "REVIEW REQUIRED" in out
-    assert "NOT patient IDs" in out
-    assert "2007, 2010, 2900" in out
+    output = capsys.readouterr().out
+    assert "RECONCILIATION: PASS" in output
+    assert "194" in output
+    assert "Truly unexplained stored IDs: 0" in output
+    assert "Default analyses without data-bearing result IDs: 54" in output
+    assert "REVIEW REQUIRED" not in output
 
 
-def test_reconciliation_without_orphans_does_not_query_ids(capsys):
-    conn = FakeConnection(values=(294, 130, 294, 130, 294, 294, 0, 0, 0, 0, 0))
+def test_unexplained_id_is_not_mislabeled_as_performance(capsys):
+    performance = (
+        193, 1, 194, 100, 0, 193, 0, 0, 140, 0, 0
+    )
+    conn = FakeConnection(performance=performance)
     module.reconcile(conn)
-    assert len(conn.queries) == 3
-    assert "all persisted analysis IDs have definitions" in capsys.readouterr().out
+    assert len(conn.queries) == 5
+    output = capsys.readouterr().out
+    assert "RECONCILIATION: REVIEW REQUIRED" in output
+    assert "Truly unexplained stored IDs: 1" in output
+    assert "2999999" in output
+
+
+def test_no_performance_records_is_not_a_normal_complete_run(capsys):
+    # Same default definitions but no performance IDs: investigate
+    # rather than declaring the execution successfully reconciled.
+    values = (194, 0, 194, 0, 294, 294, 0, 100, 0, 0, 0)
+    performance = (0, 0, 194, 100, 0, 0, 0, 0, 194, 0, 0)
+    conn = FakeConnection(values=values, performance=performance)
+    module.reconcile(conn)
+    assert len(conn.queries) == 4
+    assert "REVIEW REQUIRED" in capsys.readouterr().out
+
+
+def test_upstream_sql_performance_offset_preserved_in_queries():
+    assert module.PERFORMANCE_ID_OFFSET == 2_000_000
+    query = module.performance_namespace_sql({
+        "achilles_analysis": "[qc_results].[ACHILLES_ANALYSIS]",
+        "achilles_results": "[qc_results].[ACHILLES_RESULTS]",
+        "achilles_results_dist": "[qc_results].[ACHILLES_RESULTS_DIST]",
+    })
+    assert "d.analysis_id + 2000000" in query
+    assert "is_default" in query
+    assert "count_value" not in query
+    assert "stratum_" not in query
 
 
 def test_case_mismatched_actual_table_names_are_preserved_in_selects():
     conn = FakeConnection()
     module.reconcile(conn)
-    text = " ".join(conn.queries)
-    assert "[qc_results].[ACHILLES_ANALYSIS]" in text
-    assert "[qc_results].[ACHILLES_RESULTS_DIST]" in text
+    query_text = " ".join(conn.queries)
+    assert "[qc_results].[ACHILLES_ANALYSIS]" in query_text
+    assert "[qc_results].[ACHILLES_RESULTS_DIST]" in query_text
 
 
 def test_missing_core_table_stops_before_summary_sql():
@@ -135,21 +188,36 @@ def test_case_collision_stops_before_summary_sql():
 
 
 @pytest.mark.parametrize("values", [
-    (310, 130, 335, 106, 294, 294, 40, 0, 0, 0, 0),
-    (310, 130, 334, 106, 294, 294, 41, 0, 0, 0, 0),
-    (310, 130, 334, 106, 294, 294, 40, 1, 0, 0, 0),
-    (310, 130, 334, 106, 294, 295, 40, 0, 0, 0, 0),
-    (310, 130, 334, 106, 294, 294, -1, 0, 0, 0, 0),
-    (310, 130, 334, 106, 294, 294, 40, 0, 0, 0),
+    (259, 77, 335, 2, 294, 294, 194, 154, 0, 0, 0),
+    (259, 77, 334, 2, 294, 294, 195, 154, 0, 0, 0),
+    (259, 77, 334, 2, 294, 294, 194, 155, 0, 0, 0),
+    (259, 77, 334, 2, 294, 295, 194, 154, 0, 0, 0),
+    (259, 77, 334, 2, 294, 294, -1, 154, 0, 0, 0),
+    (259, 77, 334, 2, 294, 294, 194, 154, 0, 0),
 ])
-def test_invalid_set_arithmetic_is_rejected(values):
+def test_invalid_base_set_arithmetic_is_rejected(values):
     with pytest.raises(module.AuditBlocked):
         module.validate_reconciliation(values)
 
 
-def test_reconciliation_does_not_expose_results_or_clinical_fields():
+@pytest.mark.parametrize("values", [
+    (193, 0, 194, 100, 0, 194, 0, 0, 140, 0, 0),
+    (194, 0, 193, 100, 0, 194, 0, 0, 140, 0, 0),
+    (194, 0, 194, 100, 0, 193, 0, 0, 140, 0, 0),
+    (194, 0, 194, 100, 0, 194, 0, 0, 139, 0, 0),
+    (194, 0, 194, 100, 0, 195, 0, 0, 140, 0, 0),
+    (194, 0, 194, 100, 0, 194, 0, 0, 140, -1, 0),
+    (194, 0, 194, 100, 0, 194, 0, 0, 140, 0),
+])
+def test_invalid_performance_grouping_is_rejected(values):
+    base = module.validate_reconciliation(SUMMARY)
+    with pytest.raises(module.AuditBlocked):
+        module.validate_performance_namespace(values, base)
+
+
+def test_reconciliation_excludes_clinical_fields_and_patient_ids():
     code = SCRIPT.read_text(encoding="utf-8")
-    sql = code[code.index("def reconciliation_sql"):code.index("def unmatched_id_sample_sql")]
+    sql = code[code.index("def performance_namespace_sql"):code.index("def validate_performance_namespace")]
     assert "count_value" not in sql
     assert "stratum_" not in sql
     assert "patient_id" not in sql
