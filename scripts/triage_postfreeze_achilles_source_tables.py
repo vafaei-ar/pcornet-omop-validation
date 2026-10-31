@@ -94,13 +94,13 @@ def actual_frozen_tables(connection) -> dict[str, str]:
     return {name: visible[name] for name in ALLOWLIST}
 
 
-def has_any_row(connection, table: str) -> bool:
-    """Use EXISTS rather than COUNT_BIG to avoid scanning large tables."""
-    if table not in ALLOWLIST:
+def has_any_row(connection, table: str, actual_name: str) -> bool:
+    """Use EXISTS rather than COUNT_BIG; preserve SQL Server's actual table case."""
+    if table not in ALLOWLIST or actual_name.casefold() != table:
         raise AuditBlocked("Frozen table-presence query not on approved allowlist")
     sql = (
         "SELECT CASE WHEN EXISTS (SELECT 1 FROM [dbo]."
-        + quote_sqlserver_name(table)
+        + quote_sqlserver_name(actual_name)
         + ") THEN 1 ELSE 0 END"
     )
     value = single_scalar(connection, sql)
@@ -111,7 +111,7 @@ def has_any_row(connection, table: str) -> bool:
 
 def source_presence(connection) -> dict[str, bool]:
     actual = actual_frozen_tables(connection)
-    return {name: has_any_row(connection, actual[name].casefold())
+    return {name: has_any_row(connection, name, actual[name])
             for name in sorted(ALLOWLIST)}
 
 
