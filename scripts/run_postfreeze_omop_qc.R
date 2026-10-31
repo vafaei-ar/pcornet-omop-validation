@@ -89,7 +89,8 @@ snapshot <- function(details) {
   connection <- DatabaseConnector::connect(details)
   on.exit(DatabaseConnector::disconnect(connection))
   tables <- c("person", "visit_occurrence", "condition_occurrence",
-              "drug_exposure", "measurement", "observation", "death")
+              "drug_exposure", "measurement", "observation", "death",
+              "cdm_source")
   counts <- lapply(tables, function(tbl) {
     sql <- sprintf("SELECT COUNT_BIG(*) AS n FROM %s", qualified(cdm_schema, tbl))
     result <- DatabaseConnector::querySql(connection, sql)
@@ -165,6 +166,19 @@ validate_frozen_anchors <- function(counts) {
 }
 before <- snapshot(connection_details)
 validate_frozen_anchors(before)
+if (as.numeric(before$cdm_source) == 0) {
+  if (tool == "dqd") {
+    stop(paste(
+      "DQD blocked: frozen CDM_SOURCE is empty.",
+      "Do not change the frozen publication database.",
+      "Use documented metadata provenance on a separately restored analysis copy."
+    ))
+  }
+  message(paste(
+    "WARNING: frozen CDM_SOURCE has zero records.",
+    "Achilles is exploratory characterization and does not resolve this metadata gap."
+  ))
+}
 if (tool == "dqd") {
   DataQualityDashboard::executeDqChecks(
     connectionDetails = connection_details,
@@ -214,6 +228,9 @@ manifest <- list(
   database_connector_version = as.character(utils::packageVersion("DatabaseConnector")),
   target_cdm_version = "5.4.2",
   target_cdm_counts_preserved = TRUE,
+  frozen_cdm_source_row_count = as.numeric(after$cdm_source),
+  frozen_cdm_source_populated = as.numeric(after$cdm_source) > 0,
+  cdm_source_metadata_gap_unresolved = as.numeric(after$cdm_source) == 0,
   frozen_etl_sha = "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
   recorded_at_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
   output_local_only = TRUE,
