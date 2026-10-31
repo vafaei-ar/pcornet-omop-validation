@@ -174,7 +174,7 @@ def test_qc_access_audit_requires_restricted_login(monkeypatch):
     monkeypatch.setattr(sys, "argv", [
         "preflight_postfreeze_omop_qc.py", "--audit-qc-access",
     ])
-    with pytest.raises(SystemExit, match="requires --qc-login"):
+    with pytest.raises(SystemExit, match="require --qc-login"):
         module.main()
 
 
