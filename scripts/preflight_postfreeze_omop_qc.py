@@ -112,10 +112,14 @@ def main() -> None:
                    help="Use only the restricted ohdsi_postfreeze_qc login and OHDSI_QC_PASSWORD")
     p.add_argument("--audit-qc-access", action="store_true",
                    help="SELECT-only audit of all frozen tables and isolated QC output permissions")
+    p.add_argument("--inspect-cdm-source", action="store_true",
+                   help="SELECT-only diagnosis of CDM_SOURCE metadata, without reading row values")
     args = p.parse_args()
 
-    if args.audit_qc_access and not args.qc_login:
-        raise SystemExit("--audit-qc-access requires --qc-login")
+    if args.audit_qc_access and args.inspect_cdm_source:
+        raise SystemExit("Choose one of --audit-qc-access or --inspect-cdm-source")
+    if (args.audit_qc_access or args.inspect_cdm_source) and not args.qc_login:
+        raise SystemExit("Metadata and permission audits require --qc-login")
 
     if args.diagnose_odbc:
         if args.qc_login:
@@ -130,7 +134,10 @@ def main() -> None:
         raise SystemExit(2) from None
 
     script = (Path(__file__).with_name("audit_postfreeze_qc_permissions.R")
-              if args.audit_qc_access else Path(__file__).with_suffix(".R")).resolve()
+              if args.audit_qc_access else
+              Path(__file__).with_name("inspect_postfreeze_cdm_source.R")
+              if args.inspect_cdm_source else
+              Path(__file__).with_suffix(".R")).resolve()
     if not script.is_file():
         raise SystemExit("PRECHECK BLOCKED: required R script is absent")
     subprocess.run(["Rscript", "--vanilla", str(script)], check=True, env=environment)
