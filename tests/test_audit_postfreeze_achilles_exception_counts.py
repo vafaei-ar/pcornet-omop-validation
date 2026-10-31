@@ -214,3 +214,66 @@ def test_diagnostic_never_exposes_exact_counts_on_stdout(tmp_path, monkeypatch, 
     assert "DO NOT upload" in stdout
     assert "exception_count" not in stdout
     assert saved == [{207: 2, 209: 0, 210: 10, 814: 1}]
+
+
+
+def test_verify_existing_file_has_no_db_access_or_count_disclosure(
+    tmp_path, monkeypatch, capsys,
+):
+    path = _private_test_path(tmp_path, monkeypatch)
+    module.save_private_counts({207: 0, 209: 2, 210: 10, 814: 0}, path)
+
+    def refuse_database_access(*args, **kwargs):
+        raise AssertionError("Existing-output verification must not access database")
+
+    monkeypatch.setattr(module, "verified_server_config", refuse_database_access)
+    monkeypatch.setattr(module, "read_exception_counts", refuse_database_access)
+    module.verify_existing_private_output()
+    output = capsys.readouterr().out
+    assert "STRUCTURE/PERMISSIONS PASS" in output
+    assert "no SQL connection" in output
+    assert "exception_count" not in output
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda d: d["analyses"]["210"].update({"classification": "ZERO"}),
+    lambda d: d["analyses"]["210"].update({"exception_count": 11}),
+    lambda d: d["analyses"].pop("814"),
+    lambda d: d.update({"small_cell_threshold": 0}),
+    lambda d: d.update({"recorded_at_utc": "2026-10-31"}),
+])
+def test_verify_existing_rejects_tampering(tmp_path, monkeypatch, mutation, capsys):
+    path = _private_test_path(tmp_path, monkeypatch)
+    module.save_private_counts({207: 0, 209: 2, 210: 10, 814: 0}, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    mutation(document)
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(module.AuditBlocked):
+        module.verify_existing_private_output()
+    assert "PASS" not in capsys.readouterr().out
+
+
+def test_verify_existing_rejects_broad_perms_and_symlink(
+    tmp_path, monkeypatch,
+):
+    path = _private_test_path(tmp_path, monkeypatch)
+    module.save_private_counts({207: 0, 209: 2, 210: 10, 814: 0}, path)
+    path.chmod(0o644)
+    with pytest.raises(module.AuditBlocked, match="permissions"):
+        module.verify_existing_private_output()
+    path.chmod(0o600)
+    target = path.with_name("protected-original")
+    path.rename(target)
+    path.symlink_to(target)
+    with pytest.raises(module.AuditBlocked):
+        module.verify_existing_private_output()
+
+
+def test_verify_existing_rejects_missing_file_without_creating_directory(
+    tmp_path, monkeypatch,
+):
+    path = _private_test_path(tmp_path, monkeypatch)
+    with pytest.raises(module.AuditBlocked):
+        module.verify_existing_private_output()
+    assert not path.parent.exists()
