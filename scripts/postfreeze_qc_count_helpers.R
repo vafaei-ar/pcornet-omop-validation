@@ -32,7 +32,7 @@ check_postfreeze_cdm_source <- function(row_count, tool) {
       count < 0 || count != floor(count)) {
     stop("Invalid frozen CDM_SOURCE row count")
   }
-  if (!(tool %in% c("dqd", "achilles")) || length(tool) != 1L) {
+  if (length(tool) != 1L || is.na(tool) || !(tool %in% c("dqd", "achilles"))) {
     stop("Unsupported OHDSI QC tool")
   }
   if (count == 0) {
