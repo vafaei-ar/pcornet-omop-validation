@@ -268,7 +268,25 @@ its local execution manifest. The missing `CDM_SOURCE` record was explicitly
 reported and is NOT repaired by Achilles. These logs alone do not verify
 persisted table contents or constitute a DQD pass.
 
-**Achilles post-run audit (pending local execution):**
+**Achilles post-run audit (retry pending after metadata-case correction):**
+
+The first audit attempt on 2026-10-30 passed the ignored local Achilles
+execution manifest, but incorrectly reported `achilles_analysis` missing
+before querying any persisted Achilles result counts. This was an **audit
+bug**, not an Achilles execution error: the Python table-name comparison
+was case-sensitive, while Achilles v1.7.2 explicitly creates
+`ACHILLES_ANALYSIS` uppercase in the SQL Server DDL and inserts into the
+same uppercase table. Upstream implementation:
+<https://github.com/OHDSI/Achilles/blob/v1.7.2/inst/sql/sql_server/analyses/achilles_analysis_ddl.sql>
+and
+<https://github.com/OHDSI/Achilles/blob/v1.7.2/R/Achilles.R>.
+The corrected Python auditor discovers the *actual* table/schema names
+using SQL Server metadata, compares them case-insensitively, preserves actual
+case in properly quoted queries, and fails if required tables are genuinely
+absent, ambiguous or empty. It prints table names only if a table is still
+missing. No new Achilles execution, table replacement, DDL or DML is needed.
+
+Run the following after pulling this update and verifying tests:
 
 ```bash
 cd ~/works/repos/pcornet-omop-validation
