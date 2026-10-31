@@ -533,6 +533,33 @@ python scripts/audit_postfreeze_achilles_exception_counts.py \
   --config config/etl_A.yaml
 ```
 
+**2026-10-31 correction for an existing local private file:** On the
+operator's first reported rerun, 155 tests passed, 1 skipped, and the new
+synthetic stdout test failed because `inspect()` inspected an *actual*
+previously existing private output path. The subsequent production diagnostic
+correctly blocked rather than overwriting that path. The test now redirects
+all private paths to `tmp_path`; no clinical file is required for tests.
+
+When the private output file already exists, do **not** remove it to
+force a rerun. Instead, after pulling and passing tests, use the new
+metadata-only mode:
+
+```bash
+python scripts/audit_postfreeze_achilles_exception_counts.py \
+  --verify-existing
+```
+
+This does not use the database or require the QC password. It checks owner,
+file and directory permissions, JSON structure, fixed Achilles/CDM/ETL
+metadata, timestamp, the four IDs, permitted 0-10 range and internal
+classification consistency without printing any count or category. A
+`STRUCTURE/PERMISSIONS PASS` confirms only file integrity/shape, **not**
+authenticity of the SQL execution, provenance of its contents, or cohort
+impact. If the check fails, preserve the file and troubleshoot locally.
+The protected file must never be attached or quoted in chat. This new
+validation mode is not a substitute for independent SQL QA and does not
+complete the analysis-210 cohort overlap review.
+
 Successful local execution reports `FOUR-ANALYSIS READ-ONLY TRIAGE: PASS`
 and stores the private JSON at
 `results/postfreeze_standard_qc/private_achilles_exception_counts/four_analysis_exact_counts.json`.
