@@ -229,3 +229,18 @@ def test_cdm_source_inspection_cannot_be_combined_with_full_access_audit(
     ])
     with pytest.raises(SystemExit, match="Choose one"):
         module.main()
+
+
+
+def test_restricted_qc_metadata_preflight_never_inherits_admin_password(
+    tmp_path, monkeypatch,
+):
+    cfg, jar = make_inputs(tmp_path)
+    monkeypatch.setenv("LOCAL_TEST_OMOP_PASSWORD", "synthetic-admin-secret")
+    monkeypatch.setenv("OMOP_SQL_PASSWORD", "another-synthetic-admin-secret")
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic-qc-secret")
+    environment = module.build_environment(cfg, jar, qc_login=True)
+    assert "LOCAL_TEST_OMOP_PASSWORD" not in environment
+    assert "OMOP_SQL_PASSWORD" not in environment
+    assert environment["OHDSI_DB_USER"] == "ohdsi_postfreeze_qc"
+    assert environment["OHDSI_DB_PASSWORD"] == "synthetic-qc-secret"
