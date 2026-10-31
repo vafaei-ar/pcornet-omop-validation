@@ -215,3 +215,49 @@ def test_helper_rejects_non_select_sql_without_execution():
     with pytest.raises(audit.AuditBlocked, match="Only SELECT"):
         audit.single_scalar(qc, "DELETE FROM [dbo].[person]")
     assert qc.statements == []
+
+
+
+def test_frozen_anchor_mismatch_stops_post_run_validation():
+    frozen = FakeConn(audit.FROZEN_DATABASE)
+    original_cursor = frozen.cursor
+
+    def corrupt_count_cursor():
+        cursor = original_cursor()
+        execute = cursor.execute
+
+        def corrupted(statement):
+            result = execute(statement)
+            if "[dbo].[person]" in " ".join(statement.split()):
+                cursor.value = (27090,)
+            return result
+
+        cursor.execute = corrupted
+        return cursor
+
+    frozen.cursor = corrupt_count_cursor
+    with pytest.raises(audit.AuditBlocked, match="anchor mismatch: person"):
+        audit.inspect_frozen(frozen)
+
+
+def test_wrong_sql_principal_blocks_inspection_even_with_result_tables():
+    qc = FakeConn(audit.QC_DATABASE)
+    original_cursor = qc.cursor
+
+    def spoofed_login_cursor():
+        cursor = original_cursor()
+        execute = cursor.execute
+
+        def wrong_login(statement):
+            result = execute(statement)
+            if "ORIGINAL_LOGIN()" in statement:
+                cursor.value = (audit.QC_DATABASE, "sa")
+            return result
+
+        cursor.execute = wrong_login
+        return cursor
+
+    qc.cursor = spoofed_login_cursor
+    with pytest.raises(audit.AuditBlocked, match="restricted login identity"):
+        audit.inspect_results(qc)
+    assert not any("FROM sys.tables" in x for x in qc.statements)
