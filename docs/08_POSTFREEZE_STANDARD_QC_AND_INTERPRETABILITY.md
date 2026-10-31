@@ -564,7 +564,62 @@ Successful local execution reports `FOUR-ANALYSIS READ-ONLY TRIAGE: PASS`
 and stores the private JSON at
 `results/postfreeze_standard_qc/private_achilles_exception_counts/four_analysis_exact_counts.json`.
 Do **not** paste, email, upload, publish, or commit the JSON. A repeat
-invocation deliberately refuses to overwrite it. If a status is
+invocation deliberately refuses to overwrite it.
+
+**Analysis 210 locked D0 cohort-overlap audit (code added, not executed against
+institutional data):**
+
+The local private four-analysis report may contain zero or 1-10 exception
+visits for Achilles 210. Its `--verify-existing` run passed structural and
+permission checks, but that alone does not establish authenticity or provide
+the confidential exception count.
+
+`scripts/audit_postfreeze_achilles_210_cohort_overlap.py` first verifies
+the existing protected four-ID JSON. When analysis 210 has **zero**
+exceptions, it writes a private zero-overlap conclusion without SQL access.
+When the count is positive, it uses only the dedicated restricted QC login
+and read-only `SELECT` CTEs to reconstruct the **locked Stage C/D D0**
+source and lineage-faithful OMOP populations directly from the frozen
+source/code/lineage tables. The query replicates original D0 first qualifying
+primary stroke diagnosis, episode selection, date fallback, adult selection,
+and transformed OMOP condition/visit xwalk rules, with the original anchors
+(9,815 source and 6,001 lineage-faithful OMOP). The Achilles 210 exception
+predicate is reproduced as a `NOT EXISTS` observation-period check on
+visit start date. It is not a new phenotype or a generic stroke cohort.
+
+The private report includes aggregate overlap at visit and patient levels
+and whether an exception could be the selected OMOP index visit or an
+acute-care follow-up visit in the original 30- or 90-day outcome window.
+Such overlap establishes **potential relevance**, not changed eligibility,
+events, risk estimates or model coefficients. A zero overlap cannot repair
+the independently established domain/metadata deficiencies. Counts remain
+private and suppressed on the terminal. The script blocks if either
+frozen cohort anchor or Achilles 210 exception count fails to reproduce.
+No patient IDs, visit IDs, individual dates, SQL scratch tables or writes
+are exported. Existing private output is never overwritten.
+
+Run only after `pytest -q` passes in the active local branch:
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+
+# The restricted OHDSI_QC_PASSWORD must be set securely for a nonzero
+# Achilles 210 exception count; if zero, no SQL connection is needed.
+python scripts/audit_postfreeze_achilles_210_cohort_overlap.py \
+  --config config/etl_A.yaml
+```
+
+Output remains under ignored, protected `results/postfreeze_standard_qc/private_achilles_exception_counts/analysis_210_locked_d0_overlap.json`.
+Do not upload or paste this file. Report only the command exit status.
+The new code has synthetic unit tests but has NOT yet run on the institutional
+SQL instance; no results or cohort effects are claimed. If the 210 count is
+nonzero, the CTE may require substantial server work; do not launch alongside
+other heavy clinical queries. If it blocks, preserve the private prior file
+and inspect the diagnostic before retrying.
+
+ If a status is
 `SUPPRESSED_NONZERO`, investigation must remain within the approved local
 environment; no specific patient or encounter is inferred from the
 aggregate. Analysis 210 must be interpreted against the locked cohort
