@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. DQD cannot initialize because frozen CDM_SOURCE contains zero rows, confirmed by read-only metadata inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with all 194 distinct analysis IDs marked complete in the transcript. Stored-result audit PENDING. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. A separate analysis-ID/definition reconciliation is pending. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -268,7 +268,7 @@ its local execution manifest. The missing `CDM_SOURCE` record was explicitly
 reported and is NOT repaired by Achilles. These logs alone do not verify
 persisted table contents or constitute a DQD pass.
 
-**Achilles post-run audit (retry pending after metadata-case correction):**
+**Achilles post-run audit (completed and passed):**
 
 The first audit attempt on 2026-10-30 passed the ignored local Achilles
 execution manifest, but incorrectly reported `achilles_analysis` missing
@@ -304,9 +304,46 @@ distinct analysis IDs represented in result rows, checks any remaining
 permanent scratch tables, and re-verifies all three frozen publication counts.
 It does NOT display concept-level results, stratum labels, individual patient
 values, raw Achilles outputs, or suppressed cells. The necessary final signal
-is `ACHILLES READ-ONLY POST-RUN AUDIT: PASS`. A result-table analysis-ID
-count smaller than the number of completed execution log IDs is not
-automatically a failure: some analyses can legitimately return no rows.
+is `ACHILLES READ-ONLY POST-RUN AUDIT: PASS`. The corrected read-only post-run audit PASSED locally on 2026-10-30
+following 103 passed Python tests and 1 skipped test. The saved counts are:
+`achilles_analysis` 294 rows, `achilles_results` 840,097 rows,
+`achilles_results_dist` 44,802 rows, and 334 distinct analysis IDs in
+the union of saved result tables. No permanent scratch tables remained, and
+the frozen person, visit_occurrence and condition_occurrence counts still
+matched their publication references. These values are Achilles **table
+row counts and analysis identifiers**, not patient counts or quality
+pass/fail measures.
+
+**Next read-only analysis-ID reconciliation (pending local execution):**
+
+The 334 distinct saved result IDs exceed the 294 definition rows. Since one
+metadata row defines at most one distinct analysis ID, at least 40 distinct
+stored result IDs have no matching definition row if all identifiers use
+the same analysis-ID namespace. This could reflect generated subanalyses or
+a metadata-definition mismatch, but the current evidence does not establish
+which. The 194 distinct completed log IDs are another, different measure:
+the number of individually logged default analysis executions. Do not infer
+334 default analyses ran, nor declare output validity from these totals.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+# Use only the already provisioned QC login via OHDSI_QC_PASSWORD:
+python scripts/reconcile_postfreeze_achilles_analysis_ids.py \
+  --config config/etl_A.yaml
+```
+
+The diagnostic connects as the restricted QC login, validates the existing
+Achilles execution manifest, discovers the *actual* SQL Server table names,
+and compares the distinct ID sets in the metadata, regular results and
+distribution results. It prints metadata-only union, overlap, unmatched
+and unused-definition counts, plus up to 20 unmatched **Achilles analysis**
+IDs when present. It does not read clinical values, strata, person IDs, or
+result `count_value` fields, and performs only SELECT queries. Non-default
+definitions or analyses that return no rows can explain some unused
+definitions, so do not label them failed without further evidence.
+
 Do not rerun Achilles with `createTable=TRUE` while completed results exist,
 because that could overwrite them. Retain raw results privately pending
 disclosure review and independent scientific interpretation.
