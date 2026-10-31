@@ -42,6 +42,11 @@ def build_environment(config_path: str, driver_folder: str, *, qc_login: bool = 
         raise FileNotFoundError("JDBC driver directory is missing its .jar file")
 
     env = os.environ.copy()
+    if qc_login:
+        # Do not pass ETL administrator credentials into an R process that
+        # authenticates exclusively as the restricted QC principal.
+        env.pop(str(sql.get("password_env", "OMOP_SQL_PASSWORD")), None)
+        env.pop("OMOP_SQL_PASSWORD", None)
     env.update({
         "OHDSI_DB_SERVER": str(sql["server"]),
         "OHDSI_DB_NAME": str(sql["database"]),
