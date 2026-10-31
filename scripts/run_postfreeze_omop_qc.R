@@ -166,19 +166,7 @@ validate_frozen_anchors <- function(counts) {
 }
 before <- snapshot(connection_details)
 validate_frozen_anchors(before)
-if (as.numeric(before$cdm_source) == 0) {
-  if (tool == "dqd") {
-    stop(paste(
-      "DQD blocked: frozen CDM_SOURCE is empty.",
-      "Do not change the frozen publication database.",
-      "Use documented metadata provenance on a separately restored analysis copy."
-    ))
-  }
-  message(paste(
-    "WARNING: frozen CDM_SOURCE has zero records.",
-    "Achilles is exploratory characterization and does not resolve this metadata gap."
-  ))
-}
+check_postfreeze_cdm_source(before$cdm_source, tool)
 if (tool == "dqd") {
   DataQualityDashboard::executeDqChecks(
     connectionDetails = connection_details,
