@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. The initial DQD attempt stopped on a snapshot parsing bug that was corrected. The second DQD attempt passed the snapshot and then stopped at the CDM_SOURCE metadata prerequisite. No DQD results yet. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning and full permissions audit passed on 2026-10-30. DQD cannot initialize because frozen CDM_SOURCE contains zero rows, confirmed by read-only metadata inspection. No DQD check results. Achilles and interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -169,9 +169,10 @@ The `cdmSourceName` argument does **not** replace this requirement.
 The frozen `CDM_SOURCE` table must **not** be populated in place to make
 DQD run, and QC SELECT-only privileges must not be loosened. A missing
 or incomplete CDM_SOURCE is itself a provenance/data quality finding.
-First run the read-only metadata inspection, which reports the row count,
-presence (not contents) of source/version fields, and whether vocabulary
-version metadata are available:
+The read-only metadata inspection completed locally: **CDM_SOURCE contains
+zero rows**, all 11 expected columns are present, and a nonempty vocabulary
+version metadata record is available. The inspection confirmed no SQL
+writes. The diagnostic can be reproduced as follows:
 
 ```bash
 # Reuse the securely set OHDSI_QC_PASSWORD and existing R/JDBC setup.
@@ -194,8 +195,14 @@ No missing dates, version concept identifiers, vocabulary versions, or
 institutional source metadata should be invented. A metadata-overlay
 workaround or bypassing the DQD prerequisite would change what is measured
 and would need explicit scientific justification. Until a valid isolated
-target exists, DQD stays blocked and Achilles should not be started under
-the misleading assumption that standard QC succeeded.
+target exists, DQD stays blocked. **Achilles is a separate descriptive
+characterization tool**, not proof that DQD passed. Unlike DQD, Achilles
+supports explicitly supplying `sourceName` and `cdmVersion` instead of
+deriving them from CDM_SOURCE. Our runner supplies both. It can therefore
+be attempted independently using the existing separate QC output database,
+subject to the normal privileges and resource gates. Its success is not
+guaranteed by the DQD diagnostic. This exploratory run must prominently
+report that the frozen CDM_SOURCE was empty.
 
 **Controlled local DQD launch (blocked pending metadata diagnosis):**
 
@@ -233,8 +240,25 @@ restricted file-creation mask. Existing output files block automatic reruns
 to prevent accidental overwrite. A successful execution will produce a
 private execution manifest. The raw DQD JSON may contain sensitive small
 counts and SQL error details. Review and aggregate it locally before sharing
-any findings. Do not run Achilles until the DQD execution and output have
-been reviewed.
+any findings. Do not rerun DQD against the frozen database while CDM_SOURCE is empty.
+Achilles can be attempted independently, after reviewing the zero pre-existing
+QC output tables and passing the full permissions audit. The R runner now
+includes CDM_SOURCE in its frozen pre/post count snapshot; it blocks DQD
+immediately, but warns on Achilles and records the zero metadata row count
+and unresolved deficiency in the local execution manifest. To preview or
+explicitly launch Achilles after tests pass:
+
+```bash
+python scripts/launch_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml --tool achilles
+# Explicit operator-authorized execution, not part of a DQD pass:
+python scripts/launch_postfreeze_omop_qc.py \
+  --config config/etl_A.yaml --tool achilles --execute
+```
+
+Achilles writes only to the separate QC database (results/scratch) with
+`smallCellCount=10`, not to the frozen CDM. If it fails after creating
+partial output tables, preserve them and inspect before rerunning.
 
 **Preparation by the local database/R administrator**:
 
