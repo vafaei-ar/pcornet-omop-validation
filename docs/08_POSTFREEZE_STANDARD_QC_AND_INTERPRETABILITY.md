@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. An initial read-only analysis-ID reconciliation completed: 194 stored IDs have no exact definition ID and 154 definitions lack data-bearing rows. The unmatched IDs begin at 2,000,000 and match Achilles' documented performance-ID namespace; complete +2,000,000 mapping verification is pending. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. The completed read-only analysis-ID reconciliation PASSED: all 194 unmatched IDs are documented Achilles performance records (analysis_id + 2,000,000), none are unexplained, and 140 of 194 default analyses have data-bearing result rows. The remaining 54 default analyses lack stored data-bearing result rows, which is not automatically an execution or quality failure. A read-only category-level inventory is pending. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -314,7 +314,7 @@ matched their publication references. These values are Achilles **table
 row counts and analysis identifiers**, not patient counts or quality
 pass/fail measures.
 
-**Achilles analysis-ID reconciliation (initial completed; performance-offset verification pending):**
+**Achilles analysis-ID reconciliation (completed and passed):**
 
 The first read-only reconciliation completed on 2026-10-30, with 115 local
 tests passing and 1 skipped. It found 259 distinct regular-result IDs,
@@ -323,25 +323,27 @@ All 294 definition rows have distinct non-NULL IDs, with 194 stored result IDs
 not directly matching a definition, and 154 definitions not represented by
 a data-bearing result ID. No NULL analysis IDs were found.
 
-The first 20 unmatched IDs start with `2000000, 2000001, ...`. This is
-**expected structure for Achilles performance measurements**, not evidence
-of 194 unidentified clinical analyses. In Achilles v1.7.2, the official
-SQL Server performance export explicitly joins results using
-`achilles_analysis.analysis_id + 2000000 = achilles_results.analysis_id`:
+The first 20 unmatched IDs start with `2000000, 2000001, ...`. In
+Achilles v1.7.2, the official SQL Server performance export explicitly joins
+results using `achilles_analysis.analysis_id + 2000000 =
+achilles_results.analysis_id`:
 <https://github.com/OHDSI/Achilles/blob/v1.7.2/inst/sql/sql_server/export/performance/sqlAchillesPerformance.sql>.
-The versioned analysis-details CSV has 294 definitions, including exactly
-194 with `IS_DEFAULT=1` and 100 with `IS_DEFAULT=0`:
+The versioned analysis-details CSV contains 294 definitions, 194 default and
+100 non-default:
 <https://github.com/OHDSI/Achilles/blob/v1.7.2/inst/csv/achilles/achilles_analysis_details.csv>.
-The 194 extra IDs numerically match the 194 completed default analyses in the
-local terminal log. These facts suggest that **194 saved IDs are performance
-bookkeeping records** and the other 140 IDs are data-bearing results.
-However, this classification still requires verification across the entire
-stored ID set. The 154 definitions lacking data-bearing rows may comprise
-100 analyses omitted by `defaultAnalysesOnly=TRUE` plus 54 default analyses
-without surviving rows; this split is a hypothesis until checked against the
-local `IS_DEFAULT` metadata.
+The **second full-set reconciliation PASSED** locally on 2026-10-30 with
+124 tests passed and one skipped: all 194 initially unmatched IDs map exactly
+to a defined analysis ID plus 2,000,000, zero truly unexplained IDs exist,
+194 performance IDs belong to default analyses, and zero performance IDs
+belong to non-default analyses. Of the 194 default analyses, 140 have
+data-bearing result rows and 54 have none. All 100 non-default analyses
+appropriately lack result rows under `defaultAnalysesOnly=TRUE`. This
+explains all 154 definitions without data-bearing rows. **No result row
+does not mean a quality failure**. Achilles' output suppression, absent source
+records or SQL returning no rows remain alternative possibilities until
+the relevant analyses and source-domain coverage are inspected.
 
-**Run corrected, SELECT-only namespace reconciliation:**
+**Reproduce the passed SELECT-only namespace reconciliation:**
 
 ```bash
 cd ~/works/repos/pcornet-omop-validation
@@ -362,6 +364,34 @@ duplicate metadata IDs, and consistent SQL set arithmetic before reporting
 IDs appear if a mismatch remains. No clinical values, strata, person IDs,
 or result `count_value` fields are read. The original SQL Server database
 and QC tables remain unchanged.
+
+**Next: category-level inventory of missing data-bearing results (pending):**
+
+Use the verified results to identify which of the 54 default analyses have
+no surviving rows. Only definition IDs, OHDSI-provided category labels,
+default flags, and the presence/absence of analysis IDs in results are read.
+No count values, strata, patient records, clinical concept IDs, or raw
+distribution values are accessed. The script validates 294 definitions,
+194 default, 100 non-default, 194 performance IDs, 140 default IDs with data,
+54 default IDs without data, and zero non-default IDs in stored results.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+# Requires OHDSI_QC_PASSWORD already securely set in the current shell.
+python scripts/summarize_postfreeze_achilles_coverage.py \
+  --config config/etl_A.yaml
+```
+
+The output groups all default analyses by the official Achilles `category`
+and reports numbers of analysis definitions with and without stored rows,
+NOT counts of persons or clinical events. It prints analysis IDs only with
+the optional `--show-missing-analysis-ids` flag. This identifies where to
+inspect further but cannot establish whether any missing row arose from
+legitimate zero occurrence, a suppressed small cell, a query returning no
+rows, or another mechanism. Further scientific interpretation must separately
+evaluate domain coverage and terminology mapping in the frozen CDM.
 
 Do not rerun Achilles with `createTable=TRUE` while completed results exist,
 because that could overwrite them. Preserve raw results privately pending
