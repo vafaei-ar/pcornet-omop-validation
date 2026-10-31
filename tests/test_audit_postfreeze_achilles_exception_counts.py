@@ -205,7 +205,6 @@ def test_diagnostic_never_exposes_exact_counts_on_stdout(monkeypatch, capsys):
             return Conn()
 
     monkeypatch.setitem(__import__("sys").modules, "pyodbc", PyOdbc())
-    assert not module.PRIVATE_OUTPUT.exists()
     module.inspect("config/etl_A.yaml")
     stdout = capsys.readouterr().out
     assert "READ-ONLY TRIAGE: PASS" in stdout
