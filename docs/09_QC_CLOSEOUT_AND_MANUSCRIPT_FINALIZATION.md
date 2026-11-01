@@ -143,12 +143,19 @@ primary AUROC permutation importance, keeping a bounded common
 training-reference SHAP sample; to use the matched shared test set
 for selection/representation contrasts; to compute explicit pairwise
 rank and magnitude differences; and to protect both private input
-files and create-only aggregate output. **Those model revisions and
-new regression tests have not yet run on the institutional host.**
-The next gate is the updated tests and `--validate-only` model-input
-check, followed by RF/XGBoost fitting, interpretation, the five-feature
-sensitivity and institutional disclosure review before any manuscript
-claim. No model-attribution results exist yet.
+files and create-only aggregate output. **Subsequent institutional validation (2026-11-01):** The
+revised modeling code passed all **227 tests** and the full locked
+four-population `--validate-only` gate reported
+`RF XGBOOST PRIVATE INPUT VALIDATION: PASS`. Patient alignment,
+index dates, 90-day outcomes and split membership were verified without
+fitting models or writing files.
+
+**Next gate:** Execute the full protected 16-model RF/XGBoost analysis,
+including held-out AUROC permutation importance, SHAP, matched-test
+comparisons and the six/five-feature sensitivity. Review its privately
+saved aggregate for numerical validity, scope, uncertainty and
+disclosure before updating figures or manuscript. **No model-attribution
+results exist yet.**
 
 This study-team-prioritized analysis should be completed **before making
 RF/XGBoost attribution claims or closing a manuscript version that
