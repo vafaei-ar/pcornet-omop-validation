@@ -809,6 +809,47 @@ not falsely dated as the original preflight. Do not change the locked
 Stage E definitions or frozen target. The previous attempt to run
 RF/XGBoost feature extraction did **not** occur.
 
+**Stage E metadata recovery (2026-10-31 inventory):** The requested
+read-only inventory confirmed that the expected
+`results/publication_analysis/stage_e_statistical_model/stage_e_statistical_model_preflight.json`
+is absent and that no file with this name exists anywhere under
+`results/`. The authentic completed Stage C fallback report **is**
+present at its expected location. The original historical Stage E
+preflight cannot be copied or inferred from its completed Stage E models.
+
+A guarded recovery script now executes the **unmodified original
+outcome-free Stage E preflight checks**, but supplies the dedicated
+`ohdsi_postfreeze_qc` login in memory instead of the ETL administrator.
+It first verifies the frozen database identity and the unchanged
+publication row-count anchors; requires the repository to be clean;
+refuses existing output; checks the original frozen definition SHA
+values and all required field checks; then saves a `0600` local JSON
+containing a clear `postfreeze_recovery_provenance` field. It never
+recreates historical timestamps or claims the new metadata is the
+September preflight. It does not execute outcomes, models or ETL writes.
+It creates no patient-level files.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+
+# Requires the already-provisioned restricted OHDSI_QC_PASSWORD.
+python scripts/recover_postfreeze_stage_e_preflight.py \
+  --config config/etl_A.yaml
+
+# Only after metadata recovery reports PASS:
+python -m pcornet_omop_validation.study.postfreeze_interpretability_extract \
+  --config config/etl_A.yaml \
+  --output-dir results/private_inputs \
+  --preflight-only
+```
+
+**Do not** rerun the original Stage E models, fabricate the missing
+file, overwrite an existing preflight, or call `--confirm-private`
+before both commands pass. No institutional recovery execution or
+new test results are claimed at this stage.
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
