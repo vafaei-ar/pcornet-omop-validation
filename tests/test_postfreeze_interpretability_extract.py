@@ -87,7 +87,12 @@ def test_private_population_rejects_null_and_duplicate_identifiers(monkeypatch):
         "patid": ["p1", "p2", "p3"],
         "index_date": ["2024-01-01"] * 3,
         "outcome": [0, 1, 0],
-        **{name: [1.0, 2.0, 3.0] for name in extractor.FEATURES},
+        **{
+            name: ([0.0, 1.0, 0.0] if name in (
+                "female_indicator", "prior_365d_ischemic_stroke_indicator"
+            ) else [1.0, 2.0, 3.0])
+            for name in extractor.FEATURES
+        },
     }
     clean = pd.DataFrame(cols)
     parsed = extractor._prepare_population(clean, "pcornet_full")
