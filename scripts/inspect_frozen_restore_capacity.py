@@ -44,10 +44,10 @@ def verified_backup_history(rows: list) -> tuple[str, int, int]:
     row = rows[0]
     filename = str(row["physical_device_name"])
     position = row["position"]
-    size = row["compressed_backup_size"]
+    size = integral_bytes(row["compressed_backup_size"])
     if (not BACKUP_RE.fullmatch(filename)
             or type(position) is not int or not (1 <= position <= 32767)
-            or type(size) is not int or size <= 0):
+            or size <= 0):
         raise CapacityBlocked("Unexpected protected backup media metadata")
     return filename, position, size
 
