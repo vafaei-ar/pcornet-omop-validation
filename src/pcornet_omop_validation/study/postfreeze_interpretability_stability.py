@@ -118,8 +118,9 @@ def predictor_diagnostics(populations: dict[str, pd.DataFrame]) -> list[str]:
     return lines
 
 
-def _model_permutation(model, train: pd.DataFrame, test: pd.DataFrame,
-                       features: list[str]) -> dict[str, float]:
+def _model_permutation(model, train: pd.DataFrame,
+                       test: dict[str, pd.DataFrame],
+                       features: list[str]) -> dict[str, dict[str, float]]:
     """Full held-out AUROC permutation with fixed shuffle seed."""
     from sklearn.inspection import permutation_importance
 
@@ -128,6 +129,8 @@ def _model_permutation(model, train: pd.DataFrame, test: pd.DataFrame,
     results = {}
     # Stable held-out patient order, identical across paired data models.
     for scope, subset in test.items():
+        if scope not in ("native_test", "common_shared_test"):
+            raise ValueError("Unexpected test scope for model robustness")
         if subset.outcome.nunique() != 2:
             raise ValueError("Robustness test population has one outcome class")
         perm = permutation_importance(
