@@ -957,6 +957,50 @@ No output should be published or uploaded before reviewing the private
 aggregate for expected scope, test-set denominators, correct signs,
 feature-rank changes, stability and statistical limitations.
 
+**Completed private numerical/provenance audit (institutional terminal,
+2026-11-01):** The updated `pytest -q` reported **234 passed in 2.21s**.
+The read-only audit reported
+`RF XGBOOST PRIVATE AGGREGATE AUDIT: PASS` and specifically
+confirmed the complete model/sensitivity/population matrix, full held-out
+performance and importance scope, SHAP and rank structure, exact
+pairwise contrast arithmetic, and frozen protocol provenance. The JSON
+remained protected, and no data were exported or uploaded. This closes
+the numerical/schema/provenance audit but does **not** show whether
+attribution differences are material or stable.
+
+**Next restricted interpretation step:** The code-defined
+`postfreeze_interpretability_local_review` creates an owner-only
+`0600` Markdown review in the ignored directory
+`results/postfreeze_interpretability/private_scientific_review.md`.
+It reads only the completed, audited aggregate and does not query SQL,
+read patient-level Parquet, refit models, or change the original JSON.
+It provides full held-out performance, feature-by-feature permutation
+and SHAP importance, right-minus-left matched/end-to-end rank changes,
+cross-model delta-direction concordance, and five-feature sensitivity.
+The terminal prints **no scores or feature rankings**. The review
+remains private and not institutionally disclosure-cleared. A
+create-only output guard prevents overwriting previous review.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+umask 077
+pytest -q &&
+python -m pcornet_omop_validation.study.postfreeze_interpretability_local_review
+```
+
+**This local scientific review code and its regression tests have not
+yet been run on the institutional computer.** After successful
+execution, examine the Markdown **only in the approved secure local
+environment**. Do not paste any private tables, rankings, scores or
+small-cell counts into chat. Because the existing aggregate has only
+single fitted-model attributions and 20 random permutation repetitions,
+it does not provide patient-bootstrap confidence intervals or model
+training-seed stability. Those require new explicitly labeled local
+sensitivity computations before a strong claim of stable ranking
+changes. Independent institutional disclosure approval is required
+before using the results in a manuscript or figure.
+
 **Completed private model computation and pending audit (institutional
 terminal, 2026-11-01):** The four-cohort, two-algorithm, two-feature-set
 run completed all **16** individual RF/XGBoost fits. The terminal
