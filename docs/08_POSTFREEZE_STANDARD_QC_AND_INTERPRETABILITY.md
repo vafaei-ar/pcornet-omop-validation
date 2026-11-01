@@ -978,6 +978,51 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**Read-only backup file-level verification and restore-capacity gate
+(institutional terminal, 2026-11-01):** The operator confirmed
+**one readable** `OMOP_VALIDATED_A_copyonly_*.bak` file with
+**23.03 GiB** total readable backup media. `df -h /var/opt/mssql`
+reported **811 GiB available** on the local 1.8 TiB root filesystem
+(927 GiB used, 54% utilization). This verifies file readability by
+the `mssql` service account but **not** a successful independent
+off-machine recovery.
+
+The next planning step needs the **logical uncompressed file
+allocations** inside that exact backup, not its 23.03 GiB compressed
+size. The new `scripts/inspect_frozen_restore_capacity.py` obtains
+a single healthy, checksum-enabled, COPY_ONLY media record from
+`msdb` and issues only SQL Server `RESTORE FILELISTONLY`. It
+strictly validates the physical backup path and media position,
+aggregates the logical data/log/other bytes without reporting logical
+filenames or file paths, and records filesystem headroom. It
+**does not run RESTORE DATABASE, BACKUP, DDL, DML or copy a file**.
+Microsoft documents `RESTORE FILELISTONLY` as returning the
+database/log file metadata stored in a backup. Because SQL Server
+may require CREATE DATABASE privilege to read the backup device
+metadata, this capacity check uses the existing authorized
+administrator connection from the backup tool, **not** the QC
+read-only clinical account. If that credential is not already
+available through the approved local secret mechanism, the check
+fails closed. Never paste a password, DSN or provider traceback.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q &&
+python scripts/inspect_frozen_restore_capacity.py --config config/etl_A.yaml
+```
+
+**The script and synthetic tests have not run in the institutional
+environment yet.** Share only the terminal's aggregate data/log
+allocation sizes, logical file count and PASS/BLOCKED status.
+Even if local 811 GiB free exceeds the logical allocation,
+it is not a substitute for separate encrypted off-machine retention
+and an *independent isolated* SQL Server restore. SQL Server
+version, storage location, backup certificate keys where applicable,
+authorized access, checksum-verification of a transferred copy and
+clinical anchor reproduction all need separate signoff before any
+DQD work on a restored clone.
+
 **Existing frozen backup read-only inventory (institutional terminal,
 2026-11-01):** After the completed 245-test robustness analysis, the
 operator inventoried `/var/opt/mssql/backup` without creating or
