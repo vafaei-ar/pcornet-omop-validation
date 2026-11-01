@@ -8,7 +8,7 @@ The central question is not simply whether rows were copied correctly. It is:
 
 ## Recommended reading order
 
-Read these seven files in order:
+Read the seven core study documents in order. For the separate post-freeze extension, read documents 08 and 09 after document 07:
 
 1. **`01_READ_ME_FIRST.md`** — orientation, study question, and repository map.
 2. **`02_STUDY_DESIGN_AND_DECISIONS.md`** — what was tested, why each validation layer exists, and which scientific decisions were frozen.
@@ -17,6 +17,8 @@ Read these seven files in order:
 5. **`05_CODE_REVIEW_GUIDE.md`** — how to read the ETL and study code, including the files where scientific choices are implemented.
 6. **`06_MANUSCRIPT_AND_REVIEW_GUIDE.md`** — current manuscript framing, reviewer questions, limitations, and what feedback is most useful.
 7. **`07_PUBLICATION_FIGURES.md`** — reproducible publication figures, Nature-oriented artwork standards, and figure-generation commands.
+8. **`08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`** — separate post-freeze Achilles/DQD diagnostics and pending interpretability extension.
+9. **`09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`** — verified QC evidence, unresolved limitations, and manuscript completion gates.
 
 Historical development notes, interim lock records, and superseded manuscript fragments are retained under `docs/archive/`. They are provenance, not required reading.
 
