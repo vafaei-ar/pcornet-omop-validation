@@ -99,20 +99,34 @@ def summarize_filelist(rows: list) -> dict[str, int]:
     }
 
 
-def inspect(config_path: str) -> None:
-    # This requires the prior approved ETL administrator connection to read
-    # backup-set metadata, but performs read-only SQL and never writes the CDM.
-    verified_server_config(config_path)
-    cfg = load_etl_config(config_path)
-    if not cfg.sql_password:
-        raise CapacityBlocked("SQL admin password environment variable unavailable")
+SAFE_STAGES = frozenset({
+    "CONFIG", "ADMIN_CREDENTIAL", "ENGINE_CREATE", "SQL_CONNECT",
+    "DATABASE_IDENTITY", "MSDB_BACKUP_HISTORY",
+    "BACKUP_MEDIA_VALIDATION", "FILELISTONLY",
+    "LOGICAL_FILE_VALIDATION", "FREE_SPACE",
+})
 
-    engine = make_engine(cfg, database=FROZEN_DATABASE)
+
+def inspect(config_path: str) -> None:
+    """Run only bounded metadata commands, with fixed non-sensitive failures."""
+    stage = "CONFIG"
+    engine = None
     try:
+        verified_server_config(config_path)
+        cfg = load_etl_config(config_path)
+        stage = "ADMIN_CREDENTIAL"
+        if not cfg.sql_password:
+            raise CapacityBlocked("No configured administrator credential")
+        stage = "ENGINE_CREATE"
+        engine = make_engine(cfg, database=FROZEN_DATABASE)
+        stage = "SQL_CONNECT"
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            stage = "DATABASE_IDENTITY"
             db_name = conn.execute(text("SELECT DB_NAME()")).scalar_one()
             if str(db_name).casefold() != FROZEN_DATABASE.casefold():
                 raise CapacityBlocked("Unexpected SQL database identity")
+
+            stage = "MSDB_BACKUP_HISTORY"
             records = conn.execute(text("""
                 SELECT bs.position, bm.physical_device_name,
                        bs.compressed_backup_size
@@ -130,16 +144,22 @@ def inspect(config_path: str) -> None:
                 "database_name": FROZEN_DATABASE,
                 "prefix": str(BACKUP_DIR / (FROZEN_DATABASE + "_copyonly_%")),
             }).mappings().all()
+
+            stage = "BACKUP_MEDIA_VALIDATION"
             filename, position, size = verified_backup_history(records)
-            # SQL identifier/string literals are safe here because the complete
-            # path and integral media position were independently validated.
+
+            # Both pieces interpolated below have been strictly validated:
+            # exact safe filename regex, integer position 1..32767.
+            stage = "FILELISTONLY"
             sql = (
                 "RESTORE FILELISTONLY FROM DISK = N'"
                 + filename + "' WITH FILE = " + str(position)
             )
             raw = conn.exec_driver_sql(sql).mappings().all()
+            stage = "LOGICAL_FILE_VALIDATION"
             allocation = summarize_filelist(raw)
 
+        stage = "FREE_SPACE"
         available_bytes = shutil.disk_usage("/var/opt/mssql").free
         print("FROZEN BACKUP FILELISTONLY CAPACITY: PASS")
         print("Source database identity and checksum backup history: PASS")
@@ -152,8 +172,17 @@ def inspect(config_path: str) -> None:
         print(f"Current local free space: {available_bytes/GIB:.2f} GiB")
         print("These are capacity estimates, not a successful isolated restore.")
         print("Do not restore, transfer or amend frozen CDM without separate authorization.")
+    except Exception:
+        # Never pass provider messages, paths or secrets to the terminal.
+        # The stage is one of the fixed codes above, not derived from SQL.
+        raise CapacityBlocked(stage if stage in SAFE_STAGES else "CONFIG") from None
     finally:
-        engine.dispose()
+        if engine is not None:
+            # Engine disposal is local; SQL errors may include sensitive metadata.
+            try:
+                engine.dispose()
+            except Exception:
+                pass
 
 
 def main() -> None:
@@ -162,9 +191,15 @@ def main() -> None:
     args = parser.parse_args()
     try:
         inspect(args.config)
+    except CapacityBlocked as blocked:
+        stage = str(blocked)
+        stage = stage if stage in SAFE_STAGES else "UNCLASSIFIED"
+        print(f"FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED [{stage}]",
+              file=sys.stderr)
+        raise SystemExit(1) from None
     except Exception:
-        # SQL driver errors may include credentials, internal paths or metadata.
-        print("FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED", file=sys.stderr)
+        print("FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED [UNCLASSIFIED]",
+              file=sys.stderr)
         raise SystemExit(1) from None
 
 
