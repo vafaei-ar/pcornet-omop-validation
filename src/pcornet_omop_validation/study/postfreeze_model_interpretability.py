@@ -233,7 +233,9 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
     shared = populations["pcornet_shared"]
     # Common identical patient set: all four groups are evaluated on these IDs.
     common_ids = evaluation_sample(shared, max_eval).index
-    common_bg = shared[shared.is_train].sort_index().head(200)
+    # Locked study protocol: fixed-seed random background, not first sorted IDs.
+    common_training = shared[shared.is_train]
+    common_bg = common_training.sample(n=min(200, len(common_training)), random_state=SEED)
     output: dict = {
         "status": "postfreeze_interpretability_completed_pending_disclosure_review",
         "frozen_etl_sha": FROZEN_SHA,
