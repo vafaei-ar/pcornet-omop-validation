@@ -8,17 +8,19 @@ while their existing SQL Server #temp tables are alive. Never commits or
 publishes these row-level local files. No frozen ETL or study definitions change.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.metadata
 import inspect
 import json
 import os
 import stat
+from urllib.parse import quote_plus
 import numpy as np
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
 
 from pcornet_omop_validation.etl.config import load_etl_config
@@ -300,9 +302,59 @@ def preflight_private_export(config_path: str, private_output_dir: str) -> dict:
     }
 
 
+
+@contextmanager
+def restricted_stage_engines(config_path: str):
+    """Use only the locked read-only QC principal for both unchanged analyses.
+
+    The locked analyses call their imported make_engine() bindings. Override
+    those bindings narrowly and always restore them, including on errors.
+    SQL may create session-local #temp tables but never permanent CDM tables.
+    """
+    from scripts.inspect_postfreeze_achilles import (
+        FROZEN_DATABASE,
+        inspect_frozen,
+        make_restricted_odbc_string,
+        verified_server_config,
+    )
+    import pyodbc
+
+    server = verified_server_config(config_path)
+    secret = os.getenv("OHDSI_QC_PASSWORD", "")
+    if not secret:
+        raise RuntimeError("OHDSI_QC_PASSWORD is required for protected extraction")
+    odbc = make_restricted_odbc_string(server, FROZEN_DATABASE, secret)
+    db_connection = pyodbc.connect(odbc, autocommit=True, timeout=20)
+    try:
+        inspect_frozen(db_connection)
+    finally:
+        db_connection.close()
+
+    def restricted_factory(_cfg):
+        return create_engine(
+            "mssql+pyodbc:///?odbc_connect=" + quote_plus(odbc),
+            future=True,
+            pool_pre_ping=True,
+        )
+
+    original_stage_factory = original_stage_e.make_engine
+    original_fallback_factory = stage_d_fallback.make_engine
+    original_stage_e.make_engine = restricted_factory
+    stage_d_fallback.make_engine = restricted_factory
+    try:
+        yield
+    finally:
+        original_stage_e.make_engine = original_stage_factory
+        stage_d_fallback.make_engine = original_fallback_factory
+
+
+
 def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     if not confirm:
         raise ValueError("Export of local row-level clinical features requires --confirm-private")
+    # Refuse an incomplete, altered or unavailable historical preflight before
+    # any clinical query or creation of private files.
+    preflight_private_export(config_path, private_output_dir)
     out_dir = _private_output_path(private_output_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError("Private output directory is not empty; preserve existing outputs")
@@ -318,12 +370,15 @@ def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     work_dir = _prepare_private_output(out_dir)
     preflight_copy = work_dir / existing_preflight.name
     preflight_copy.write_bytes(existing_preflight.read_bytes())
-    source, original_omop = capture_stage_e(config_path, str(work_dir))
-    fallback_dir = work_dir / "fallback"
-    fallback_dir.mkdir(mode=0o700)
-    if stat.S_IMODE(fallback_dir.stat().st_mode) != 0o700:
-        raise RuntimeError("Fallback working directory must be mode 0700")
-    fallback = capture_fallback(config_path, str(fallback_dir))
+    # Both the original Stage E and fallback Stage D computations must run
+    # under the restricted QC login, not the ETL/admin login from config.
+    with restricted_stage_engines(config_path):
+        source, original_omop = capture_stage_e(config_path, str(work_dir))
+        fallback_dir = work_dir / "fallback"
+        fallback_dir.mkdir(mode=0o700)
+        if stat.S_IMODE(fallback_dir.stat().st_mode) != 0o700:
+            raise RuntimeError("Fallback working directory must be mode 0700")
+        fallback = capture_fallback(config_path, str(fallback_dir))
     if not set(["patid", "index_date", "outcome", "fixed_population", *FEATURES]).issubset(source.columns):
         raise RuntimeError("Source feature extraction schema changed")
     if not set(["patid", "index_date", "outcome", "fixed_population", *FEATURES]).issubset(original_omop.columns):
