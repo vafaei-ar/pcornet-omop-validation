@@ -208,7 +208,10 @@ def perform(config_path: str, manifest_path: str, *, execute: bool) -> None:
                         for name in FIELDS
                     }
                     result = conn.execute(stmt, params)
-                    if result.rowcount != 1:
+                    # pyodbc/SQL Server may return -1 when NOCOUNT hides
+                    # the affected-row count. A post-INSERT COUNT and an
+                    # exact 11-field re-read are authoritative.
+                    if result.rowcount not in (1, -1):
                         raise AmendmentBlocked("INSERT")
                     phase = "POST_VERIFY"
                     if conn.exec_driver_sql(
