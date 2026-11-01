@@ -239,9 +239,9 @@ def test_execute_requires_exact_confirmation(monkeypatch, capsys):
     ])
     monkeypatch.setattr(mod, "perform", lambda *args, **kw:
                         pytest.fail("unexpected SQL"))
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as stopped:
         mod.main()
-    assert "BLOCKED [CONFIRMATION]" in capsys.readouterr().err or True
+    assert "BLOCKED [CONFIRMATION]" in str(stopped.value)
 
 
 def test_real_manifest_validation_is_reused():
