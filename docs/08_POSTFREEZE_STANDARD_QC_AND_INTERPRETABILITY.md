@@ -978,6 +978,45 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**First FILELISTONLY preflight blocked (institutional terminal,
+2026-11-01):** The updated synthetic suite reported **259 passed in
+2.35s**, but the subsequent read-only preflight returned
+`FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED`. No logical allocation
+figures were produced and **no restoration, clinical query, write or
+transfer was performed**. This status alone does not invalidate the
+existing 23.03 GiB readable backup or previous checksum verification.
+The original CLI intentionally suppressed all internal error detail,
+so the cause was indeterminate.
+
+The checker now reports only an explicit, fixed non-sensitive
+failure *stage*, for example `ADMIN_CREDENTIAL` when the original
+ETL administrator credential is not available in this shell, or
+`SQL_CONNECT`, `MSDB_BACKUP_HISTORY`, `BACKUP_MEDIA_VALIDATION`,
+`FILELISTONLY`, `LOGICAL_FILE_VALIDATION`, or `FREE_SPACE`.
+No provider exception text, SQL error detail, patient identifiers,
+server locations, credential names or passwords are printed.
+This is especially relevant because the earlier restricted feature
+export used a **different** `ohdsi_postfreeze_qc` login. A missing
+administrator secret is a plausible explanation, but is **not yet
+confirmed**.
+
+A guarded rerun after new tests pass is the next diagnostic gate:
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q &&
+python scripts/inspect_frozen_restore_capacity.py --config config/etl_A.yaml
+```
+**The new safe-stage diagnostic code and tests have not yet run on
+the institutional host.** The command is metadata-only, but the
+authorized original ETL SQL credential must be accessible through
+the local institutional secret mechanism. Do not enter a password
+into chat, echo environment variables, change SQL privileges, run
+the backup tool again or execute a restore to get around a BLOCKED
+status. Share only the test summary and the fixed failure stage.
+If the stage is `ADMIN_CREDENTIAL`, resolve credential access in
+the approved local workflow and do not infer corruption.
+
 **Read-only backup file-level verification and restore-capacity gate
 (institutional terminal, 2026-11-01):** The operator confirmed
 **one readable** `OMOP_VALIDATED_A_copyonly_*.bak` file with
