@@ -39,7 +39,7 @@ For commands, full safety evidence and chronological troubleshooting use
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
 | Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
 | Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
-| Were the planned post-freeze interpretability models run? | No approved private SHAP/attribution input extraction or model-attribution result is recorded. See section B of document 08. | **Not executed.** Do not insert results, values or claims from this plan into the paper. |
+| Were the planned post-freeze RF/XGBoost attribution analyses run? | The locked four-population model interpretation protocol, guarded private exporter and model engine exist, but the institutional Parquet extraction, fitting and attribution have not run. See section B of document 08. | **Planned analysis requested by the study team, not executed.** Do not insert numerical results or directional feature-importance claims into the paper yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
 `results/postfreeze_standard_qc/private_achilles_exception_counts/`.
@@ -60,6 +60,56 @@ outcome comparisons were exact; and independently selected cohorts yielded
 different risks and model performance. Harmonized and provenance-aware
 date-fallback sensitivities are **post-freeze mechanism analyses**. They
 do not replace the original study's primary estimand.
+
+### RF/XGBoost feature-importance comparison: planned scientific extension
+
+**Study-team objective reaffirmed on 2026-10-31:** Assess whether the
+end-to-end PCORnet-versus-frozen-OMOP data/modeling pathways change
+**predictor importance** for 90-day acute-care utilization, using both
+**Random Forest and XGBoost**. This is not interchangeable with the
+original Stage E histogram-gradient-boosting prediction comparison.
+
+The protocol `study_definitions/postfreeze_standard_qc_interpretability_v1.json`
+already locks the same six Stage E features, outcome and 70/30 patient
+hash split. The end-to-end contrast is `pcornet_full` (6,508 eligible,
+1,798 events) versus `omop_frozen` (3,822 eligible, 1,132 events).
+That contrast combines **population selection** and **representation**,
+so it must not be interpreted alone as a data-model effect.
+
+The planned four-population design separates mechanisms:
+
+| Paired comparison | Interpretation |
+| --- | --- |
+| `pcornet_full` vs `omop_frozen` | End-to-end difference: selection and representation combined |
+| `pcornet_full` vs `pcornet_shared` | Population selection within PCORnet |
+| `pcornet_shared` vs `omop_frozen` | Representation with patients, index dates and outcomes aligned |
+| `pcornet_full` vs `omop_fallback` | Provenance-aware target fallback with full source population matched |
+
+The **primary importance measure** is repeated held-out AUROC permutation
+importance. Positive-class probability-scale interventional SHAP mean
+absolute values and rank changes are secondary. Compare native test sets
+and the same matched shared test patients. Include the prespecified
+five-feature sensitivity removing the prior-stroke history flag, since it
+requires a recorded diagnosis date. Correlated utilization predictors may
+exchange importance. Differences in rankings are **not causal effects**.
+
+**Execution gate (currently open):** Review the private exporter and
+interpretability engine against the locked Stage C/D/E definitions before
+any institutional extraction. Verify input lineage, identities, overlap,
+index dates, outcomes, features, split rules and reference SHAP sampling.
+The current model engine selects its 200-row SHAP background using the
+first 200 sorted training patient IDs, whereas the locked protocol
+describes a fixed-seed random sample; reconcile this before execution.
+Then run the exporter in the institutional environment only, fit the
+specified models, compare matched-test importance and sensitivity,
+review uncertainty/stability and disclosure, and update the manuscript
+only if the results add a supported claim. No model results exist yet.
+
+This study-team-prioritized analysis should be completed **before making
+RF/XGBoost attribution claims or closing a manuscript version that
+intends to include them**. A no-attribution version of the A-E paper
+remains scientifically possible, but omission is an explicit editorial
+choice, not a claim that the planned analysis was done.
 
 ## 3. Manuscript source and version audit
 
@@ -95,10 +145,10 @@ preserve real tracked changes, comments, figure references and Zotero fields.
 ### What should not hold the manuscript hostage
 
 - A new Achilles rerun or more analysis-210 diagnostics on the unchanged frozen data.
-- SHAP/random-forest/XGBoost interpretation: the planned inputs have not been
-  extracted. The central Stage C/D mechanism is supported without this
-  optional exploratory work. Add it only for a specified scientific question
-  that would change the paper.
+- RF/XGBoost model attribution is a reaffirmed study-team question and
+  remains **planned, not executed**. It must be completed and disclosure-reviewed
+  before any associated manuscript claim; it does not require a DQD run or
+  reopening the frozen ETL.
 - A complete native OMOP domain backfill into the **frozen** publication
   database. That would change the object under study and undermine the freeze.
 
@@ -140,6 +190,8 @@ preserve real tracked changes, comments, figure references and Zotero fields.
 analysis-210 verification are documented. **The manuscript is not yet ready
 for submission** because the authoritative Word version, new QC scope
 decision, current Word-to-figure/table synchronization and final
-coauthor/disclosure checks have not been verified. The optional DQD/SHAP
-extensions must not be represented as completed. This is an evidence and
+coauthor/disclosure checks have not been verified. DQD remains an optional, uncompleted QC extension;
+RF/XGBoost importance is an explicitly planned follow-up awaiting
+validated local extraction and model runs. Neither may be represented
+as completed. This is an evidence and
 editorial readiness distinction, not a request to reopen the locked ETL.
