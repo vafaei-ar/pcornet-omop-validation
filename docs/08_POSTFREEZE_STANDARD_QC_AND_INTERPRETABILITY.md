@@ -161,6 +161,31 @@ the `find` command lists files or subdirectories, preserve and inspect
 them first; the guarded launcher intentionally refuses overwriting
 existing output. Do not delete generated results to force a retry.
 
+**Restored-copy CDM_SOURCE preparation initiated (2026-11-01):**
+The study team approved moving forward with factual CDM_SOURCE
+provenance and DQD, **only on a separately restored analysis copy**.
+A complete safety/provenance sequence is in
+[`10_RESTORED_CDM_SOURCE_DQD_PLAN.md`](10_RESTORED_CDM_SOURCE_DQD_PLAN.md).
+The new offline-only
+`scripts/validate_restored_cdm_source_manifest.py`, intentionally
+incomplete template
+`study_definitions/restored_cdm_source_manifest.EXAMPLE.json`
+and synthetic regression tests check OMOP v5.4's 11-field schema,
+factual date formatting, provenance references and owner-only
+manifest permissions. **These new tests have not yet executed in
+the institution.** No original data dates, institutional holder
+or vocabulary version have been guessed. An incomplete manifest
+must not pass.
+
+**Execution status:** The local backup and logical capacity checks
+passed, but no approved encrypted off-machine copy, isolated
+restored database, verified factual metadata record, clone-only
+insertion or clone-only DQD exists. The original frozen
+`OMOP_VALIDATED_A.dbo.cdm_source` remains empty. The existing
+DQD launcher deliberately hardcodes the frozen database and must
+not be pointed at a clone by bypassing its identity gate.
+No SQL/database mutation has been performed for this preparation.
+
 **DQD second-attempt metadata blocker (2026-10-30):**
 
 After correcting the snapshot parser (all local tests passed, 81 passed,
