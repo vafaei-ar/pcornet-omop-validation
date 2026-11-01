@@ -493,8 +493,8 @@ local distinction is not needed to document that Achilles ran with
 small-cell suppression. The frozen ETL, its published counts and
 the original results remain unchanged.
 
-**Executable, restricted, exact-count diagnostic (implemented; NOT YET RUN
-on the institutional SQL Server):**
+**Executable, restricted, exact-count diagnostic (executed locally on
+2026-10-31; results protected):**
 
 The new `scripts/audit_postfreeze_achilles_exception_counts.py`
 implements literal `SELECT COUNT_BIG` versions of the official OHDSI
@@ -566,8 +566,8 @@ and stores the private JSON at
 Do **not** paste, email, upload, publish, or commit the JSON. A repeat
 invocation deliberately refuses to overwrite it.
 
-**Analysis 210 locked D0 cohort-overlap audit (code added, not executed against
-institutional data):**
+**Analysis 210 locked D0 cohort-overlap audit (completed locally via the
+no-SQL shortcut on 2026-10-31):**
 
 The local private four-analysis report may contain zero or 1-10 exception
 visits for Achilles 210. Its `--verify-existing` run passed structural and
@@ -676,11 +676,12 @@ been revised by this QC extension.
 
 Output remains under ignored, protected `results/postfreeze_standard_qc/private_achilles_exception_counts/analysis_210_locked_d0_overlap.json`.
 Do not upload or paste this file. Report only the command exit status.
-The new code has synthetic unit tests but has NOT yet run on the institutional
-SQL instance; no results or cohort effects are claimed. If the 210 count is
-nonzero, the CTE may require substantial server work; do not launch alongside
-other heavy clinical queries. If it blocks, preserve the private prior file
-and inspect the diagnostic before retrying.
+The protected overlap output was created locally. In this execution, the
+program took the no-SQL shortcut, and the later live frozen-target count
+reconciliation passed. The D0 CTE was not executed; no D0 overlap or
+outcome estimate was recalculated. If the relevant frozen data or QC
+outputs change in the future, review the audit preconditions before any
+new execution. Preserve both private files.
 
  If a status is
 `SUPPRESSED_NONZERO`, investigation must remain within the approved local
