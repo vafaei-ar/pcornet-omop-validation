@@ -78,7 +78,7 @@ def read_population(path: str, population: str) -> pd.DataFrame:
     if len(frame) != expected_n or int(frame.outcome.sum()) != expected_events:
         raise ValueError(f"{population}: Stage D anchor count/event mismatch")
     frame["is_train"] = frame.patid.map(is_train)
-    return frame.set_index("patid", drop=False)
+    return frame.set_index("patid", drop=False).sort_index()
 
 
 def assert_pair(a: pd.DataFrame, b: pd.DataFrame, label: str) -> None:
@@ -172,7 +172,7 @@ def performance(y: np.ndarray, probability: np.ndarray) -> dict[str, float | int
 
 def evaluation_sample(data: pd.DataFrame, limit: int) -> pd.DataFrame:
     # Stable, bounded set for interpretation; performance uses the full held-out set.
-    subset = data[~data.is_train]
+    subset = data[~data.is_train].sort_index()
     if len(subset) > limit:
         subset = subset.sample(n=limit, random_state=SEED)
     if subset.outcome.nunique() != 2:
@@ -229,7 +229,7 @@ def common_shap_background(shared: pd.DataFrame, limit: int = 200) -> pd.DataFra
     """Common source training background sampled by locked fixed random seed."""
     if limit < 1:
         raise ValueError("SHAP background limit must be positive")
-    training = shared[shared.is_train]
+    training = shared[shared.is_train].sort_index()
     if training.empty:
         raise ValueError("Shared training population is empty")
     return training.sample(n=min(limit, len(training)), random_state=SEED)
