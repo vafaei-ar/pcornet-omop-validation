@@ -235,7 +235,11 @@ def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     preflight_copy = work_dir / existing_preflight.name
     preflight_copy.write_bytes(existing_preflight.read_bytes())
     source, original_omop = capture_stage_e(config_path, str(work_dir))
-    fallback = capture_fallback(config_path, str(work_dir / "fallback"))
+    fallback_dir = work_dir / "fallback"
+    fallback_dir.mkdir(mode=0o700)
+    if stat.S_IMODE(fallback_dir.stat().st_mode) != 0o700:
+        raise RuntimeError("Fallback working directory must be mode 0700")
+    fallback = capture_fallback(config_path, str(fallback_dir))
     if not set(["patid", "index_date", "outcome", "fixed_population", *FEATURES]).issubset(source.columns):
         raise RuntimeError("Source feature extraction schema changed")
     if not set(["patid", "index_date", "outcome", "fixed_population", *FEATURES]).issubset(original_omop.columns):
