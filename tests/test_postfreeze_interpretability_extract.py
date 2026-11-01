@@ -104,6 +104,14 @@ def test_private_population_rejects_null_and_duplicate_identifiers(monkeypatch):
     null_date.loc[1, "index_date"] = None
     with pytest.raises(RuntimeError, match="index date"):
         extractor._prepare_population(null_date, "pcornet_full")
+    malformed = clean.copy()
+    malformed.loc[0, "female_indicator"] = 2
+    with pytest.raises(RuntimeError, match="binary feature"):
+        extractor._prepare_population(malformed, "pcornet_full")
+    infinite = clean.copy()
+    infinite.loc[0, "index_length_of_stay_days"] = float("inf")
+    with pytest.raises(RuntimeError, match="non-finite"):
+        extractor._prepare_population(infinite, "pcornet_full")
 
 
 
