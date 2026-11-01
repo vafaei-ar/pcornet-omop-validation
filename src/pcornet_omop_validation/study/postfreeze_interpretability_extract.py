@@ -9,6 +9,8 @@ publishes these row-level local files. No frozen ETL or study definitions change
 """
 import argparse
 import json
+import os
+import stat
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +29,94 @@ from pcornet_omop_validation.study.postfreeze_model_interpretability import (
 from pcornet_omop_validation.study.stroke_codes import ICD9_STROKE_CODES, ICD10_STROKE_CODES
 
 FROZEN_SHA = "887e6f4d60a6b185e58b3c9fe8887472b49777e3"
+
+
+ROOT = Path(__file__).resolve().parents[3]
+PRIVATE_ROOT = ROOT / "results"
+
+
+def _private_output_path(private_output_dir: str) -> Path:
+    """Check that output is truly inside repo results, not a named lookalike."""
+    raw = Path(private_output_dir).expanduser()
+    candidate = Path(os.path.abspath(raw))
+    private_root = Path(os.path.abspath(PRIVATE_ROOT))
+    if candidate == private_root or not candidate.is_relative_to(private_root):
+        raise ValueError("Private output directory must be under ignored results/")
+    current = private_root
+    if current.is_symlink():
+        raise ValueError("Private output path must not contain symlinks")
+    for part in candidate.relative_to(private_root).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Private output path must not contain symlinks")
+    if not candidate.resolve().is_relative_to(private_root.resolve()):
+        raise ValueError("Private output directory escapes ignored results/")
+    return candidate
+
+
+def _prepare_private_output(out_dir: Path) -> Path:
+    """Create only an empty 0700 export directory and a clean 0700 workdir."""
+    if out_dir.is_symlink():
+        raise ValueError("Private output cannot be a symlink")
+    if out_dir.exists():
+        if not out_dir.is_dir() or stat.S_IMODE(out_dir.stat().st_mode) != 0o700:
+            raise ValueError("Existing private output directory must be mode 0700")
+        if any(out_dir.iterdir()):
+            raise FileExistsError(
+                "Private output directory is not empty; preserve existing outputs"
+            )
+    else:
+        out_dir.mkdir(parents=True, mode=0o700)
+    # Explicitly check permissions after creation. Never widen permissions.
+    if stat.S_IMODE(out_dir.stat().st_mode) != 0o700:
+        raise ValueError("Private output directory must be mode 0700")
+    work_dir = out_dir / "private_rerun"
+    work_dir.mkdir(mode=0o700)
+    if stat.S_IMODE(work_dir.stat().st_mode) != 0o700:
+        raise ValueError("Private rerun directory must be mode 0700")
+    return work_dir
+
+
+def _write_private_parquet(frame: pd.DataFrame, destination: Path) -> None:
+    """Create-only binary file; PHI extracts never inherit a permissive umask."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    with os.fdopen(os.open(destination, flags, 0o600), "wb") as handle:
+        frame.to_parquet(handle, index=False)
+        handle.flush()
+        os.fsync(handle.fileno())
+    if stat.S_IMODE(destination.stat().st_mode) != 0o600:
+        raise ValueError("Private Parquet must be mode 0600")
+
+
+def _prepare_population(frame: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Apply the model's exact input hygiene and frozen anchors in-memory."""
+    expected_n, expected_events = EXPECTED[name]
+    required = {"patid", "index_date", "outcome", *FEATURES}
+    if not required.issubset(frame.columns):
+        raise RuntimeError(f"{name}: feature extraction schema changed")
+    subset = frame[["patid", "index_date", "outcome", *FEATURES]].copy()
+    if subset.patid.isna().any():
+        raise RuntimeError(f"{name}: null patient ID")
+    subset["patid"] = subset.patid.astype(str)
+    if subset.patid.duplicated().any():
+        raise RuntimeError(f"{name}: duplicated patient ID")
+    dates = pd.to_datetime(subset.index_date, errors="coerce")
+    if dates.isna().any():
+        raise RuntimeError(f"{name}: invalid index date")
+    subset["index_date"] = dates.dt.strftime("%Y-%m-%d")
+    subset["outcome"] = pd.to_numeric(subset.outcome, errors="coerce")
+    if subset.outcome.isna().any() or not subset.outcome.isin([0, 1]).all():
+        raise RuntimeError(f"{name}: invalid binary outcome")
+    subset["outcome"] = subset.outcome.astype(int)
+    for feature in FEATURES:
+        subset[feature] = pd.to_numeric(subset[feature], errors="raise")
+    if len(subset) != expected_n or int(subset.outcome.sum()) != expected_events:
+        raise RuntimeError(f"{name}: source Stage D anchor mismatch")
+    subset["is_train"] = subset.patid.map(original_stage_e._stable_train)
+    return subset.set_index("patid", drop=False)
+
 
 
 def capture_stage_e(config_path: str, working_output_dir: str) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -129,11 +219,9 @@ def capture_fallback(config_path: str, working_output_dir: str) -> pd.DataFrame:
 def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     if not confirm:
         raise ValueError("Export of local row-level clinical features requires --confirm-private")
-    out_dir = Path(private_output_dir).resolve()
-    if "results" not in out_dir.parts:
-        raise ValueError("Private output directory must be under ignored results/")
-    if out_dir.exists() and list(out_dir.glob("*.parquet")):
-        raise FileExistsError("Refusing to overwrite existing row-level feature extracts")
+    out_dir = _private_output_path(private_output_dir)
+    if out_dir.exists() and any(out_dir.iterdir()):
+        raise FileExistsError("Private output directory is not empty; preserve existing outputs")
     # Using a dedicated ignored output for the re-run avoids mutating the original
     # Stage E output folder, but copies the existing preflight metadata only.
     cfg = load_etl_config(config_path)
@@ -143,8 +231,7 @@ def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     existing_preflight = stage_e_output / "stage_e_statistical_model_preflight.json"
     if not existing_preflight.exists():
         raise FileNotFoundError("Locked Stage E preflight result is required")
-    work_dir = out_dir / "private_rerun"
-    work_dir.mkdir(parents=True, exist_ok=True)
+    work_dir = _prepare_private_output(out_dir)
     preflight_copy = work_dir / existing_preflight.name
     preflight_copy.write_bytes(existing_preflight.read_bytes())
     source, original_omop = capture_stage_e(config_path, str(work_dir))
@@ -160,22 +247,17 @@ def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
         "omop_frozen": original_omop,
         "omop_fallback": fallback,
     }
-    # Verify all exact cohort/outcome anchors and matching population index dates
-    # in-memory BEFORE writing any private Parquet.
-    loaded = {}
-    for name, frame in data.items():
-        frame = frame[["patid", "index_date", "outcome", *FEATURES]].copy()
-        expected_n, expected_events = EXPECTED[name]
-        if len(frame) != expected_n or int(frame.outcome.sum()) != expected_events:
-            raise RuntimeError(f"{name}: source Stage D anchor mismatch")
-        frame["patid"] = frame.patid.astype(str)
-        frame["index_date"] = pd.to_datetime(frame.index_date).dt.strftime("%Y-%m-%d")
-        frame["is_train"] = frame.patid.map(original_stage_e._stable_train)
-        loaded[name] = frame.set_index("patid", drop=False)
+    # Verify patient identities, features, frozen anchors and all four
+    # relationships BEFORE any private Parquet is materialized.
+    loaded = {
+        name: _prepare_population(frame, name) for name, frame in data.items()
+    }
     validate_populations(loaded)
-    for name, frame in data.items():
-        subset = frame[["patid", "index_date", "outcome", *FEATURES]].copy()
-        subset.to_parquet(out_dir / f"{name}.parquet", index=False)
+    for name, frame in loaded.items():
+        _write_private_parquet(
+            frame[["patid", "index_date", "outcome", *FEATURES]],
+            out_dir / f"{name}.parquet",
+        )
     return {
         "status": "private_four_population_feature_export_complete",
         "n": {name: len(frame) for name, frame in data.items()},
