@@ -130,3 +130,18 @@ def test_cli_never_prints_protected_metadata(tmp_path, monkeypatch, capsys):
     visible = capsys.readouterr()
     assert "BLOCKED" in visible.err
     assert "SYNTHETIC_PRIVATE_HOLDER" not in visible.out + visible.err
+
+
+def test_source_description_accepts_pcornet_case_variants():
+    obj = synthetic_record()
+    obj["cdm_source"]["source_description"] = "Synthetic PCORNET validation cohort"
+    mod.validate(obj)
+    obj["cdm_source"]["source_description"] = "Source was based on pcornet data"
+    mod.validate(obj)
+
+
+def test_source_description_rejects_non_pcornet_text():
+    obj = synthetic_record()
+    obj["cdm_source"]["source_description"] = "Only unrelated source"
+    with pytest.raises(mod.ManifestBlocked, match="PCORnet"):
+        mod.validate(obj)
