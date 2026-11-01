@@ -169,6 +169,31 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Successful frozen backup capacity inspection
+(2026-11-01):** An operator-authorized hidden credential
+attempt first stopped at `BLOCKED [SQL_CONNECT]`, then
+the next authorized metadata-only attempt returned
+`FROZEN BACKUP FILELISTONLY CAPACITY: PASS` with database
+identity and checksum-enabled backup-history checks passing.
+`RESTORE FILELISTONLY` reported **two files** and
+**163.33 GiB allocated** (**108.32 GiB data + 55.01 GiB log**,
+no other allocation). Existing compressed backup size remained
+**23.03 GiB** and the local filesystem reported
+**810.53 GiB free**. No database was restored, transferred
+or altered by the preflight. The cause of the first SQL
+connection failure is unknown and does not require a backup
+rerun following the successful verification.
+
+The local media inspection and nominal capacity preflight
+are now **completed**. Off-machine encrypted retention,
+copy checksum verification, approval of an isolated SQL Server
+restore environment, successful restore, independent clinical
+anchor reconciliation and any restored-copy DQD remain
+**not started**. Existing scientific attribution reports are
+protected locally and have not been disclosure-cleared;
+no inferential or causal manuscript claim is supported merely
+by report completion.
+
 **Diagnosed SQL credential gate (2026-11-01):** Local tests
 passed **262 in 2.55s**. The safe-stage backup metadata
 checker returned `BLOCKED [ADMIN_CREDENTIAL]`, proving
