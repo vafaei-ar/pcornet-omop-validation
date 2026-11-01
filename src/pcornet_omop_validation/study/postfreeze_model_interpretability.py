@@ -148,6 +148,8 @@ def read_population(path: str, population: str) -> pd.DataFrame:
     frame["outcome"] = frame["outcome"].astype(int)
     for feature in FEATURES:
         frame[feature] = pd.to_numeric(frame[feature], errors="raise")
+        if not np.isfinite(frame[feature].dropna().to_numpy(dtype=float)).all():
+            raise ValueError(f"{population}: non-finite predictor value")
     for feature in BINARY:
         if not frame[feature].dropna().isin([0, 1]).all():
             raise ValueError(f"{population}: non-binary {feature}")
@@ -391,6 +393,9 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
         "interpretation_guardrails": [
             "Model attributions are not causal risk-factor effects.",
             "Different native evaluation populations can change importance independently of fitting.",
+            "Primary permutation importance uses full held-out sets; SHAP uses up to max_eval held-out patients.",
+            "Within-PCORnet selection and frozen representation use matched shared test patients.",
+            "SHAP uses one source-reference background with model-specific training-only imputations.",
             "Prior-stroke history is diagnosis-date-ascertainment-sensitive.",
             "Prior-encounter variables are correlated; individual importance may be shared.",
             "No row-level data, predictions or identifiers are written.",
@@ -444,8 +449,7 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
                 # population differences but models are still fitted separately.
                 scope = (
                     "native_test" if label in (
-                        "end_to_end", "selection_within_pcornet",
-                        "representation_fallback",
+                        "end_to_end", "representation_fallback",
                     ) else "common_shared_test"
                 )
                 suffix = scope + "_importance"
