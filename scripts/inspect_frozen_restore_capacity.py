@@ -10,7 +10,7 @@ Never print DSNs, passwords, file paths or raw provider exceptions.
 from __future__ import annotations
 
 import argparse
-import os
+from decimal import Decimal
 from pathlib import Path
 import re
 import shutil
@@ -52,6 +52,21 @@ def verified_backup_history(rows: list) -> tuple[str, int, int]:
     return filename, position, size
 
 
+def integral_bytes(value: object) -> int:
+    """SQL numeric(20,0) commonly arrives from pyodbc as Decimal."""
+    if isinstance(value, bool):
+        raise CapacityBlocked("Invalid backup size type")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, Decimal) and value.is_finite() and value == value.to_integral_value():
+        parsed = int(value)
+    else:
+        raise CapacityBlocked("Nonintegral backup file allocation")
+    if parsed < 0:
+        raise CapacityBlocked("Negative backup file allocation")
+    return parsed
+
+
 def summarize_filelist(rows: list) -> dict[str, int]:
     """Use the backup's own logical allocation sizes, never the .bak size."""
     if not rows:
@@ -62,10 +77,9 @@ def summarize_filelist(rows: list) -> dict[str, int]:
     for raw in rows:
         row = {str(k).casefold(): v for k, v in dict(raw).items()}
         file_type = str(row.get("type", "")).upper()
-        length = row.get("size")
+        length = integral_bytes(row.get("size"))
         present = row.get("ispresent")
         if (file_type not in {"D", "L", "S", "F"}
-                or type(length) is not int or length < 0
                 or present not in (1, True)):
             raise CapacityBlocked("Unexpected or incomplete backup filelist")
         if file_type == "D":
