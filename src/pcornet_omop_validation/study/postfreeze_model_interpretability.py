@@ -225,6 +225,16 @@ def attribution(model, features: list[str], test: pd.DataFrame,
     }
 
 
+def common_shap_background(shared: pd.DataFrame, limit: int = 200) -> pd.DataFrame:
+    """Common source training background sampled by locked fixed random seed."""
+    if limit < 1:
+        raise ValueError("SHAP background limit must be positive")
+    training = shared[shared.is_train]
+    if training.empty:
+        raise ValueError("Shared training population is empty")
+    return training.sample(n=min(limit, len(training)), random_state=SEED)
+
+
 def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
             repeats: int = 20) -> dict:
     if max_eval < 50 or repeats < 2:
@@ -233,9 +243,7 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
     shared = populations["pcornet_shared"]
     # Common identical patient set: all four groups are evaluated on these IDs.
     common_ids = evaluation_sample(shared, max_eval).index
-    # Locked study protocol: fixed-seed random background, not first sorted IDs.
-    common_training = shared[shared.is_train]
-    common_bg = common_training.sample(n=min(200, len(common_training)), random_state=SEED)
+    common_bg = common_shap_background(shared)
     output: dict = {
         "status": "postfreeze_interpretability_completed_pending_disclosure_review",
         "frozen_etl_sha": FROZEN_SHA,
