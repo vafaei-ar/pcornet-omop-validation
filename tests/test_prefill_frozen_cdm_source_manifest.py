@@ -212,3 +212,28 @@ def test_sql_connect_failure_classified_without_provider_error(monkeypatch):
     monkeypatch.setattr(mod, "make_engine", throw_provider)
     with pytest.raises(mod.PreparationBlocked, match="SQL_CONNECT"):
         mod.verified_vocabulary("config")
+
+
+@pytest.mark.parametrize(
+    "original, expected",
+    [
+        ("PCORI transformation summary", "PCORnet-derived data. PCORI transformation summary"),
+        ("PCORNET to OMOP research extract", "PCORNET to OMOP research extract"),
+        ("  pcornet to OMOP cohort  ", "pcornet to OMOP cohort"),
+        ("   ", mod.KNOWN["source_description"]),
+    ],
+)
+def test_local_description_is_normalized_without_discarding_user_text(original, expected):
+    obj = blank_manifest()
+    obj["cdm_source"]["source_description"] = original
+    result = mod.fill_from_verified(obj, "SYNTHETIC_vocab")
+    assert result["cdm_source"]["source_description"] == expected
+    assert obj["cdm_source"]["source_description"] == original
+
+
+def test_source_description_rejects_invalid_type_and_embedded_nul():
+    for value in (23, "Synthetic PCORnet text" + chr(0)):
+        obj = blank_manifest()
+        obj["cdm_source"]["source_description"] = value
+        with pytest.raises(mod.PreparationBlocked, match="INVALID_SOURCE_DESCRIPTION"):
+            mod.fill_from_verified(obj, "SYNTHETIC_vocab")
