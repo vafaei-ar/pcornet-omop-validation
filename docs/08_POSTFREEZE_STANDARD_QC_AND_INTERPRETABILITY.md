@@ -895,6 +895,30 @@ Parquet files' ownership and permissions locally and execute the model's
 population/label/index checks. **No extraction or attribution result is
 yet claimed.**
 
+**2026-11-01 protected-export pytest regression and package fix:**
+The next institutional test run completed **210 passed, 3 failed**.
+All three failing tests attempted to import the top-level `scripts`
+directory as a Python package. Pytest's import mode and the editable
+`src/` package do not expose that directory in all environments.
+The exporter itself had the same import error, so although pytest
+prevented the clinical command, execution would also have failed.
+
+The restricted frozen-target policy (local server, CDM v5.4.2,
+`ohdsi_postfreeze_qc`, frozen identity, frozen publication row-count
+anchors, and empty `CDM_SOURCE`) now lives in an **importable**
+`pcornet_omop_validation.study.postfreeze_restricted_qc` module.
+The exporter and the three tests use that package path. New synthetic
+tests assert the restricted login, frozen anchors, rejection of
+remote/wrong databases, read-only query forms, and failure on changed
+CDM_SOURCE counts. The older completed Achilles inspection script
+remains unchanged. No clinical rows were queried and no private
+features exported in the failed run.
+
+**The new corrections have not yet been tested on the institutional
+host.** The next gate is to run `pytest -q` after `git pull --ff-only`
+and authorize the original `--confirm-private` command only if all
+tests pass. Do not delete, paste or upload protected files.
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
