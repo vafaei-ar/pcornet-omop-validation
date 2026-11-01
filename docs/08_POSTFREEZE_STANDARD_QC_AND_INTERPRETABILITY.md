@@ -1,3 +1,15 @@
+**Metadata-only frozen CDM_SOURCE amendment authorized (2026-11-01):**
+The study owner explicitly permitted changing `OMOP_VALIDATED_A.dbo.cdm_source`
+by **one verified documentation row only**, while all clinical tables,
+original ETL and locked Stage A-E results remain unchanged. This
+supersedes the earlier requirement to create an isolated restored copy
+for this metadata-only DQD prerequisite. The new
+[`11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md`](11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md)
+contains the privacy-safe operator sequence, synthetic tests and
+transactional read-check/insert/verify safeguards. No amendment has
+occurred yet; factual release dates, holder and vocabulary must be
+verified locally. Use the existing separate QC read-only login for DQD.
+
 # Post-freeze standard OMOP QC and interpretability extension (partially executed)
 
 For the concise evidence closeout and manuscript readiness decisions, see
