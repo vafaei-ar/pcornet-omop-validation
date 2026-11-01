@@ -2,6 +2,13 @@
 
 _2026-11-01 | Draft pre-execution plan, not an executed database migration._
 
+**Institutional test update (2026-11-01):** Full repository regression suite
+passed **277 tests in 2.60s** after adding the offline CDM_SOURCE
+manifest validator and its synthetic tests. This validates preparatory
+code only. No factual manifest, protected backup copy, isolated restore,
+CDM_SOURCE insert or DQD result has been produced.
+
+
 ## Status and decision
 
 The publication database `OMOP_VALIDATED_A` is frozen. Its
