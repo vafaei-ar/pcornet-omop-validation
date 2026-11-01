@@ -784,6 +784,31 @@ scientifically with the locked Stage E code. Review the first run
 locally and retain all row-level outputs solely within the approved
 institutional environment.
 
+**Local installation and preflight attempt (2026-10-31, verified terminal):**
+`pip install -e '.[etl,analysis,interpretability,dev]'` succeeded,
+including XGBoost 3.2.0 and SHAP 0.51.0. The repository tests returned
+**201 passed in 2.15s, zero failed**. The subsequent `--preflight-only`
+invocation stopped with `RuntimeError: Locked Stage E preflight file is
+missing` while checking the required local
+`stage_e_statistical_model_preflight.json`. No SQL query or
+patient-level extraction was reached. Earlier Stage E execution records
+show that its outcome-free preflight passed in September 2026; the
+actual file's location or current availability must be checked locally.
+**Do not create a placeholder JSON, ignore the guard, or launch the
+private exporter before authentic evidence is restored.**
+
+The next action is **read-only local artifact inventory**, not a
+clinical rerun. Inspect the computed expected path and locate copies
+under ignored `results/`. Compare any candidate's frozen ETL SHA,
+status, study-definition hashes and no-outcome/no-model flags before
+considering it suitable. Also check the required Stage C encounter-date
+fallback result. If original evidence is genuinely absent, a controlled
+outcome-free Stage E preflight may be repeated in the authorized
+institutional environment and documented as *re-created metadata*,
+not falsely dated as the original preflight. Do not change the locked
+Stage E definitions or frozen target. The previous attempt to run
+RF/XGBoost feature extraction did **not** occur.
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
