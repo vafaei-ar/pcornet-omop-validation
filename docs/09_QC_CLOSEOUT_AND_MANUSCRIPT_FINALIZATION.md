@@ -123,8 +123,14 @@ preflight passed. No row-level export or model fitting was performed.
 The protected exporter has now been further hardened to use the same
 restricted QC login for **both** locked Stage E and fallback Stage D
 queries, restore engine bindings, and suppress provider secrets.
-Those latest changes and synthetic tests require the next local pytest
-run before the first private extraction. RF/XGBoost feature extraction
+The first updated institutional pytest reported **210 passed, 3 failed**:
+all failures came from incorrectly importing the top-level `scripts`
+directory as a Python package. Pytest stopped the chained command before
+any patient-level extraction. The exporter had the same import defect.
+The restricted frozen-target checks now reside in importable package code;
+the exporter and regression tests were corrected, and additional synthetic
+frozen-anchor/identity tests were added. **This import correction has not
+been tested on the institutional host.** RF/XGBoost feature extraction
 and attribution remain **not executed**.
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
