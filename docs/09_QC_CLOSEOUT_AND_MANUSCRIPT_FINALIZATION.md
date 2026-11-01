@@ -39,7 +39,7 @@ For commands, full safety evidence and chronological troubleshooting use
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
 | Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
 | Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
-| Were the planned post-freeze RF/XGBoost attribution analyses run? | Institutional extraction of the four protected populations completed with 221 tests passed and all locked Stage E and fallback D0/outcome anchors reproduced. See section B of document 08. | **Protected inputs ready; RF/XGBoost fitting, permutation importance, SHAP, and five-feature sensitivity are not yet executed.** No attribution claims belong in the manuscript yet. |
+| Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed but not yet audited or institutionally disclosure-cleared.** No numerical or directional attribution claim should enter the manuscript yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
 `results/postfreeze_standard_qc/private_achilles_exception_counts/`.
@@ -150,12 +150,25 @@ four-population `--validate-only` gate reported
 index dates, 90-day outcomes and split membership were verified without
 fitting models or writing files.
 
-**Next gate:** Execute the full protected 16-model RF/XGBoost analysis,
-including held-out AUROC permutation importance, SHAP, matched-test
-comparisons and the six/five-feature sensitivity. Review its privately
-saved aggregate for numerical validity, scope, uncertainty and
-disclosure before updating figures or manuscript. **No model-attribution
-results exist yet.**
+**Subsequent institutional computation (2026-11-01):** All 16
+RF/XGBoost model fits, held-out permutation analyses and bounded SHAP
+analyses completed; the terminal reported
+`RF XGBOOST PRIVATE AGGREGATE ANALYSIS: COMPLETE`. The private file was
+not uploaded or published. The main question remains whether predictor
+importance changes are quantitatively meaningful and robust, which
+cannot be decided from completion logs alone.
+
+A protected, read-only aggregate audit and synthetic tests were then
+added. The audit will verify provenance, all four comparison scopes,
+the 16-model matrix, full-test denominators, feature ranks, and the
+arithmetic of right-minus-left importance changes without printing
+scores or exporting protected data. **The new audit has not yet run
+on the institutional host.** Next: run full tests and audit, then
+examine matched contrasts, feature correlation, SHAP versus permutation
+agreement, and the five-feature sensitivity locally. Do not claim
+significance or clinical causality from permutation-repeat SD alone.
+Request institutional disclosure review before any result or figure
+is incorporated into the manuscript.
 
 This study-team-prioritized analysis should be completed **before making
 RF/XGBoost attribution claims or closing a manuscript version that
@@ -197,10 +210,10 @@ preserve real tracked changes, comments, figure references and Zotero fields.
 ### What should not hold the manuscript hostage
 
 - A new Achilles rerun or more analysis-210 diagnostics on the unchanged frozen data.
-- RF/XGBoost model attribution is a reaffirmed study-team question and
-  remains **planned, not executed**. It must be completed and disclosure-reviewed
-  before any associated manuscript claim; it does not require a DQD run or
-  reopening the frozen ETL.
+- RF/XGBoost model attribution has now **executed locally** for all
+  16 fits. Its output is awaiting a private numerical/provenance audit,
+  scientific interpretation and institutional disclosure approval.
+  It does not require DQD or reopening the frozen ETL.
 - A complete native OMOP domain backfill into the **frozen** publication
   database. That would change the object under study and undermine the freeze.
 
@@ -243,7 +256,8 @@ analysis-210 verification are documented. **The manuscript is not yet ready
 for submission** because the authoritative Word version, new QC scope
 decision, current Word-to-figure/table synchronization and final
 coauthor/disclosure checks have not been verified. DQD remains an optional, uncompleted QC extension;
-RF/XGBoost importance is an explicitly planned follow-up awaiting
-validated local extraction and model runs. Neither may be represented
-as completed. This is an evidence and
+RF/XGBoost attribution computation has completed locally but
+its protected results remain unaudited and not disclosure-cleared.
+DQD is not completed. Neither may be represented as a validated
+published finding. This is an evidence and
 editorial readiness distinction, not a request to reopen the locked ETL.
