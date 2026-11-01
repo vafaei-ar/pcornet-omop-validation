@@ -1,3 +1,5 @@
+# 09 - Post-freeze QC evidence record and manuscript finalization gates
+
 **Frozen-target metadata-only exception (2026-11-01):**
 The study owner approved inserting a factual, single-row
 `OMOP_VALIDATED_A.dbo.cdm_source` record to enable DQD, explicitly
@@ -12,7 +14,6 @@ post-amendment DQD via the existing restricted QC principal. Preparation
 is committed but the institutional SQL amendment and DQD have **not
 executed**. This extension need not delay the conservative manuscript.
 
-# 09 - Post-freeze QC evidence record and manuscript finalization gates
 
 _Last checked against the GitHub post-freeze branch: 2026-10-31._
 
