@@ -264,3 +264,28 @@ def test_restricted_export_requires_qc_password_before_sql(monkeypatch):
     with pytest.raises(RuntimeError, match="OHDSI_QC_PASSWORD"):
         with extractor.restricted_stage_engines("config/etl_A.yaml"):
             pytest.fail("should not yield without credential")
+
+
+def test_cli_suppresses_sensitive_provider_exceptions(
+    monkeypatch, capsys,
+):
+    import sys
+    private_error = "PWD={synthetic_secret}; PATID=synthetic_person"
+    def failed_run(*args, **kwargs):
+        raise RuntimeError(private_error)
+
+    monkeypatch.setattr(extractor, "run", failed_run)
+    monkeypatch.setattr(sys, "argv", [
+        "postfreeze_interpretability_extract",
+        "--config", "config/etl_A.yaml",
+        "--output-dir", "results/private_inputs",
+        "--confirm-private",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        extractor.main()
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert private_error not in captured.out + captured.err
+    assert "synthetic_secret" not in captured.out + captured.err
+    assert "synthetic_person" not in captured.out + captured.err
+    assert "PROTECTED FOUR-COHORT EXPORT BLOCKED" in captured.err
