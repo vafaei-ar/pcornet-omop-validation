@@ -919,6 +919,51 @@ host.** The next gate is to run `pytest -q` after `git pull --ff-only`
 and authorize the original `--confirm-private` command only if all
 tests pass. Do not delete, paste or upload protected files.
 
+**2026-11-01 institutional extraction completion and model gate:** The
+restricted QC login and frozen row-count anchors passed. The institutional
+pytest suite returned **221 passed in 2.06s**. The unchanged Stage E
+analysis was repeated in the private working directory with all locked
+source and OMOP D0, 90-day cohort, event and fixed-index outcome anchors
+reproduced. The independent encounter-date fallback Stage D query
+reproduced the full source D0, 30/90-day eligible populations and event
+counts, and exact same-patient outcome labels. The guarded exporter
+reported `private_four_population_feature_export_complete` and created
+four ignored, local, 0600 Parquet files under `results/private_inputs/`:
+`pcornet_full` (6,508), `pcornet_shared` (3,822),
+`omop_frozen` (3,822), `omop_fallback` (6,508).
+**These row-level files must never be uploaded, pasted, committed, emailed,
+or externally mirrored.** Their exact source/target content remains only
+in the institutional environment. No RF/XGBoost models or importance
+analyses have yet run.
+
+**Post-extraction scientific and disclosure safeguards (new):**
+The original model engine measured its "primary" held-out AUROC
+permutation importance on a sample capped at 500 rows. The locked
+protocol calls for importance on the held-out population, reserving a
+fixed bounded test sample for SHAP. That mismatch was corrected:
+permutation importance now uses each full held-out test set, with a
+separate all-matched-shared-test comparison, while SHAP uses at most
+500 deterministically sampled rows and one common source-based
+training-reference background. The selection comparison uses **matched
+evaluation patients** to reduce confounding by evaluation cohort
+composition. The four main contrasts (including full end-to-end) now
+receive explicit right-minus-left importance and rank differences.
+These are descriptive **model-attribution contrasts, not causal
+effects** or uncertainty-adjusted hypothesis tests.
+
+The modeling CLI additionally requires the four exact private Parquet
+paths, mode-0700 parent and owner-only mode-0600 input files, and
+creates a mode-0600, **create-only** aggregate file under the ignored
+mode-0700 `results/postfreeze_interpretability/` directory. It
+refuses a preexisting result and suppresses detailed errors that could
+expose clinical details. `--validate-only` reads and validates all
+four private inputs, index dates, labels, splits and output path without
+fitting a model or writing an output. Synthetic unit tests were added,
+but the updated code **has not yet passed institutional pytest or been
+executed on the protected extracts**. Run the new tests and
+`--validate-only` before any model fitting; preserve all protected
+files if either fails.
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
