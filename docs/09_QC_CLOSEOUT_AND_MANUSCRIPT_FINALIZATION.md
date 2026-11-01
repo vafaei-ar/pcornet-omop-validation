@@ -101,6 +101,8 @@ The SHAP background previously selected the first sorted training IDs,
 which conflicted with the locked fixed-seed sampling protocol. The model
 engine and synthetic tests now implement the fixed-seed sample. The exporter
 also gained protected-path and input-integrity checks plus a no-SQL preflight.
+The model engine now sorts patient IDs before fitting/sampling so fixed seeds
+are robust to arbitrary SQL row order, without changing the 70/30 split.
 **These new tests and the institutional preflight have not yet run.**
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
