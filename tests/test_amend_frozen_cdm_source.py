@@ -178,6 +178,24 @@ def test_exactly_one_row_insert_and_clinical_anchors(monkeypatch, capsys):
     assert "SYNTHETIC PRIVATE HOLDER" not in out
 
 
+def test_sql_server_nocount_negative_rowcount_is_checked_by_readback(
+    monkeypatch, capsys,
+):
+    c, _ = ready(monkeypatch)
+    original_execute = c.execute
+
+    def nocount_execute(sql, params=None):
+        result = original_execute(sql, params)
+        if str(sql).strip().startswith("INSERT INTO"):
+            result.rowcount = -1
+        return result
+
+    c.execute = nocount_execute
+    mod.perform("config", "manifest", execute=True)
+    assert "AMENDMENT: PASS" in capsys.readouterr().out
+    assert c.rows == 1 and c.commits == 1
+
+
 def test_nonempty_source_fails_closed_without_insert(monkeypatch, capsys):
     c, _ = ready(monkeypatch)
     c.rows = 1
