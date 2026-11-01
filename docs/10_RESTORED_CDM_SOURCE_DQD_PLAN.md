@@ -1,6 +1,15 @@
 # 10 - Prepare CDM_SOURCE for isolated restored-copy DQD
 
-_2026-11-01 | Draft pre-execution plan, not an executed database migration._
+_2026-11-01 | Historical isolated-restore alternative, not an executed database migration._
+
+**Supersession (2026-11-01):** The study owner subsequently authorized a
+**metadata-only, transactional insertion of one verified CDM_SOURCE row
+into the existing frozen publication database**. For the immediate DQD
+workflow, use [document 11](11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md),
+not this earlier isolated-restore prerequisite. The clinical data, original
+ETL and study results remain unchanged. This document remains available
+only as the optional disaster-recovery/isolated-QC alternative.
+
 
 **Institutional test update (2026-11-01):** Full repository regression suite
 passed **277 tests in 2.60s** after adding the offline CDM_SOURCE
