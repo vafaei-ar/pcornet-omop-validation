@@ -222,3 +222,87 @@ def test_analysis_uses_full_heldout_permutation_and_capped_matched_shap(
     for sensitivity in result["feature_importance_comparisons"].values():
         for model_data in sensitivity.values():
             assert set(model_data) == expected
+
+
+
+def test_model_validate_only_checks_cohorts_without_fitting_or_writing(
+    tmp_path, monkeypatch, capsys,
+):
+    import json
+    import sys
+
+    study = tmp_path / "locked-protocol.json"
+    study.write_text(json.dumps({
+        "status": "proposed_postfreeze_protocol_not_executed",
+        "frozen_etl_sha": m.FROZEN_SHA,
+        "interpretability": {
+            "features": m.FEATURES,
+            "populations": [
+                {"key": key, "expected_n": value[0]}
+                for key, value in m.EXPECTED.items()
+            ],
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(m, "STUDY_PATH", study)
+    full = make_frame(range(450))
+    shared = full.iloc[:225].copy()
+    groups = dict(
+        pcornet_full=full,
+        pcornet_shared=shared,
+        omop_frozen=shared.copy(),
+        omop_fallback=full.copy(),
+    )
+    monkeypatch.setattr(m, "read_population",
+                        lambda file, name: groups[name])
+    monkeypatch.setattr(m, "validate_private_output_path",
+                        lambda _: tmp_path / "not-created.json")
+    def must_not_fit(*args, **kwargs):
+        raise AssertionError("Model fitting must not happen in validate-only")
+    monkeypatch.setattr(m, "analyze", must_not_fit)
+    monkeypatch.setattr(m, "write_private_aggregate", must_not_fit)
+    command = ["model", "--validate-only"]
+    for key in m.EXPECTED:
+        command += ["--" + key.replace("_", "-"), "synthetic"]
+    monkeypatch.setattr(sys, "argv", command)
+    m.main()
+    output = capsys.readouterr().out
+    assert "PRIVATE INPUT VALIDATION: PASS" in output
+    assert "No model fitted, no files written" in output
+    assert not (tmp_path / "not-created.json").exists()
+
+
+def test_model_cli_hides_invalid_private_data_diagnostics(
+    tmp_path, monkeypatch, capsys,
+):
+    import json
+    import sys
+
+    study = tmp_path / "locked-protocol.json"
+    study.write_text(json.dumps({
+        "status": "proposed_postfreeze_protocol_not_executed",
+        "frozen_etl_sha": m.FROZEN_SHA,
+        "interpretability": {
+            "features": m.FEATURES,
+            "populations": [
+                {"key": key, "expected_n": value[0]}
+                for key, value in m.EXPECTED.items()
+            ],
+        },
+    }), encoding="utf-8")
+    monkeypatch.setattr(m, "STUDY_PATH", study)
+    monkeypatch.setattr(m, "validate_private_output_path",
+                        lambda _: tmp_path / "not-created.json")
+    private_text = "PATID=synthetic_identifier"
+    def fail_read(*args):
+        raise RuntimeError(private_text)
+    monkeypatch.setattr(m, "read_population", fail_read)
+    command = ["model", "--validate-only"]
+    for key in m.EXPECTED:
+        command += ["--" + key.replace("_", "-"), "synthetic"]
+    monkeypatch.setattr(sys, "argv", command)
+    with pytest.raises(SystemExit) as exc:
+        m.main()
+    assert exc.value.code == 1
+    visible = capsys.readouterr()
+    assert private_text not in visible.out + visible.err
+    assert "PRIVATE ANALYSIS BLOCKED" in visible.err
