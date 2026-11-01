@@ -334,6 +334,23 @@ manuscript handoff record. Do not silently replace newer text with v1.3
 or regenerate the manuscript from an archived fragment. When revising Word,
 preserve real tracked changes, comments, figure references and Zotero fields.
 
+**DQD restored-copy preparation (2026-11-01):** The study
+team authorized planning to populate factual `CDM_SOURCE` metadata
+in an independently restored copy, followed by optional DQD.
+A draft source-provenance matrix, fail-closed offline manifest
+validator and synthetic tests are now versioned in
+`docs/10_RESTORED_CDM_SOURCE_DQD_PLAN.md`, the
+`validate_restored_cdm_source_manifest.py` script and an
+intentionally incomplete example manifest. Required factual
+source extraction date, original ETL completion date, institutional
+data-holder identity and specific vocabulary version still need
+verification; none were invented. Code has **not yet been tested on
+the institutional machine** and no SQL data have changed.
+Protected off-machine copy and isolated restore are prerequisite
+gates for a real metadata insert or DQD. The conservative A-E
+co-author manuscript can proceed without waiting for this
+optional extended QC.
+
 ## 4. Priority gates to manuscript finalization
 
 | Gate | Required action and evidence | Category | Current status |
