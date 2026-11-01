@@ -109,3 +109,59 @@ def test_existing_or_symlink_file_blocks_recovery_before_sql(
     path.symlink_to(target)
     with pytest.raises(module.AuditBlocked):
         module.destination_for("synthetic.yaml")
+
+
+
+def test_recovery_uses_mocked_read_only_flow_and_owner_only_file(
+    tmp_path, monkeypatch, capsys,
+):
+    import json
+    import os
+    import stat
+    import sys
+    from types import SimpleNamespace
+
+    path = setup_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        module, "load_etl_config",
+        lambda _: SimpleNamespace(audit_dir=Path("results/etl_audit")),
+    )
+    monkeypatch.setattr(module, "verified_server_config", lambda _: {})
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "test_only")
+    monkeypatch.setattr(module, "make_restricted_odbc_string",
+                        lambda *args: "synthetic")
+    observed = []
+
+    class Connection:
+        def close(self):
+            observed.append("closed")
+
+    class Driver:
+        def connect(self, *args, **kwargs):
+            assert kwargs["autocommit"] is True
+            observed.append("connected")
+            return Connection()
+
+    monkeypatch.setitem(sys.modules, "pyodbc", Driver())
+    monkeypatch.setattr(module, "inspect_frozen",
+                        lambda c: observed.append("checked"))
+    monkeypatch.setattr(module, "create_engine",
+                        lambda *args, **kwargs: observed.append("engine"))
+    original_factory = module.original.make_engine
+
+    def fake_original_run(config_path, output_dir=None):
+        assert Path(output_dir).is_dir()
+        assert module.original.make_engine is not original_factory
+        module.original.make_engine(None)
+        return valid_payload()
+
+    monkeypatch.setattr(module.original, "run", fake_original_run)
+    module.recover("synthetic.yaml")
+    assert module.original.make_engine is original_factory
+    assert observed == ["connected", "checked", "closed", "engine"]
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    assert metadata["postfreeze_recovery_provenance"]["restricted_qc_login"]
+    assert "RECOVERY: PASS" in capsys.readouterr().out
+    with pytest.raises(module.AuditBlocked, match="already exists"):
+        module.recover("synthetic.yaml")
