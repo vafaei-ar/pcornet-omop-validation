@@ -170,8 +170,12 @@ def test_full_private_stability_output_is_create_only_0600(
     root = tmp_path / "results" / "postfreeze_interpretability"
     root.mkdir(parents=True, mode=0o700)
     root.chmod(0o700)
+    # Use a schema-complete synthetic model report. The report builder
+    # reads baseline feature ranks, so an unrelated placeholder JSON
+    # cannot exercise the successful create-only output path.
+    prior = synthetic_audited_result(tmp_path, monkeypatch)
     source = root / "aggregate_results.json"
-    source.write_text('{"synthetic":true}',encoding="utf-8")
+    source.write_text(json.dumps(prior), encoding="utf-8")
     source.chmod(0o600)
     target = root / "private_stability_review.md"
     monkeypatch.setattr(stability,"DESTINATION",target)
