@@ -182,34 +182,49 @@ def evaluation_sample(data: pd.DataFrame, limit: int) -> pd.DataFrame:
 
 def attribution(model, features: list[str], test: pd.DataFrame,
                 background: pd.DataFrame, impute: dict[str, float],
-                repeats: int) -> dict:
+                repeats: int, shap_sample: pd.DataFrame | None = None) -> dict:
+    """Full held-out AUROC permutation; bounded SHAP explanation sample."""
     from sklearn.inspection import permutation_importance
     import shap
 
-    x = filled(test, features, impute)
-    y = test.outcome.to_numpy(dtype=int)
+    if test.outcome.nunique() != 2:
+        raise ValueError("Permutation evaluation requires both outcome classes")
+    if shap_sample is None:
+        shap_sample = test
+    if not set(shap_sample.index).issubset(test.index):
+        raise ValueError("SHAP sample must be a subset of held-out evaluation")
+    perm_x = filled(test, features, impute)
+    perm_y = test.outcome.to_numpy(dtype=int)
     perm = permutation_importance(
-        model, x, y, n_repeats=repeats, random_state=SEED,
+        model, perm_x, perm_y, n_repeats=repeats, random_state=SEED,
         n_jobs=1, scoring="roc_auc",
     )
-    # Background is a common source-based reference for all four populations.
+    # Common source-reference rows across cohorts, with population-specific
+    # imputation fitted on training data only.
     bg = filled(background, features, impute)
+    shap_x = filled(shap_sample, features, impute)
     explainer = shap.TreeExplainer(
         model, data=bg, feature_perturbation="interventional",
         model_output="probability",
     )
-    vals = explainer.shap_values(x, check_additivity=False)
+    vals = explainer.shap_values(shap_x, check_additivity=False)
     if isinstance(vals, list):
-        vals = vals[1]  # positive class
+        vals = vals[1]
     vals = np.asarray(vals)
     if vals.ndim == 3 and vals.shape[2] == 2:
         vals = vals[:, :, 1]
-    if vals.shape != (len(x), len(features)):
+    if vals.shape != (len(shap_x), len(features)):
         raise RuntimeError(f"Unexpected positive-class SHAP shape {vals.shape}")
     abs_mean = np.mean(np.abs(vals), axis=0)
+    if not (np.isfinite(perm.importances_mean).all()
+            and np.isfinite(perm.importances_std).all()
+            and np.isfinite(abs_mean).all()):
+        raise RuntimeError("Non-finite feature-importance statistics")
     return {
-        "evaluation_n": int(len(test)),
-        "evaluation_events": int(y.sum()),
+        "permutation_evaluation_n": int(len(test)),
+        "permutation_evaluation_events": int(perm_y.sum()),
+        "shap_evaluation_n": int(len(shap_sample)),
+        "shap_evaluation_events": int(shap_sample.outcome.sum()),
         "explanation_scale": "positive-class predicted probability",
         "common_background_n": int(len(bg)),
         "features": {
@@ -241,8 +256,10 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
         raise ValueError("max_eval must be >=50 and repeats >=2")
     validate_populations(populations)
     shared = populations["pcornet_shared"]
-    # Common identical patient set: all four groups are evaluated on these IDs.
-    common_ids = evaluation_sample(shared, max_eval).index
+    # Permutation importance and performance use ALL matched shared held-out
+    # patients. Only SHAP is capped for computational feasibility.
+    common_ids = shared.loc[~shared.is_train].sort_index().index
+    common_shap_ids = evaluation_sample(shared, max_eval).index
     common_bg = common_shap_background(shared)
     output: dict = {
         "status": "postfreeze_interpretability_completed_pending_disclosure_review",
@@ -255,6 +272,7 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
             for name, frame in populations.items()
         },
         "comparisons": {
+            "end_to_end": ["pcornet_full", "omop_frozen"],
             "selection_within_pcornet": ["pcornet_full", "pcornet_shared"],
             "representation_fixed": ["pcornet_shared", "omop_frozen"],
             "representation_fallback": ["pcornet_full", "omop_fallback"],
@@ -295,12 +313,14 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
                         matched_test.outcome.to_numpy(dtype=int), matched_prob
                     ),
                     "native_test_importance": attribution(
-                        model, features, evaluation_sample(frame, max_eval),
+                        model, features, test,
                         common_bg, imputes, repeats,
+                        shap_sample=evaluation_sample(frame, max_eval),
                     ),
                     "common_shared_test_importance": attribution(
                         model, features, matched_test, common_bg,
                         imputes, repeats,
+                        shap_sample=frame.loc[common_shap_ids],
                     ),
                 }
                 print(f"completed {sensitivity}/{model_name}/{group}", flush=True)
