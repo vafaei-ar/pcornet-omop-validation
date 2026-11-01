@@ -39,7 +39,7 @@ For commands, full safety evidence and chronological troubleshooting use
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
 | Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
 | Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
-| Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed and private structural/arithmetic/provenance audit PASSED (234 tests). Scientific effect-size/stability interpretation and institutional disclosure remain open.** No numerical or directional attribution claim should enter the manuscript yet. |
+| Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed; private numerical audit PASSED (234 tests) and a protected scientific review was created (238 tests). Training-perturbation sensitivity and institutional disclosure remain open.** No numerical or directional attribution claim should enter the manuscript yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
 `results/postfreeze_standard_qc/private_achilles_exception_counts/`.
@@ -169,18 +169,31 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
-A separate protected, code-generated local scientific review is now
-implemented. It compares rank and magnitude shifts for full end-to-end,
-selection, fixed representation and fallback representation in both
-RF and XGBoost, for six- and five-feature models. It produces an
-owner-only, ignored Markdown report while suppressing numerical
-output in the terminal. **The new review and its tests are not yet
-executed on the institutional computer.** Independent uncertainty/
-training-seed stability and correlated-feature sensitivity are not
-proven by 20 permutation-repeat SDs. Review the restricted report
-locally, plan additional bounded sensitivity analysis if needed, and
-obtain institutional disclosure approval before any numeric figure or
-manuscript interpretation.
+**Subsequent institutional review generation (2026-11-01):**
+The local reviewer passed **238 tests** and reported
+`RF XGBOOST PRIVATE SCIENTIFIC REVIEW: WRITTEN`. The report records
+RF/XGBoost feature/rank/magnitude shifts for native end-to-end,
+matched selection, matched frozen representation and full fallback
+representation, for six- and five-feature models. It remains an
+owner-only, ignored Markdown report on the institutional machine;
+no results, numerical tables or clinical identifiers were uploaded.
+Completion of report creation is not a scientific interpretation
+or disclosure approval.
+
+A new optional-but-study-team-prioritized `postfreeze_interpretability_stability`
+module now computes training-only predictor missingness and Spearman
+correlations, matched source-target predictor differences, and
+permutation importance/rank-direction sensitivity across 80 fits
+(one full training baseline and four patient-ID-aligned 90%-training
+perturbations for each of the 16 analysis cells). It writes a separate
+create-only, private 0600 Markdown review. Its new synthetic tests
+and the institutional robustness computation **have not yet run**.
+This training perturbation does not provide patient-bootstrap confidence
+intervals or statistical-significance evidence, nor does it validate
+SHAP stability. If the study claims inferential evidence for changed
+importance, design patient-resampling inference explicitly and check
+correlated features. Obtain institutional disclosure approval before
+any numeric figure or manuscript interpretation.
 
 This study-team-prioritized analysis should be completed **before making
 RF/XGBoost attribution claims or closing a manuscript version that
