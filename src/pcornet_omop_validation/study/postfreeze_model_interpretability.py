@@ -10,6 +10,8 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import os
+import stat
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +43,82 @@ SEED = 20261029
 STUDY_PATH = Path("study_definitions/postfreeze_standard_qc_interpretability_v1.json")
 
 
+ROOT = Path(__file__).resolve().parents[3]
+PRIVATE_INPUT_ROOT = ROOT / "results/private_inputs"
+PRIVATE_RESULTS_ROOT = ROOT / "results/postfreeze_interpretability"
+
+
+def _private_path_under(root: Path, raw: str | Path) -> Path:
+    """Reject outside paths and symlinks before opening protected files."""
+    candidate = Path(os.path.abspath(Path(raw).expanduser()))
+    safe_root = Path(os.path.abspath(root))
+    if candidate == safe_root or not candidate.is_relative_to(safe_root):
+        raise ValueError("Protected file path escapes approved ignored results directory")
+    cursor = safe_root
+    if cursor.is_symlink():
+        raise ValueError("Protected file path includes symlink")
+    for part in candidate.relative_to(safe_root).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("Protected file path includes symlink")
+    if not candidate.resolve().is_relative_to(safe_root.resolve()):
+        raise ValueError("Protected file path escapes ignored results directory")
+    return candidate
+
+
+def validate_private_input_path(path: str, population: str) -> Path:
+    """Require the exact exported file under a protected 0700 directory."""
+    candidate = _private_path_under(PRIVATE_INPUT_ROOT, path)
+    if candidate != PRIVATE_INPUT_ROOT / f"{population}.parquet":
+        raise ValueError("Input must be the matching locked private cohort Parquet")
+    folder = candidate.parent
+    if not folder.is_dir() or stat.S_IMODE(folder.stat().st_mode) != 0o700:
+        raise ValueError("Private input directory must have mode 0700")
+    try:
+        info = candidate.lstat()
+    except OSError:
+        raise ValueError("Protected input Parquet not found") from None
+    if (not stat.S_ISREG(info.st_mode)
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or not 0 < info.st_size <= 100_000_000):
+        raise ValueError("Protected input Parquet has unsafe file metadata")
+    return candidate
+
+
+def validate_private_output_path(path: str) -> Path:
+    candidate = _private_path_under(PRIVATE_RESULTS_ROOT, path)
+    if candidate.name != "aggregate_results.json" or candidate.parent != PRIVATE_RESULTS_ROOT:
+        raise ValueError("Output must be the locked aggregate result filename")
+    if candidate.exists() or candidate.is_symlink():
+        raise FileExistsError("Aggregate output already exists; preserve prior analysis")
+    if PRIVATE_RESULTS_ROOT.exists():
+        if (not PRIVATE_RESULTS_ROOT.is_dir()
+                or stat.S_IMODE(PRIVATE_RESULTS_ROOT.stat().st_mode) != 0o700):
+            raise ValueError("Aggregate output directory must have mode 0700")
+    return candidate
+
+
+def write_private_aggregate(path: Path, result: dict) -> None:
+    """Write create-only owner-readable result pending institutional review."""
+    validated = validate_private_output_path(str(path))
+    validated.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if stat.S_IMODE(validated.parent.stat().st_mode) != 0o700:
+        raise ValueError("Aggregate output directory must have mode 0700")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    with os.fdopen(os.open(validated, flags, 0o600), "w", encoding="utf-8") as stream:
+        json.dump(result, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    if stat.S_IMODE(validated.stat().st_mode) != 0o600:
+        raise ValueError("Aggregate file must have mode 0600")
+
+
+
 def is_train(person: object) -> bool:
     """Identical patient-level split algorithm to locked Stage E."""
     digest = hashlib.sha256(str(person).encode("utf-8")).digest()
@@ -48,9 +126,8 @@ def is_train(person: object) -> bool:
 
 
 def read_population(path: str, population: str) -> pd.DataFrame:
-    if not str(path).lower().endswith(".parquet"):
-        raise ValueError("Private population inputs must be local Parquet files")
-    frame = pd.read_parquet(path)
+    candidate = validate_private_input_path(path, population)
+    frame = pd.read_parquet(candidate)
     required = {"patid", "index_date", "outcome", *FEATURES}
     missing = required - set(frame.columns)
     if missing:
@@ -346,25 +423,44 @@ def main() -> None:
     p.add_argument("--output", default="results/postfreeze_interpretability/aggregate_results.json")
     p.add_argument("--max-eval", type=int, default=500)
     p.add_argument("--permutation-repeats", type=int, default=20)
+    p.add_argument("--validate-only", action="store_true",
+                   help="Check all protected input cohorts and output path without fitting")
     args = p.parse_args()
-    populations = {
-        key: read_population(getattr(args, key), key) for key in EXPECTED
-    }
-    result = analyze(populations, args.max_eval, args.permutation_repeats)
-    result["study_definition_sha256"] = hashlib.sha256(STUDY_PATH.read_bytes()).hexdigest()
-    result["software_versions"] = {
-        "python": sys.version.split()[0],
-        **{package: importlib.metadata.version(package)
-           for package in ("numpy", "pandas", "scikit-learn", "xgboost", "shap")},
-    }
-    result["permutation_repeats"] = args.permutation_repeats
-    result["importance_max_evaluation_n"] = args.max_eval
-    path = Path(args.output)
-    if "results" not in path.parts:
-        raise ValueError("Write only to ignored local results/ directory")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-    print("Aggregate results require institutional disclosure review:", path)
+    try:
+        output_path = validate_private_output_path(args.output)
+        populations = {
+            key: read_population(getattr(args, key), key) for key in EXPECTED
+        }
+        validate_populations(populations)
+        if args.validate_only:
+            print("RF XGBOOST PRIVATE INPUT VALIDATION: PASS")
+            print("Locked cohorts, 90-day labels, index dates and patient split: PASS")
+            print("No model fitted, no files written.")
+            return
+
+        result = analyze(populations, args.max_eval, args.permutation_repeats)
+        result["study_definition_sha256"] = hashlib.sha256(STUDY_PATH.read_bytes()).hexdigest()
+        result["software_versions"] = {
+            "python": sys.version.split()[0],
+            **{package: importlib.metadata.version(package)
+               for package in ("numpy", "pandas", "scikit-learn", "xgboost", "shap")},
+        }
+        result["permutation_repeats"] = args.permutation_repeats
+        result["importance_max_shap_evaluation_n"] = args.max_eval
+        result["permutation_test_scope"] = "entire held-out population"
+        write_private_aggregate(output_path, result)
+        print("RF XGBOOST PRIVATE AGGREGATE ANALYSIS: COMPLETE")
+        print("Output remains local and requires institutional disclosure review.")
+        print("No patient identifiers or predictions were exported.")
+    except Exception:
+        # Never reveal row-level data, filesystem identifiers, or model errors
+        # from the institutional input path in unreviewed terminal logs.
+        print(
+            "RF XGBOOST PRIVATE ANALYSIS BLOCKED: sensitive diagnostics "
+            "suppressed. Preserve all local files for restricted review.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
