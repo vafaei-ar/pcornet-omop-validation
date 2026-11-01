@@ -957,7 +957,51 @@ No output should be published or uploaded before reviewing the private
 aggregate for expected scope, test-set denominators, correct signs,
 feature-rank changes, stability and statistical limitations.
 
-**Next local modeling gate (not executed yet):**
+**Completed private model computation and pending audit (institutional
+terminal, 2026-11-01):** The four-cohort, two-algorithm, two-feature-set
+run completed all **16** individual RF/XGBoost fits. The terminal
+reported `RF XGBOOST PRIVATE AGGREGATE ANALYSIS: COMPLETE`,
+`Output remains local and requires institutional disclosure review`,
+and `No patient identifiers or predictions were exported`. It ran
+20-repetition full held-out AUROC permutation importance, bounded
+interventional SHAP and the matched-shared-patient comparisons under
+the protected runner, saving only the private
+`results/postfreeze_interpretability/aggregate_results.json`.
+**The institutional results themselves have not yet been inspected or
+disclosure-cleared.** Completion does not establish changed or stable
+predictor importance, causal effects, uncertainty, or transportability.
+
+To check the saved report without uploading private model scores, a
+**read-only local audit** is now available at
+`pcornet_omop_validation.study.postfreeze_model_interpretability_audit`.
+It requires owner-only local file access, tests the complete 16-model
+matrix and original frozen ETL/protocol fingerprints, validates held-out
+denominators, probability-scale SHAP reference, score/rank validity and
+recomputes each pairwise importance/rank contrast. It prints only
+PASS/BLOCKED categories, without numeric scores, small-cell counts or
+feature rankings. The script and its synthetic regression tests are
+**committed but not yet executed on the institutional host**.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q &&
+python -m pcornet_omop_validation.study.postfreeze_model_interpretability_audit
+```
+
+Do **not** rerun the modeling command or overwrite the existing
+create-only aggregate. Preserve the private JSON and Parquet files.
+If the audit is blocked, investigate on the institutional machine;
+do not paste the JSON, protected scores, patient-level records,
+diagnostic detail or restricted logs into chat. A passing audit is an
+engineering/methodology check, **not disclosure authorization or a
+statistical significance test**. Then perform an approved internal
+scientific review of matched-patient rank/magnitude contrasts, five-
+feature sensitivity, correlated-feature instability, and any model
+training variability before deciding whether to use a main-text
+result or a supplementary figure.
+
+**Historical local modeling gate (now executed):**
 
 ```bash
 cd ~/works/repos/pcornet-omop-validation
