@@ -86,7 +86,7 @@ def validate(record: dict) -> None:
     if row["cdm_etl_reference"]:
         if FROZEN_SHA not in row["cdm_etl_reference"]:
             raise ManifestBlocked("ETL reference must identify frozen SHA")
-    if not row["source_description"] or "PCORnet" not in row["source_description"]:
+    if not row["source_description"] or "pcornet" not in row["source_description"].casefold():
         raise ManifestBlocked("Source description must identify PCORnet")
     if not row["source_documentation_reference"]:
         raise ManifestBlocked("Missing source documentation reference")
