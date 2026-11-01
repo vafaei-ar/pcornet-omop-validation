@@ -42,10 +42,10 @@ def test_review_covers_all_locked_comparisons_and_methods(
     assert text.count("**xgboost**") == 8
     assert "RF/XGBoost delta-direction agreement" in text
     assert "Permutation AUROC decrease" in text
-    assert "mean absolute SHAP" in text
+    assert "Mean absolute SHAP probability" in text
     assert "not" in text.lower()
     assert "RESTRICTED" in text
-    assert "statistically significant based on permutation-repeat SD" not in text
+    assert "statistically significant based on permutation-repeat SD" in text
 
 
 def test_restricted_review_file_has_0600_and_refuses_overwrite(
