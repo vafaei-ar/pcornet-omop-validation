@@ -8,7 +8,7 @@ import stat
 from pathlib import Path
 
 pytest.importorskip("sqlalchemy")
-pytest.importorskip("pandas")
+pd = pytest.importorskip("pandas")
 
 from pcornet_omop_validation.study import postfreeze_interpretability_extract as extractor
 
