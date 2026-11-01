@@ -957,6 +957,56 @@ No output should be published or uploaded before reviewing the private
 aggregate for expected scope, test-set denominators, correct signs,
 feature-rank changes, stability and statistical limitations.
 
+**Private scientific interpretation report completed (institutional
+terminal, 2026-11-01):** The updated test suite returned **238 passed
+in 2.13s**. The approved local reviewer produced
+`RF XGBOOST PRIVATE SCIENTIFIC REVIEW: WRITTEN` and confirmed the
+owner-only file remained inside ignored
+`results/postfreeze_interpretability/private_scientific_review.md`.
+No private numerical results or feature rankings were printed.
+The report itself has not been reviewed or disclosure-cleared outside
+the protected institutional environment. No scientifically supported
+directional feature-importance claim can be inferred from the terminal
+success output alone.
+
+**New protected robustness/collinearity diagnostic (not yet executed):**
+`postfreeze_interpretability_stability` independently reads the four
+protected, validated patient-level feature cohorts plus the already
+audited model aggregate, and generates
+`results/postfreeze_interpretability/private_stability_review.md`
+as an owner-only `0600`, create-only Markdown report. It screens
+predictor missingness and Spearman correlations in the training
+partitions, checks matched PCORnet/OMOP feature disagreement, and
+performs five fits per group/algorithm/feature set (one original full
+training set, four deterministic patient-ID-aligned approximately
+90%-training perturbations). It uses full native and common-shared
+held-out test populations and three fixed permutation shuffles per
+fit to assess rank and right-minus-left delta-direction sensitivity
+under training perturbation. A total of 80 exploratory model refits
+are specified. No SHAP recalculation, patient bootstrap confidence
+interval, independent effect test, or causal claim is provided by this
+step. The originally frozen six/five-feature model specifications and
+primary 20-repeat attribution result are not changed.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+umask 077
+pytest -q &&
+python -m pcornet_omop_validation.study.postfreeze_interpretability_stability
+```
+
+The robustness script and its synthetic regression tests are committed,
+**but they have not yet executed on the institutional machine**.
+The script writes no patient-level records or scores outside the
+protected local Markdown and prints no ranks, protected counts or
+clinical values. Do not upload, email, commit, paste or send this
+report to chat. Its training-perturbation ranges are descriptive and
+**must not be treated as bootstrap CIs or significance tests**.
+A separate patient-level resampling analysis may still be required
+for any inferential between-model attribution claim. Institutional
+disclosure review remains a publication gate.
+
 **Completed private numerical/provenance audit (institutional terminal,
 2026-11-01):** The updated `pytest -q` reported **234 passed in 2.21s**.
 The read-only audit reported
