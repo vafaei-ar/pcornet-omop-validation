@@ -32,6 +32,12 @@ def test_backup_history_rejects_missing_ambiguous_or_unsafe_media():
     assert capacity.verified_backup_history([row]) == (
         BACKUP, 1, 23 * capacity.GIB
     )
+    # msdb compressed_backup_size is a numeric field on some drivers.
+    decimal_row = dict(row)
+    decimal_row["compressed_backup_size"] = Decimal(23 * capacity.GIB)
+    assert capacity.verified_backup_history([decimal_row]) == (
+        BACKUP, 1, 23 * capacity.GIB
+    )
     with pytest.raises(capacity.CapacityBlocked, match="Ambiguous"):
         capacity.verified_backup_history([])
     with pytest.raises(capacity.CapacityBlocked, match="Ambiguous"):
