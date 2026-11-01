@@ -169,6 +169,21 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Diagnosed SQL credential gate (2026-11-01):** Local tests
+passed **262 in 2.55s**. The safe-stage backup metadata
+checker returned `BLOCKED [ADMIN_CREDENTIAL]`, proving
+the configured ETL SQL administrator password was not
+available to that process. The checker exited **before
+SQL engine creation/connection**, so no database action or
+actual media inspection was attempted in this run. It does
+not imply a defective backup. The next step is an operator-
+authorized, ephemeral credential sourced from an approved
+institutional secret manager or hidden prompt, followed only
+by the read-only capacity inspection. Do not broaden SQL
+permissions or rerun the original backup. Off-machine
+encrypted retention, isolated restore, DQD and scientific
+disclosure review remain open.
+
 **Backup FILELISTONLY preflight blocker (2026-11-01):** The
 institutional suite passed **259 tests**; the subsequent metadata-only
 capacity inspection returned `FROZEN BACKUP FILELISTONLY CAPACITY:
