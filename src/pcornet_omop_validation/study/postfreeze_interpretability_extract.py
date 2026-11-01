@@ -15,6 +15,7 @@ import inspect
 import json
 import os
 import stat
+import sys
 from urllib.parse import quote_plus
 import numpy as np
 from pathlib import Path
@@ -423,7 +424,19 @@ def main() -> None:
     if args.preflight_only:
         status = preflight_private_export(args.config, args.output_dir)
     else:
-        status = run(args.config, args.output_dir, args.confirm_private)
+        try:
+            status = run(args.config, args.output_dir, args.confirm_private)
+        except Exception:
+            # SQLAlchemy/ODBC provider exceptions can embed usernames, DSNs,
+            # passwords, source queries or patient-level details. Do not print
+            # raw exception text or traceback on a protected clinical run.
+            print(
+                "PROTECTED FOUR-COHORT EXPORT BLOCKED: sensitive diagnostics "
+                "suppressed. Preserve local outputs and review locally; "
+                "do not upload logs or partial extracts.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
     print(json.dumps(status, indent=2))
 
 
