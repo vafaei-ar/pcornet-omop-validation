@@ -1,3 +1,17 @@
+**Frozen-target metadata-only exception (2026-11-01):**
+The study owner approved inserting a factual, single-row
+`OMOP_VALIDATED_A.dbo.cdm_source` record to enable DQD, explicitly
+allowing this metadata-only change in the frozen database. The
+original clinical tables, ETL and Stage A-E estimands must remain
+untouched. The prior isolated-restore plan is **no longer a
+prerequisite** for this particular operation. The new guarded
+[`11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md`](11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md)
+documents a local private factual manifest, read-only target preflight,
+one-row transactional insert with before/after clinical anchors, and
+post-amendment DQD via the existing restricted QC principal. Preparation
+is committed but the institutional SQL amendment and DQD have **not
+executed**. This extension need not delay the conservative manuscript.
+
 # 09 - Post-freeze QC evidence record and manuscript finalization gates
 
 _Last checked against the GitHub post-freeze branch: 2026-10-31._
