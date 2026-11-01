@@ -978,6 +978,32 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**Second FILELISTONLY preflight stage diagnosed (institutional terminal,
+2026-11-01):** The full suite passed **262 tests in 2.55s**. The
+metadata-only inspection returned
+`FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED [ADMIN_CREDENTIAL]`.
+The exact code raises this stage **before** invoking
+`make_engine()` or opening any SQL connection when
+`load_etl_config("config/etl_A.yaml").sql_password` is empty.
+Therefore, the immediate issue is the absence of the ETL
+administrator credential in the configured environment variable
+in the process. It does **not** establish a login failure, backup
+corruption, or SQL Server FILELISTONLY failure. Existing local
+backup media remains unchanged and previously verified.
+
+**Approved next action:** If the operator remains explicitly
+authorized to use the previously approved SQL administrator
+credential, arrange access through the institutional secret
+manager or a one-shot hidden terminal prompt. The config's
+`sqlserver.password_env` value determines the exact environment
+variable name, and it must not be guessed or changed. Reinvoke
+only the metadata-only capacity checker with that environment
+variable set for the child process. Never display the password,
+persist it in shell history, upload it, or add it to the
+repository. If authorized credentials are not available, stop.
+Do not grant permissions, reset accounts, rerun backups or
+start a restore to bypass this gate.
+
 **First FILELISTONLY preflight blocked (institutional terminal,
 2026-11-01):** The updated synthetic suite reported **259 passed in
 2.35s**, but the subsequent read-only preflight returned
