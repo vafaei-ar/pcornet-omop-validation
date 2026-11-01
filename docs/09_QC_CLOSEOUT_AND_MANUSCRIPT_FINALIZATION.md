@@ -39,7 +39,7 @@ For commands, full safety evidence and chronological troubleshooting use
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
 | Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
 | Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
-| Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed but not yet audited or institutionally disclosure-cleared.** No numerical or directional attribution claim should enter the manuscript yet. |
+| Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed and private structural/arithmetic/provenance audit PASSED (234 tests). Scientific effect-size/stability interpretation and institutional disclosure remain open.** No numerical or directional attribution claim should enter the manuscript yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
 `results/postfreeze_standard_qc/private_achilles_exception_counts/`.
@@ -162,13 +162,25 @@ A protected, read-only aggregate audit and synthetic tests were then
 added. The audit will verify provenance, all four comparison scopes,
 the 16-model matrix, full-test denominators, feature ranks, and the
 arithmetic of right-minus-left importance changes without printing
-scores or exporting protected data. **The new audit has not yet run
-on the institutional host.** Next: run full tests and audit, then
-examine matched contrasts, feature correlation, SHAP versus permutation
-agreement, and the five-feature sensitivity locally. Do not claim
-significance or clinical causality from permutation-repeat SD alone.
-Request institutional disclosure review before any result or figure
-is incorporated into the manuscript.
+scores or exporting protected data. **Subsequent institutional audit (2026-11-01):** The full test suite
+returned **234 passed** and the protected audit reported
+`RF XGBOOST PRIVATE AGGREGATE AUDIT: PASS`. The completed model matrix,
+denominators, AUROC permutation importance, SHAP/rank structure,
+contrast arithmetic and provenance passed the automated checks. No
+private output was uploaded or disclosed.
+
+A separate protected, code-generated local scientific review is now
+implemented. It compares rank and magnitude shifts for full end-to-end,
+selection, fixed representation and fallback representation in both
+RF and XGBoost, for six- and five-feature models. It produces an
+owner-only, ignored Markdown report while suppressing numerical
+output in the terminal. **The new review and its tests are not yet
+executed on the institutional computer.** Independent uncertainty/
+training-seed stability and correlated-feature sensitivity are not
+proven by 20 permutation-repeat SDs. Review the restricted report
+locally, plan additional bounded sensitivity analysis if needed, and
+obtain institutional disclosure approval before any numeric figure or
+manuscript interpretation.
 
 This study-team-prioritized analysis should be completed **before making
 RF/XGBoost attribution claims or closing a manuscript version that
@@ -256,8 +268,8 @@ analysis-210 verification are documented. **The manuscript is not yet ready
 for submission** because the authoritative Word version, new QC scope
 decision, current Word-to-figure/table synchronization and final
 coauthor/disclosure checks have not been verified. DQD remains an optional, uncompleted QC extension;
-RF/XGBoost attribution computation has completed locally but
-its protected results remain unaudited and not disclosure-cleared.
-DQD is not completed. Neither may be represented as a validated
-published finding. This is an evidence and
+RF/XGBoost attribution computation and the private structural/numeric
+audit have completed, but scientific robustness and disclosure clearance
+remain outstanding. DQD is not completed. Neither should be presented
+as a validated published finding without the remaining checks. This is an evidence and
 editorial readiness distinction, not a request to reopen the locked ETL.
