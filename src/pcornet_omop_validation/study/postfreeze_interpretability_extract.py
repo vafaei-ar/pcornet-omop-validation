@@ -8,6 +8,9 @@ while their existing SQL Server #temp tables are alive. Never commits or
 publishes these row-level local files. No frozen ETL or study definitions change.
 """
 import argparse
+import hashlib
+import importlib.metadata
+import inspect
 import json
 import os
 import stat
@@ -216,6 +219,80 @@ def capture_fallback(config_path: str, working_output_dir: str) -> pd.DataFrame:
     return captures[0]
 
 
+
+
+def preflight_private_export(config_path: str, private_output_dir: str) -> dict:
+    """Strict NO-SQL/NO-WRITE preflight of prior locked artifacts and code hooks."""
+    out_dir = _private_output_path(private_output_dir)
+    if out_dir.exists():
+        if not out_dir.is_dir() or stat.S_IMODE(out_dir.stat().st_mode) != 0o700:
+            raise RuntimeError("Private export directory must be mode 0700")
+        if any(out_dir.iterdir()):
+            raise FileExistsError("Private export directory not empty; do not overwrite")
+
+    cfg = load_etl_config(config_path)  # No DB connection.
+    if not str(cfg.raw["etl"].get("cdm_version", "")).startswith("5.4"):
+        raise RuntimeError("Unexpected frozen OMOP CDM version")
+    preflight_path = (
+        cfg.audit_dir.parent / "publication_analysis"
+        / "stage_e_statistical_model" / "stage_e_statistical_model_preflight.json"
+    )
+    if not preflight_path.is_file():
+        raise RuntimeError("Locked Stage E preflight file is missing")
+    try:
+        prior = json.loads(preflight_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise RuntimeError("Locked Stage E preflight is unreadable") from None
+    if (prior.get("status") != "stage_e_statistical_model_preflight_ready"
+            or prior.get("outcome_query_performed") is not False
+            or prior.get("model_fit_performed") is not False):
+        raise RuntimeError("Saved Stage E preflight is not outcome-free and ready")
+    for key, path in (
+        ("study_definition_sha256", original_stage_e.STUDY_PATH),
+        ("inherited_d0_definition_sha256", original_stage_e.D0_PATH),
+        ("inherited_stage_d_definition_sha256", original_stage_e.STAGE_D_PATH),
+    ):
+        if not path.is_file() or prior.get(key) != hashlib.sha256(path.read_bytes()).hexdigest():
+            raise RuntimeError("Locked Stage E preflight definition hash mismatch")
+
+    fallback_record = stage_d_fallback.STAGE_C_RESULT_PATH
+    if not fallback_record.is_file():
+        raise RuntimeError("Completed Stage C fallback evidence missing")
+    try:
+        prior_fallback = json.loads(fallback_record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise RuntimeError("Saved Stage C fallback evidence unreadable") from None
+    if (prior_fallback.get("status")
+            != "stage_c_encounter_date_fallback_sensitivity_complete"
+            or prior_fallback.get("frozen_etl_sha") != FROZEN_SHA):
+        raise RuntimeError("Stage C fallback artifact does not match frozen ETL")
+
+    stage_e_code = inspect.getsource(original_stage_e.run)
+    fallback_code = inspect.getsource(stage_d_fallback.run)
+    if (stage_e_code.count("SELECT s.patid,s.outcome,") != 1
+            or stage_e_code.count("SELECT o.patid,o.outcome,") != 1
+            or "FROM #src90 s" not in stage_e_code
+            or "FROM #omop90 o" not in stage_e_code
+            or "INTO #fd_tgt_labels" not in fallback_code):
+        raise RuntimeError("Locked SQL capture hooks do not match expected code")
+    for package in (
+        "pyarrow", "scikit-learn", "xgboost", "shap",
+    ):
+        try:
+            importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            raise RuntimeError("Missing required interpretability package: " + package) from None
+
+    return {
+        "status": "PRIVATE RF XGBOOST PREFLIGHT PASS",
+        "database_queries_performed": False,
+        "private_files_created": False,
+        "locked_definitions_validated": True,
+        "private_path_checked": True,
+        "dependency_check_passed": True,
+    }
+
+
 def run(config_path: str, private_output_dir: str, confirm: bool) -> dict:
     if not confirm:
         raise ValueError("Export of local row-level clinical features requires --confirm-private")
@@ -278,8 +355,13 @@ def main() -> None:
     p.add_argument("--output-dir", default="results/private_inputs")
     p.add_argument("--confirm-private", action="store_true",
                    help="Explicitly authorize row-level LOCAL Parquet files in ignored results/")
+    p.add_argument("--preflight-only", action="store_true",
+                   help="Read-only local provenance/dependency check; no SQL or file writes")
     args = p.parse_args()
-    status = run(args.config, args.output_dir, args.confirm_private)
+    if args.preflight_only:
+        status = preflight_private_export(args.config, args.output_dir)
+    else:
+        status = run(args.config, args.output_dir, args.confirm_private)
     print(json.dumps(status, indent=2))
 
 
