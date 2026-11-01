@@ -62,12 +62,16 @@ def test_date_sensitive_feature_exclusion_is_exact():
 def test_common_shap_background_uses_reproducible_random_training_sample():
     frame = make_frame(range(600))
     training = frame[frame.is_train]
-    expected = training.sample(n=200, random_state=m.SEED)
+    expected = training.sort_index().sample(n=200, random_state=m.SEED)
     first = m.common_shap_background(frame)
     repeated = m.common_shap_background(frame)
+    reordered = m.common_shap_background(
+        frame.sample(frac=1, random_state=9)
+    )
     assert len(first) == 200
     assert first.index.equals(expected.index)
     assert first.index.equals(repeated.index)
+    assert first.index.equals(reordered.index)
     assert set(first.index).issubset(set(training.index))
     assert not first.index.equals(training.sort_index().head(200).index)
     assert len(m.common_shap_background(frame, limit=30)) == 30
