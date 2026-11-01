@@ -103,7 +103,14 @@ engine and synthetic tests now implement the fixed-seed sample. The exporter
 also gained protected-path and input-integrity checks plus a no-SQL preflight.
 The model engine now sorts patient IDs before fitting/sampling so fixed seeds
 are robust to arbitrary SQL row order, without changing the 70/30 split.
-**These new tests and the institutional preflight have not yet run.**
+**Local execution update (2026-10-31):** 201 tests passed after the
+interpretability dependencies were installed. The new `--preflight-only`
+run blocked on the missing saved Stage E preflight JSON before any SQL or
+patient-data extraction. The Stage E preflight originally passed in
+September 2026; its artifact must be located and authenticated, or
+re-created via a separately recorded outcome-free metadata preflight,
+without changing the locked definition or frozen target. RF/XGBoost
+feature extraction and attribution remain **not executed**.
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
 review uncertainty/stability and disclosure, and update the manuscript
