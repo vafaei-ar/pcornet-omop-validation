@@ -199,3 +199,38 @@ def test_full_private_stability_output_is_create_only_0600(
     with pytest.raises(SystemExit):
         stability.main()
     assert "PRIVATE STABILITY REVIEW: BLOCKED" in capsys.readouterr().err
+
+
+def test_real_permutation_probe_on_synthetic_risk_features():
+    """Exercise actual RF/XGBoost fit and sklearn importance, not mocks."""
+    pytest.importorskip("sklearn")
+    pytest.importorskip("xgboost")
+    groups = cohorts(n=400)
+    frame = groups["pcornet_full"]
+    train = stability.training_subset(frame, 1)
+    native = frame.loc[~frame.is_train].sort_index()
+    shared = groups["pcornet_shared"].loc[
+        ~groups["pcornet_shared"].is_train
+    ].sort_index()
+    features = m.FEATURES
+    for name in ("random_forest", "xgboost"):
+        model = m.make_model(name)
+        model.set_params(n_estimators=12)
+        result = stability._model_permutation(
+            model,
+            train,
+            {"native_test": native, "common_shared_test": shared},
+            features,
+        )
+        assert set(result) == {"native_test", "common_shared_test"}
+        for scope in result.values():
+            assert set(scope) == set(features)
+            assert all(np.isfinite(value) for value in scope.values())
+    # Reject invalid scopes before any score is returned.
+    with pytest.raises(ValueError, match="scope"):
+        stability._model_permutation(
+            m.make_model("random_forest").set_params(n_estimators=12),
+            train,
+            {"unexpected_scope": native},
+            features,
+        )
