@@ -190,3 +190,63 @@ def test_cli_suppresses_sql_credentials_and_details(monkeypatch, capsys):
     assert "FROZEN BACKUP FILELISTONLY CAPACITY: BLOCKED" in visible.err
     assert "synthetic_secret" not in visible.out + visible.err
     assert "synthetic_id" not in visible.out + visible.err
+
+
+def test_missing_admin_credential_is_reported_as_safe_stage(
+    monkeypatch, capsys,
+):
+    monkeypatch.setattr(capacity, "verified_server_config", lambda _: {})
+    monkeypatch.setattr(capacity, "load_etl_config",
+                        lambda _: SimpleNamespace(sql_password=None))
+    monkeypatch.setattr(sys, "argv", ["inspect_frozen_restore_capacity"])
+    with pytest.raises(SystemExit) as stopped:
+        capacity.main()
+    assert stopped.value.code == 1
+    shown = capsys.readouterr()
+    assert "BLOCKED [ADMIN_CREDENTIAL]" in shown.err
+    assert "password" not in shown.out.lower() + shown.err.lower()
+
+
+def test_filelist_sql_provider_failure_reports_only_safe_phase(
+    monkeypatch, capsys,
+):
+    class FailingFilelistConnection(FakeConnection):
+        def exec_driver_sql(self, sql):
+            raise RuntimeError(
+                "PWD={synthetic_top_secret}; PATID=synthetic_identifier"
+            )
+
+    conn = FailingFilelistConnection()
+
+    class Engine:
+        def connect(self):
+            return conn
+        def dispose(self):
+            self.disposed = True
+
+    engine = Engine()
+    monkeypatch.setattr(capacity, "verified_server_config", lambda _: {})
+    monkeypatch.setattr(capacity, "load_etl_config",
+                        lambda _: SimpleNamespace(sql_password="synthetic"))
+    monkeypatch.setattr(capacity, "make_engine", lambda cfg, database: engine)
+    monkeypatch.setattr(sys, "argv", ["inspect_frozen_restore_capacity"])
+    with pytest.raises(SystemExit) as stopped:
+        capacity.main()
+    assert stopped.value.code == 1
+    shown = capsys.readouterr()
+    assert "BLOCKED [FILELISTONLY]" in shown.err
+    assert "synthetic_top_secret" not in shown.err + shown.out
+    assert "synthetic_identifier" not in shown.err + shown.out
+    assert engine.disposed
+
+
+def test_non_stage_exception_is_suppressed_as_unclassified(monkeypatch, capsys):
+    def raise_raw(_):
+        raise RuntimeError("PWD={synthetic_top_secret}")
+    monkeypatch.setattr(capacity, "inspect", raise_raw)
+    monkeypatch.setattr(sys, "argv", ["inspect_frozen_restore_capacity"])
+    with pytest.raises(SystemExit):
+        capacity.main()
+    shown = capsys.readouterr()
+    assert "BLOCKED [UNCLASSIFIED]" in shown.err
+    assert "synthetic_top_secret" not in shown.err + shown.out
