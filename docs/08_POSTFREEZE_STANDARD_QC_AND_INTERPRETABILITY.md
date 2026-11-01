@@ -1,6 +1,6 @@
 # Post-freeze standard OMOP QC and interpretability extension (proposed)
 
-**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. The completed read-only analysis-ID reconciliation PASSED: all 194 unmatched IDs are documented Achilles performance records (analysis_id + 2,000,000), none are unexplained, and 140 of 194 default analyses have data-bearing result rows. The remaining 54 default analyses lack stored data-bearing result rows, which is not automatically an execution or quality failure. The read-only category inventory PASSED: missing results concentrate in Visit Detail (11), Payer Plan Period (9), Condition Era (8), Drug Era (8), Care Site/Location/Provider (12 total), Note (2), Visit Occurrence (2), Observation (1), and Observation Period (1). Source-table presence triage PASSED: eight OMOP tables are empty (visit_detail, payer_plan_period, condition_era, drug_era, care_site, location, provider, note); visit_occurrence, observation and observation_period contain rows. Frozen-source ETL scope analysis identified a discrepancy between the original design and the 11-target freeze acceptance gate. Targeted missing-result ID review COMPLETED for 207, 209, 210 and 814: upstream Achilles 1.7.2 SQL confirms four aggregate exception-count analyses, with 0–10 results filtered by the configured small-cell threshold; zero versus a small nonzero exception count remains unverified. A restricted read-only four-ID diagnostic and synthetic tests have been added to the branch, but the diagnostic has NOT run on institutional data. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
+**State: local backup, QC account provisioning, and full permissions audit passed on 2026-10-30. DQD remains blocked because frozen CDM_SOURCE has zero rows, confirmed by read-only inspection. No DQD check results. Achilles 1.7.2 COMPLETED locally in 3.63 minutes, with 194 distinct analysis IDs marked complete in the transcript. The read-only persisted-results audit PASSED: 294 definition rows, 840,097 regular result rows, 44,802 distribution result rows, 334 distinct stored analysis IDs, zero permanent scratch tables, unchanged frozen publication counts, and CDM_SOURCE still empty. The completed read-only analysis-ID reconciliation PASSED: all 194 unmatched IDs are documented Achilles performance records (analysis_id + 2,000,000), none are unexplained, and 140 of 194 default analyses have data-bearing result rows. The remaining 54 default analyses lack stored data-bearing result rows, which is not automatically an execution or quality failure. The read-only category inventory PASSED: missing results concentrate in Visit Detail (11), Payer Plan Period (9), Condition Era (8), Drug Era (8), Care Site/Location/Provider (12 total), Note (2), Visit Occurrence (2), Observation (1), and Observation Period (1). Source-table presence triage PASSED: eight OMOP tables are empty (visit_detail, payer_plan_period, condition_era, drug_era, care_site, location, provider, note); visit_occurrence, observation and observation_period contain rows. Frozen-source ETL scope analysis identified a discrepancy between the original design and the 11-target freeze acceptance gate. Targeted Achilles review of IDs 207, 209, 210 and 814 completed against official v1.7.2 SQL. A protected local four-ID exception diagnostic executed, and its private output passed file structure/permissions validation. On 2026-10-31 the restricted live frozen-target reconciliation for ID 210 PASSED, with no discrepancy against the protected prior result and no new cohort materialization; its exact value remains private pending disclosure review. The remaining 207/209/814 exception classifications have not been independently interpreted, and the limitations of empty domains persist. Tests: 193 passed, 1 skipped. No DQD check results. Interpretability analyses NOT EXECUTED.** This extension is separate from the original frozen Stage A–E study and does not revise the approved primary estimates, database, phenotype, or outcome. All clinical row-level data remain within the authorized institutional environment. The local backup is 23.03 GiB compressed; SQL Server backup history, RESTORE VERIFYONLY WITH CHECKSUM, and frozen reference counts passed. An off-machine protected copy and isolated test restore are still pending.
 
 - Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Reference publication branch SHA: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
@@ -645,11 +645,34 @@ python scripts/verify_postfreeze_achilles_210_live.py \
   --config config/etl_A.yaml
 ```
 
-The expected successful terminal signal is
-`ACHILLES 210 LIVE FROZEN COUNT RECONCILIATION: PASS`. Report only
-that terminal status, not the protected files or their contents. This
-live reconciliation has not yet run on institutional SQL, so **no
-scientific conclusion about analysis 210 is upgraded yet**.
+The expected terminal signal,
+`ACHILLES 210 LIVE FROZEN COUNT RECONCILIATION: PASS`, was observed
+locally on 2026-10-31. The operator reported **193 tests passed,
+1 skipped**, frozen publication row-count anchors passed, and the
+restricted SQL Server 210 count reconciled with the protected result.
+No identifiers, row-level data or suppressed count values were printed.
+The existing private overlap artifact was internally consistent with the
+same prior evidence. **No new D0 cohort was materialized.** The analysis-210
+result interpretation is now locally corroborated; no independent claim
+about D0 estimates follows from this check alone. No more Achilles
+runs or analysis-210 verification scripts are necessary for this audit
+unless input data or QC outputs change.
+
+**Interpretability closeout (non-disclosive):** The four stored
+performance records were successful. The missing data-bearing outputs
+were caused by the configured small-cell threshold or absent/empty
+inputs, rather than by a failed Achilles run. The local ID-210
+verification is complete. Do not interpret missing rows as DQD passes,
+CDM domain completeness, or confirmation of all relational-integrity
+rules. The 207/209/814 private classifications require restricted
+clinical/mapping review only if they affect a claimed validation
+property. The most consequential outstanding QC limitation is the
+empty frozen `CDM_SOURCE`, which blocks DQD. The frozen build also
+omits several planned or derived OMOP domains. Resolving DQD requires
+authentic provenance metadata in a separately restored, controlled
+analysis copy, not an edit to the frozen publication target. Neither
+the population-selection results nor the published estimates have
+been revised by this QC extension.
 
 Output remains under ignored, protected `results/postfreeze_standard_qc/private_achilles_exception_counts/analysis_210_locked_d0_overlap.json`.
 Do not upload or paste this file. Report only the command exit status.
