@@ -183,6 +183,20 @@ def fill_from_verified(manifest: dict, vocabulary: str) -> dict:
     }
     for field, proposed in known.items():
         existing = fields[field]
+        if field == "source_description":
+            # A real PCORnet source is established by the locked ETL. Keep
+            # the operator's wording while adding this required label if
+            # missing; case differences and surrounding spaces are harmless.
+            if existing is None or (type(existing) is str and not existing.strip()):
+                fields[field] = proposed
+            elif type(existing) is not str or "\\x00" in existing:
+                raise PreparationBlocked("INVALID_SOURCE_DESCRIPTION")
+            else:
+                description = existing.strip()
+                if "pcornet" not in description.casefold():
+                    description = "PCORnet-derived data. " + description
+                fields[field] = description
+            continue
         if existing in ("", None):
             fields[field] = proposed
             continue
@@ -196,8 +210,6 @@ def fill_from_verified(manifest: dict, vocabulary: str) -> dict:
             raise PreparationBlocked("INVALID_" + field.upper())
         elif field == "cdm_etl_reference" and FROZEN_SHA not in existing:
             raise PreparationBlocked("CONFLICT_CDM_ETL_REFERENCE")
-        elif field == "source_description" and "PCORnet" not in existing:
-            raise PreparationBlocked("INVALID_SOURCE_DESCRIPTION")
         # Otherwise retain the user's actual text exactly; it may be a
         # more accurate institutional source description than our default.
     for field, proposed in EVIDENCE.items():
@@ -270,6 +282,7 @@ def main() -> None:
         raise SystemExit(1) from None
     print("FROZEN CDM_SOURCE PRIVATE PREFILL: PASS")
     print("Known descriptive, ETL, CDM concept and vocabulary metadata filled.")
+    print("Existing source description retained; PCORnet provenance label normalized where necessary.")
     print("Still needs verified holder, source release date and CDM release date,")
     print("with original evidence references. No SQL database rows modified.")
 
