@@ -138,3 +138,77 @@ def test_success_status_prints_no_metadata(monkeypatch, capsys):
     visible = capsys.readouterr().out
     assert "PREFILL: PASS" in visible
     assert "SYNTHETIC_SECRET_VOCAB" not in visible
+
+
+def test_valid_manual_description_and_documentation_are_not_overwritten():
+    prior = blank_manifest()
+    row = prior["cdm_source"]
+    row["cdm_source_name"] = "Synthetic clinical source"
+    row["cdm_source_abbreviation"] = "SYN_SRC"
+    row["source_description"] = "Synthetic PCORnet-to-OMOP mapping"
+    row["source_documentation_reference"] = "Synthetic local controlled source guide"
+    row["cdm_etl_reference"] = "Local audit for " + mod.FROZEN_SHA
+    prior["evidence"]["vocabulary_version"] = "Synthetic local vocabulary evidence"
+    populated = mod.fill_from_verified(prior, "SYNTHETIC_vocab")
+    for field in ("cdm_source_name", "cdm_source_abbreviation",
+                  "source_description", "source_documentation_reference",
+                  "cdm_etl_reference"):
+        assert populated["cdm_source"][field] == row[field]
+    assert (populated["evidence"]["vocabulary_version"]
+            == "Synthetic local vocabulary evidence")
+
+
+def test_short_nonstandard_manual_abbreviation_preserved():
+    prior = blank_manifest()
+    prior["cdm_source"]["cdm_source_abbreviation"] = "LOCAL"
+    populated = mod.fill_from_verified(prior, "SYNTHETIC_vocab")
+    assert populated["cdm_source"]["cdm_source_abbreviation"] == "LOCAL"
+
+
+def test_bad_manual_etl_sha_rejected_by_safe_field_code():
+    prior = blank_manifest()
+    prior["cdm_source"]["cdm_etl_reference"] = "unverified ETL history"
+    with pytest.raises(mod.PreparationBlocked, match="CONFLICT_CDM_ETL_REFERENCE"):
+        mod.fill_from_verified(prior, "SYNTHETIC_vocab")
+
+
+def test_safe_field_failure_code_does_not_print_private_values(
+    monkeypatch, capsys,
+):
+    prior = blank_manifest()
+    prior["cdm_source"]["vocabulary_version"] = "SYNTHETIC_OLD_VERSION"
+    monkeypatch.setattr(
+        sys, "argv", ["prefill_frozen_cdm_source_manifest", "--execute-local"]
+    )
+    monkeypatch.setattr(mod, "read_manifest", lambda: prior)
+    monkeypatch.setattr(
+        mod, "verified_vocabulary", lambda _: "SYNTHETIC_CURRENT_VERSION"
+    )
+    monkeypatch.setattr(
+        mod, "save_private_manifest",
+        lambda _: pytest.fail("never save a conflicting manifest")
+    )
+    with pytest.raises(SystemExit):
+        mod.main()
+    visible = capsys.readouterr().err
+    assert "BLOCKED [CONFLICT_VOCABULARY_VERSION]" in visible
+    assert "SYNTHETIC_" not in visible
+
+
+def test_sql_connect_failure_classified_without_provider_error(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(mod, "verified_server_config", lambda *_: {})
+    monkeypatch.setattr(
+        mod, "load_etl_config",
+        lambda _: SimpleNamespace(
+            raw={"sqlserver": {"password_env": "SYN_PASSWORD"}},
+            sql_password="synthetic_password",
+        ),
+    )
+
+    def throw_provider(*args, **kwargs):
+        raise RuntimeError("password=NOT_FOR_LOGS host=NOT_FOR_LOGS")
+
+    monkeypatch.setattr(mod, "make_engine", throw_provider)
+    with pytest.raises(mod.PreparationBlocked, match="SQL_CONNECT"):
+        mod.verified_vocabulary("config")
