@@ -97,9 +97,11 @@ exchange importance. Differences in rankings are **not causal effects**.
 interpretability engine against the locked Stage C/D/E definitions before
 any institutional extraction. Verify input lineage, identities, overlap,
 index dates, outcomes, features, split rules and reference SHAP sampling.
-The current model engine selects its 200-row SHAP background using the
-first 200 sorted training patient IDs, whereas the locked protocol
-describes a fixed-seed random sample; reconcile this before execution.
+The SHAP background previously selected the first sorted training IDs,
+which conflicted with the locked fixed-seed sampling protocol. The model
+engine and synthetic tests now implement the fixed-seed sample. The exporter
+also gained protected-path and input-integrity checks plus a no-SQL preflight.
+**These new tests and the institutional preflight have not yet run.**
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
 review uncertainty/stability and disclosure, and update the manuscript
