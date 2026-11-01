@@ -611,6 +611,46 @@ python scripts/audit_postfreeze_achilles_210_cohort_overlap.py \
   --config config/etl_A.yaml
 ```
 
+**2026-10-31 status and independent count verification gate:**
+
+The institutional run on branch `5a69cd0` passed **177 tests, 1 skipped**.
+The prior protected Achilles JSON passed its structure/permission checks, and
+the Achilles 210 overlap program completed with a private output file. Its
+terminal output contained no frozen anchor preflight messages. This is
+consistent with its **zero-exception shortcut**: in this code path the
+program trusts the previously saved private analysis-210 count and does
+not connect to SQL Server or materialize the D0 cohort. Therefore the
+completion message is **not** evidence of an independently rechecked
+zero-exception count or newly reproduced D0 anchors.
+
+To close this specific provenance gap without overwriting any artifact,
+`scripts/verify_postfreeze_achilles_210_live.py` now performs an
+independent, SELECT-only live count verification. It validates both
+protected files locally, checks the original Achilles run manifest and
+saved four-ID coverage under the restricted QC principal, rechecks the
+three frozen publication table anchors and empty CDM_SOURCE, and executes
+the **official v1.7.2 analysis-210 count predicate** directly on the frozen
+OMOP target. It requires equality with the private saved count and
+suppression bound (0-10). Any discrepancy blocks with **no count disclosed**.
+It creates no result files, SQL scratch tables or database writes. It does
+not rerun Achilles or D0, and its PASS does not certify effects on cohort
+eligibility, estimates or clinical interpretation.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q
+# Reuse the existing OHDSI_QC_PASSWORD in this terminal, set securely.
+python scripts/verify_postfreeze_achilles_210_live.py \
+  --config config/etl_A.yaml
+```
+
+The expected successful terminal signal is
+`ACHILLES 210 LIVE FROZEN COUNT RECONCILIATION: PASS`. Report only
+that terminal status, not the protected files or their contents. This
+live reconciliation has not yet run on institutional SQL, so **no
+scientific conclusion about analysis 210 is upgraded yet**.
+
 Output remains under ignored, protected `results/postfreeze_standard_qc/private_achilles_exception_counts/analysis_210_locked_d0_overlap.json`.
 Do not upload or paste this file. Report only the command exit status.
 The new code has synthetic unit tests but has NOT yet run on the institutional
