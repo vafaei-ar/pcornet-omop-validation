@@ -850,6 +850,51 @@ file, overwrite an existing preflight, or call `--confirm-private`
 before both commands pass. No institutional recovery execution or
 new test results are claimed at this stage.
 
+**Verified preflight outcome and next protected extraction gate (local run
+2026-11-01):** The institutional terminal reported `209 passed in 2.21s`.
+The restricted outcome-free Stage E metadata recovery reported PASS, frozen
+publication anchors remained unchanged, the recovered JSON was labeled as
+regenerated, and the subsequent private RF/XGBoost `--preflight-only` reported
+`PRIVATE RF XGBOOST PREFLIGHT PASS`. No row-level extraction or model fitting
+was performed in that step.
+
+Before the first row-level extraction, code was hardened again to require
+`OHDSI_QC_PASSWORD` and route **both** the unchanged original Stage E feature
+queries and Stage D encounter-date fallback feature queries through the
+dedicated `ohdsi_postfreeze_qc` account. The original database-engine
+bindings are restored even when an exception occurs. The script preflights
+the locked artifacts again before any clinical query and verifies frozen
+table counts via the restricted login. The command-line clinical export
+suppresses SQL-provider tracebacks that might expose credentials or clinical
+values. New synthetic tests cover restricted login, engine restoration,
+required credentials, and sanitized terminal failure.
+
+**These latest exporter code changes have not yet run in the institutional
+environment.** Run the updated `pytest -q` first and only then authorize
+the local extract under the existing, ignored, private output path.
+It writes four row-level Parquet files and protected working outputs;
+do not upload, paste, email, commit or publish the files, nor paste any
+detailed SQL/provider traceback. The script refuses a nonempty output
+directory. Preserve partial files if execution stops; review the reason
+rather than deleting or retrying automatically.
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q &&
+python -m pcornet_omop_validation.study.postfreeze_interpretability_extract \
+  --config config/etl_A.yaml \
+  --output-dir results/private_inputs \
+  --confirm-private
+```
+
+On success, the console should state
+`private_four_population_feature_export_complete` with only aggregate
+population sizes (no identifiers). Before modeling, verify all four
+Parquet files' ownership and permissions locally and execute the model's
+population/label/index checks. **No extraction or attribution result is
+yet claimed.**
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
