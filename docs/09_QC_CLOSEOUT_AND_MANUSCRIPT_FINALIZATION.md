@@ -169,6 +169,22 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Backup FILELISTONLY preflight blocker (2026-11-01):** The
+institutional suite passed **259 tests**; the subsequent metadata-only
+capacity inspection returned `FROZEN BACKUP FILELISTONLY CAPACITY:
+BLOCKED`. No logical restore allocation was measured and no backup
+or clinical table was modified. The cause is unknown because original
+diagnostics were intentionally suppressed. The tool now uses
+non-sensitive, enumerated stage codes (configuration, admin
+credential, SQL connection, backup-history selection, FILELISTONLY,
+filelist validation or filesystem space) with regression tests, so
+the next local run can identify the stage without exposing secrets
+or protected values. A missing original administrator password in
+the current shell remains a hypothesis, not a demonstrated cause.
+**The revised diagnostic tool has not run on the institutional host.**
+A usable isolated restored copy and approved off-machine backup
+remain incomplete and DQD stays unexecuted.
+
 **Individual backup readability and capacity (2026-11-01):**
 The service account confirmed **one readable 23.03 GiB backup
 file**, and the local root filesystem reported **811 GiB free**.
