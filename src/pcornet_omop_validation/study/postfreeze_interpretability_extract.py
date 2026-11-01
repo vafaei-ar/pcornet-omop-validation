@@ -312,7 +312,7 @@ def restricted_stage_engines(config_path: str):
     those bindings narrowly and always restore them, including on errors.
     SQL may create session-local #temp tables but never permanent CDM tables.
     """
-    from scripts.inspect_postfreeze_achilles import (
+    from pcornet_omop_validation.study.postfreeze_restricted_qc import (
         FROZEN_DATABASE,
         inspect_frozen,
         make_restricted_odbc_string,
