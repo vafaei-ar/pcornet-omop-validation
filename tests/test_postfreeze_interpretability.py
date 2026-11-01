@@ -100,5 +100,125 @@ def test_models_expose_probability_and_positive_shap_shape():
             {f: 0.0 for f in m.FEATURES}, repeats=2,
         )
         assert set(importance["features"]) == set(m.FEATURES)
-        assert importance["evaluation_n"] == 30
+        assert importance["permutation_evaluation_n"] == 30
+        assert importance["shap_evaluation_n"] == 30
         assert sorted(importance["shap_rank"]) == sorted(m.FEATURES)
+
+
+
+def test_model_private_input_and_aggregate_output_guards(tmp_path, monkeypatch):
+    import json
+    import stat
+
+    inp = tmp_path / "results" / "private_inputs"
+    inp.mkdir(parents=True, mode=0o700)
+    inp.chmod(0o700)
+    out = tmp_path / "results" / "postfreeze_interpretability"
+    monkeypatch.setattr(m, "PRIVATE_INPUT_ROOT", inp)
+    monkeypatch.setattr(m, "PRIVATE_RESULTS_ROOT", out)
+
+    cohort = inp / "pcornet_full.parquet"
+    cohort.write_bytes(b"synthetic-only")
+    cohort.chmod(0o600)
+    assert m.validate_private_input_path(str(cohort), "pcornet_full") == cohort
+    with pytest.raises(ValueError, match="matching"):
+        m.validate_private_input_path(str(cohort), "omop_frozen")
+    cohort.chmod(0o644)
+    with pytest.raises(ValueError, match="unsafe"):
+        m.validate_private_input_path(str(cohort), "pcornet_full")
+    cohort.chmod(0o600)
+    real = inp / "real.parquet"
+    cohort.rename(real)
+    cohort.symlink_to(real)
+    with pytest.raises(ValueError, match="symlink"):
+        m.validate_private_input_path(str(cohort), "pcornet_full")
+
+    target = out / "aggregate_results.json"
+    assert m.validate_private_output_path(str(target)) == target
+    m.write_private_aggregate(target, {"status": "synthetic-only"})
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    assert stat.S_IMODE(out.stat().st_mode) == 0o700
+    assert json.loads(target.read_text())["status"] == "synthetic-only"
+    with pytest.raises(FileExistsError):
+        m.write_private_aggregate(target, {"status": "must-not-overwrite"})
+
+
+def test_model_private_output_must_be_inside_locked_results(tmp_path, monkeypatch):
+    out = tmp_path / "results" / "postfreeze_interpretability"
+    monkeypatch.setattr(m, "PRIVATE_RESULTS_ROOT", out)
+    with pytest.raises(ValueError, match="escapes"):
+        m.validate_private_output_path(str(tmp_path / "other" / "aggregate_results.json"))
+    with pytest.raises(ValueError, match="locked aggregate"):
+        m.validate_private_output_path(str(out / "other.json"))
+
+
+def test_importance_difference_reports_right_minus_left():
+    feats = m.FEATURES[:2]
+    def report(a, b):
+        return {
+            "features": {
+                feats[0]: {"permutation_auroc_decrease_mean": a,
+                           "mean_absolute_shap_probability": b},
+                feats[1]: {"permutation_auroc_decrease_mean": b,
+                           "mean_absolute_shap_probability": a},
+            },
+            "permutation_rank": feats if a > b else feats[::-1],
+            "shap_rank": feats if b > a else feats[::-1],
+            "permutation_evaluation_n": 123,
+        }
+    difference = m.importance_difference(report(.1, .2), report(.3, .4))
+    item = difference["feature_differences"][feats[0]]
+    assert item["permutation_auroc_decrease_difference"] == pytest.approx(.2)
+    assert item["mean_absolute_shap_probability_difference"] == pytest.approx(.2)
+    assert difference["left_permutation_evaluation_n"] == 123
+
+
+def test_analysis_uses_full_heldout_permutation_and_capped_matched_shap(
+    monkeypatch,
+):
+    full = make_frame(range(500))
+    shared = full.iloc[:250].copy()
+    groups = {
+        "pcornet_full": full,
+        "pcornet_shared": shared,
+        "omop_frozen": shared.copy(),
+        "omop_fallback": full.copy(),
+    }
+    observations = []
+    class FakeModel:
+        def fit(self, x, y):
+            return self
+        def predict_proba(self, x):
+            return np.column_stack((np.full(len(x), .7),
+                                    np.full(len(x), .3)))
+
+    def fake_importance(model, features, test, background, impute, repeats,
+                        shap_sample=None):
+        observations.append((len(test), len(shap_sample), repeats))
+        return {
+            "permutation_evaluation_n": len(test),
+            "features": {
+                f: {"permutation_auroc_decrease_mean": .1,
+                    "mean_absolute_shap_probability": .2}
+                for f in features
+            },
+            "permutation_rank": list(features),
+            "shap_rank": list(features),
+        }
+
+    monkeypatch.setattr(m, "make_model", lambda name: FakeModel())
+    monkeypatch.setattr(m, "attribution", fake_importance)
+    monkeypatch.setattr(m, "performance", lambda y, p: {"n": len(y)})
+    result = m.analyze(groups, max_eval=50, repeats=2)
+    assert len(observations) == 32
+    common_n = int((~shared.is_train).sum())
+    assert common_n > 50
+    assert all(n >= sample and sample <= 50 and repeats == 2
+               for n, sample, repeats in observations)
+    assert sum(n == common_n for n, sample, _ in observations) >= 16
+    expected = {"end_to_end", "selection_within_pcornet",
+                "representation_fixed", "representation_fallback"}
+    assert set(result["comparisons"]) == expected
+    for sensitivity in result["feature_importance_comparisons"].values():
+        for model_data in sensitivity.values():
+            assert set(model_data) == expected
