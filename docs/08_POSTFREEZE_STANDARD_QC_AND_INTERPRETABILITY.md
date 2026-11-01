@@ -936,6 +936,27 @@ or externally mirrored.** Their exact source/target content remains only
 in the institutional environment. No RF/XGBoost models or importance
 analyses have yet run.
 
+**Institutional model-input validation completed (2026-11-01):**
+After updating the post-freeze modeling code, the institutional terminal
+reported **227 tests passed in 2.33s** and
+`RF XGBOOST PRIVATE INPUT VALIDATION: PASS`. The locked cohorts,
+90-day labels, index dates and patient split all passed. The runner
+explicitly confirmed `No model fitted, no files written.`.
+This verifies the protected-input gate; no RF/XGBoost predictions,
+permutation scores or SHAP attributions exist yet.
+
+**Approved next computational step:** Run the same locked four-input
+model command shown below **without** `--validate-only`, retaining
+`--max-eval 500` and `--permutation-repeats 20`. The command fits
+16 models across the four input populations, two model types and two
+prespecified feature sets. It writes one protected, create-only aggregate
+JSON under ignored `results/postfreeze_interpretability/`.
+Success is the terminal signal
+`RF XGBOOST PRIVATE AGGREGATE ANALYSIS: COMPLETE`.
+No output should be published or uploaded before reviewing the private
+aggregate for expected scope, test-set denominators, correct signs,
+feature-rank changes, stability and statistical limitations.
+
 **Next local modeling gate (not executed yet):**
 
 ```bash
