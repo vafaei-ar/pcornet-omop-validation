@@ -115,8 +115,17 @@ outcome-free, create-only recovery using the restricted QC account and
 clearly labels any regenerated metadata as a new execution. **The
 recovery code and new tests have not run on the institutional host.**
 Original frozen definitions, ETL data and publication conclusions remain
-locked. RF/XGBoost feature extraction and attribution remain **not
-executed**.
+locked. **2026-11-01 update:** Institutional tests passed again (**209 passed**).
+The authentic Stage C fallback record was already present. The missing
+Stage E outcome-free preflight was regenerated and explicitly labeled,
+using only the restricted QC login, and a new no-SQL feature-export
+preflight passed. No row-level export or model fitting was performed.
+The protected exporter has now been further hardened to use the same
+restricted QC login for **both** locked Stage E and fallback Stage D
+queries, restore engine bindings, and suppress provider secrets.
+Those latest changes and synthetic tests require the next local pytest
+run before the first private extraction. RF/XGBoost feature extraction
+and attribution remain **not executed**.
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
 review uncertainty/stability and disclosure, and update the manuscript
