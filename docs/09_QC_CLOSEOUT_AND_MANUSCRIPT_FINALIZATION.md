@@ -169,6 +169,20 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Individual backup readability and capacity (2026-11-01):**
+The service account confirmed **one readable 23.03 GiB backup
+file**, and the local root filesystem reported **811 GiB free**.
+Neither fact alone demonstrates sufficient logical restore capacity,
+encrypted off-machine retention or recoverability in an isolated
+environment. A new read-only preflight uses `msdb` plus
+`RESTORE FILELISTONLY` to inspect logical data and log allocation,
+without backup/restore writes, filenames or clinical records in output.
+Synthetic tests are in the branch; the new preflight **has not
+executed on the institutional server**. After a clean local test
+suite, run the read-only preflight and only then plan a separate
+authorized encrypted copy and isolated restore. Do not modify the
+frozen target or prematurely claim DQD is complete.
+
 **Local backup inventory update (2026-11-01):** The operator
 confirmed one existing `OMOP_VALIDATED_A_copyonly_*.bak` backup
 candidate totaling **23.03 GiB**. The `mssql` service account
