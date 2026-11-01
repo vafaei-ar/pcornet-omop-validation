@@ -978,6 +978,41 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**Robustness analysis completed on institutional host (2026-11-01):**
+The corrected full suite passed **245 tests in 2.32s** (zero failures),
+and the private runner reported
+`RF XGBOOST PRIVATE STABILITY REVIEW: COMPLETE`.
+The output `results/postfreeze_interpretability/private_stability_review.md`
+was created under the ignored, owner-only results directory. The
+run performed 80 exploratory model fits and its protected output includes
+training-only predictor missingness and Spearman correlations, paired
+source-target feature disagreement, and held-out permutation-importance
+rank/delta sensitivity across matched patient-ID training perturbations.
+No private scores, small-cell counts or feature rankings were printed
+or exported. This closes the **computational stability check**, not
+scientific interpretation, inferential uncertainty, or governance clearance.
+
+**Interpretation gate still open:** A researcher must examine
+`private_scientific_review.md` alongside
+`private_stability_review.md` inside the institutional environment:
+compare six- and five-feature conclusions; require matched-test evidence;
+inspect strongly correlated utilization predictors; distinguish feature
+representation changes from cohort selection; and avoid calling the
+five-perturbation ranges confidence intervals. Any explanatory
+figures must be made by code using approved real result data, not by
+image generation. Do not copy protected report content to Git, chat,
+email, or public artifacts. Only after institution-approved
+disclosure may aggregate effect estimates enter a manuscript.
+
+**Next non-analytical infrastructure gate:** The frozen backup's local
+`RESTORE VERIFYONLY WITH CHECKSUM` passed previously, but a protected
+off-machine copy and isolated test restore have not been documented.
+Before DQD on an isolated amended copy, inventory the existing
+service-owned `/var/opt/mssql/backup` media and identify an
+institution-approved encrypted storage destination. Do not create
+another 23 GiB backup unnecessarily; do not loosen backup directory
+permissions, copy it to the repository, or modify the frozen CDM.
+
 **Private scientific interpretation report completed (institutional
 terminal, 2026-11-01):** The updated test suite returned **238 passed
 in 2.13s**. The approved local reviewer produced
