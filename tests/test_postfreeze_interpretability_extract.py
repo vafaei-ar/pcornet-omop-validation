@@ -190,7 +190,7 @@ def test_restricted_export_uses_qc_login_for_both_locked_stages(
 ):
     import sys
     from urllib.parse import unquote_plus
-    from scripts import inspect_postfreeze_achilles as qc
+    from pcornet_omop_validation.study import postfreeze_restricted_qc as qc
 
     events = []
     original_stage = extractor.original_stage_e.make_engine
@@ -234,7 +234,7 @@ def test_restricted_export_uses_qc_login_for_both_locked_stages(
 
 def test_restricted_export_restores_origins_on_failure(monkeypatch):
     import sys
-    from scripts import inspect_postfreeze_achilles as qc
+    from pcornet_omop_validation.study import postfreeze_restricted_qc as qc
 
     original_stage = extractor.original_stage_e.make_engine
     original_fallback = extractor.stage_d_fallback.make_engine
@@ -259,7 +259,7 @@ def test_restricted_export_restores_origins_on_failure(monkeypatch):
 
 def test_restricted_export_requires_qc_password_before_sql(monkeypatch):
     monkeypatch.delenv("OHDSI_QC_PASSWORD", raising=False)
-    from scripts import inspect_postfreeze_achilles as qc
+    from pcornet_omop_validation.study import postfreeze_restricted_qc as qc
     monkeypatch.setattr(qc, "verified_server_config", lambda _: {})
     with pytest.raises(RuntimeError, match="OHDSI_QC_PASSWORD"):
         with extractor.restricted_stage_engines("config/etl_A.yaml"):
