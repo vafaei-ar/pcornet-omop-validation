@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline, read-only validation of provenance for an isolated CDM_SOURCE row.
+"""Offline, read-only validation of provenance for a CDM_SOURCE metadata row.
 
 No SQL connection, SQL write, backup/restore, or file modification. The manifest
 must stay in the institution's ignored, access-restricted results directory.
@@ -107,7 +107,7 @@ def validate_private_path(path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate local restored-copy CDM_SOURCE provenance only")
+    parser = argparse.ArgumentParser(description="Validate local CDM_SOURCE provenance only")
     parser.add_argument("--manifest", required=True)
     args = parser.parse_args()
     try:
@@ -117,12 +117,12 @@ def main() -> None:
             record = json.load(stream)
         validate(record)
     except Exception:
-        print("RESTORED CDM_SOURCE PROVENANCE: BLOCKED "
+        print("LOCAL CDM_SOURCE PROVENANCE: BLOCKED "
               "(details suppressed; verify dates, holder and source evidence locally)",
               file=sys.stderr)
         raise SystemExit(1) from None
-    print("RESTORED CDM_SOURCE PROVENANCE: PRELIMINARY PASS")
-    print("No database was accessed or modified; human source and restored-target checks remain required.")
+    print("LOCAL CDM_SOURCE PROVENANCE: PRELIMINARY PASS")
+    print("No database was accessed or modified; human source and authorized-target checks remain required.")
 
 
 if __name__ == "__main__":
