@@ -39,7 +39,7 @@ For commands, full safety evidence and chronological troubleshooting use
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
 | Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
 | Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
-| Were the planned post-freeze RF/XGBoost attribution analyses run? | The locked four-population model interpretation protocol, guarded private exporter and model engine exist, but the institutional Parquet extraction, fitting and attribution have not run. See section B of document 08. | **Planned analysis requested by the study team, not executed.** Do not insert numerical results or directional feature-importance claims into the paper yet. |
+| Were the planned post-freeze RF/XGBoost attribution analyses run? | Institutional extraction of the four protected populations completed with 221 tests passed and all locked Stage E and fallback D0/outcome anchors reproduced. See section B of document 08. | **Protected inputs ready; RF/XGBoost fitting, permutation importance, SHAP, and five-feature sensitivity are not yet executed.** No attribution claims belong in the manuscript yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
 `results/postfreeze_standard_qc/private_achilles_exception_counts/`.
@@ -129,13 +129,26 @@ directory as a Python package. Pytest stopped the chained command before
 any patient-level extraction. The exporter had the same import defect.
 The restricted frozen-target checks now reside in importable package code;
 the exporter and regression tests were corrected, and additional synthetic
-frozen-anchor/identity tests were added. **This import correction has not
-been tested on the institutional host.** RF/XGBoost feature extraction
-and attribution remain **not executed**.
-Then run the exporter in the institutional environment only, fit the
-specified models, compare matched-test importance and sensitivity,
-review uncertainty/stability and disclosure, and update the manuscript
-only if the results add a supported claim. No model results exist yet.
+frozen-anchor/identity tests were added. **Subsequent institutional execution (2026-11-01):** The import fix passed
+the full synthetic test suite (**221 tests passed**). The restricted
+exporter ran Stage E and the Stage D fallback with exact locked anchors,
+and four protected Parquet files were saved under ignored
+`results/private_inputs/` for 6,508/3,822/3,822/6,508 patients,
+respectively. This is a **completed extraction**, not a completed
+attribution analysis. The manuscript's original Stage A-E results remain
+unchanged.
+
+The model code was then revised to use the **full held-out sets** for
+primary AUROC permutation importance, keeping a bounded common
+training-reference SHAP sample; to use the matched shared test set
+for selection/representation contrasts; to compute explicit pairwise
+rank and magnitude differences; and to protect both private input
+files and create-only aggregate output. **Those model revisions and
+new regression tests have not yet run on the institutional host.**
+The next gate is the updated tests and `--validate-only` model-input
+check, followed by RF/XGBoost fitting, interpretation, the five-feature
+sensitivity and institutional disclosure review before any manuscript
+claim. No model-attribution results exist yet.
 
 This study-team-prioritized analysis should be completed **before making
 RF/XGBoost attribution claims or closing a manuscript version that
