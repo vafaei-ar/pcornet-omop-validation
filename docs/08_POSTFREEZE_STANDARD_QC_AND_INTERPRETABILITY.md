@@ -753,6 +753,37 @@ The complete raw DQD JSON and Achilles tables/logs are **private** until institu
 | `omop_frozen` | 3,822 / 1,132 | Same patients, index dates and 90-day labels as shared PCORnet |
 | `omop_fallback` | 6,508 / 1,798 | Same patients, index dates and 90-day labels as full PCORnet, using source-lineage-preserving encounter-date overlay |
 
+**Pre-extraction gate (added 2026-10-31; no SQL and no private files):**
+
+Before any clinical extraction, install all required libraries in the
+institutional virtual environment, then validate tests, prior locked
+Stage E preflight/Stage C fallback artifacts, SQL read-hook signatures,
+package availability and private output path:
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+python -m pip install -e '.[etl,analysis,interpretability,dev]'
+pytest -q
+python -m pcornet_omop_validation.study.postfreeze_interpretability_extract \
+  --config config/etl_A.yaml \
+  --output-dir results/private_inputs \
+  --preflight-only
+```
+
+The preflight performs **no SQL queries, no clinical reads and no writes**.
+The hardened exporter confines output to this checkout's ignored
+`results/` tree, forbids symlink escapes and nonempty output folders,
+requires `0700` private working directories, writes create-only
+`0600` Parquet files and checks identity, outcome, index date, binary
+features, finite numeric values and locked cohort/event anchors before
+writing. Existing files must be preserved, never deleted automatically.
+A passing synthetic suite and preflight do **not** prove that the
+institutional extraction will succeed or that feature derivations agree
+scientifically with the locked Stage E code. Review the first run
+locally and retain all row-level outputs solely within the approved
+institutional environment.
+
 **Private input exporter (explicit authorization required, not yet run):**
 
 ```bash
