@@ -169,6 +169,20 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Local backup inventory update (2026-11-01):** The operator
+confirmed one existing `OMOP_VALIDATED_A_copyonly_*.bak` backup
+candidate totaling **23.03 GiB**. The `mssql` service account
+passed a read-only backup **directory** access check. Previously
+recorded SQL Server backup history and `RESTORE VERIFYONLY WITH
+CHECKSUM` remain the strongest local media verification evidence.
+Individual file readability, encrypted off-machine retention,
+copy-integrity checks and isolated full restore are still open.
+The existing backup must not be unnecessarily regenerated, deleted,
+uploaded to chat/Git, or copied to an unapproved destination.
+A separate isolated restore is a prerequisite to any optional DQD
+metadata amendment and evaluation. The frozen publication database
+must remain unchanged.
+
 **Institutional robustness execution (2026-11-01):** The corrected
 synthetic suite returned **245 passed in 2.32s**, followed by
 `RF XGBOOST PRIVATE STABILITY REVIEW: COMPLETE`. The restricted
