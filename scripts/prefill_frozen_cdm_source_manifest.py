@@ -99,8 +99,11 @@ def read_manifest() -> dict:
 
 
 def verified_vocabulary(config_path: str, *, prompt_for_secret: bool = True) -> str:
-    verified_server_config(config_path)
-    cfg = load_etl_config(config_path)
+    try:
+        verified_server_config(config_path)
+        cfg = load_etl_config(config_path)
+    except Exception:
+        raise PreparationBlocked("CONFIG") from None
     env_key = cfg.raw["sqlserver"].get("password_env")
     if (type(env_key) is not str
             or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_key) is None):
@@ -108,57 +111,103 @@ def verified_vocabulary(config_path: str, *, prompt_for_secret: bool = True) -> 
     if not cfg.sql_password:
         if not prompt_for_secret or not sys.stdin.isatty():
             raise PreparationBlocked("CREDENTIAL")
-        secret = getpass.getpass("Authorized existing ETL SQL password (hidden): ")
+        try:
+            secret = getpass.getpass("Authorized existing ETL SQL password (hidden): ")
+        except Exception:
+            raise PreparationBlocked("CREDENTIAL") from None
         if not secret:
             raise PreparationBlocked("CREDENTIAL")
         os.environ[env_key] = secret
         del secret
     engine = None
     try:
-        engine = make_engine(cfg, database=FROZEN_DATABASE)
-        with engine.connect() as conn:
-            identity = conn.exec_driver_sql("SELECT DB_NAME(), ORIGINAL_LOGIN()").one()
+        try:
+            engine = make_engine(cfg, database=FROZEN_DATABASE)
+            connection = engine.connect()
+        except Exception:
+            raise PreparationBlocked("SQL_CONNECT") from None
+        with connection as conn:
+            try:
+                identity = conn.exec_driver_sql(
+                    "SELECT DB_NAME(), ORIGINAL_LOGIN()"
+                ).one()
+            except Exception:
+                raise PreparationBlocked("IDENTITY_QUERY") from None
             if (str(identity[0]).casefold() != FROZEN_DATABASE.casefold()
                     or str(identity[1]).casefold() !=
                     str(cfg.raw["sqlserver"]["user"]).casefold()):
                 raise PreparationBlocked("DATABASE_IDENTITY")
-            vocab = conn.exec_driver_sql(
-                "SELECT vocabulary_version FROM [dbo].[vocabulary] "
-                "WHERE vocabulary_id = 'None'"
-            ).all()
+            try:
+                vocab = conn.exec_driver_sql(
+                    "SELECT vocabulary_version FROM [dbo].[vocabulary] "
+                    "WHERE vocabulary_id = 'None'"
+                ).all()
+            except Exception:
+                raise PreparationBlocked("VOCABULARY_QUERY") from None
             if (len(vocab) != 1 or not isinstance(vocab[0][0], str)
                     or not vocab[0][0].strip()):
-                raise PreparationBlocked("VOCABULARY")
-            concept = conn.execute(text(
-                "SELECT vocabulary_id, concept_class_id, domain_id "
-                "FROM [dbo].[concept] WHERE concept_id=756265"
-            )).all()
+                raise PreparationBlocked("VOCABULARY_METADATA")
+            try:
+                concept = conn.execute(text(
+                    "SELECT vocabulary_id, concept_class_id, domain_id "
+                    "FROM [dbo].[concept] WHERE concept_id=756265"
+                )).all()
+            except Exception:
+                raise PreparationBlocked("CDM_VERSION_QUERY") from None
             if (len(concept) != 1 or tuple(concept[0]) !=
                     ("CDM", "CDM", "Metadata")):
                 raise PreparationBlocked("CDM_VERSION_CONCEPT")
             return vocab[0][0]
     finally:
         if engine is not None:
-            engine.dispose()
+            try:
+                engine.dispose()
+            except Exception:
+                pass
 
 
 def fill_from_verified(manifest: dict, vocabulary: str) -> dict:
+    """Preserve any valid hand-entered description; never silently overwrite."""
     data = json.loads(json.dumps(manifest))
     fields = data["cdm_source"]
     evidence = data["evidence"]
     if not isinstance(evidence, dict):
         raise PreparationBlocked("MANIFEST_SCHEMA")
     known = dict(KNOWN, vocabulary_version=vocabulary)
-    for field, value in known.items():
+    strict = {"cdm_version", "cdm_version_concept_id", "vocabulary_version"}
+    limits = {
+        "cdm_source_name": 255,
+        "cdm_source_abbreviation": 25,
+        "source_documentation_reference": 255,
+        "cdm_etl_reference": 255,
+    }
+    for field, proposed in known.items():
         existing = fields[field]
-        if existing not in ("", value):
-            raise PreparationBlocked("CONFLICTING_EXISTING_VALUE")
-        fields[field] = value
-    for field, value in EVIDENCE.items():
+        if existing in ("", None):
+            fields[field] = proposed
+            continue
+        if field in strict:
+            if existing != proposed:
+                raise PreparationBlocked("CONFLICT_" + field.upper())
+        elif (type(existing) is not str or not existing.strip()
+              or existing != existing.strip() or "\x00" in existing):
+            raise PreparationBlocked("INVALID_" + field.upper())
+        elif field in limits and len(existing) > limits[field]:
+            raise PreparationBlocked("INVALID_" + field.upper())
+        elif field == "cdm_etl_reference" and FROZEN_SHA not in existing:
+            raise PreparationBlocked("CONFLICT_CDM_ETL_REFERENCE")
+        elif field == "source_description" and "PCORnet" not in existing:
+            raise PreparationBlocked("INVALID_SOURCE_DESCRIPTION")
+        # Otherwise retain the user's actual text exactly; it may be a
+        # more accurate institutional source description than our default.
+    for field, proposed in EVIDENCE.items():
         existing = evidence.get(field, "")
-        if existing not in ("", value):
-            raise PreparationBlocked("CONFLICTING_EXISTING_VALUE")
-        evidence[field] = value
+        if existing in ("", None):
+            evidence[field] = proposed
+        elif (type(existing) is not str or not existing.strip()
+              or existing != existing.strip() or len(existing) > 255):
+            raise PreparationBlocked("INVALID_EVIDENCE_" + field.upper())
+        # Human-entered evidence references are preserved, not replaced.
     return data
 
 
@@ -208,6 +257,13 @@ def main() -> None:
         populated = fill_from_verified(manifest, vocabulary)
         phase = "PRIVATE_FILE_WRITE"
         save_private_manifest(populated)
+    except PreparationBlocked as blocked:
+        stage = str(blocked)
+        if not re.fullmatch(r"[A-Z0-9_]+", stage):
+            stage = phase
+        print("FROZEN CDM_SOURCE PRIVATE PREFILL: BLOCKED [" + stage + "]",
+              file=sys.stderr)
+        raise SystemExit(1) from None
     except Exception:
         print("FROZEN CDM_SOURCE PRIVATE PREFILL: BLOCKED [" + phase + "]",
               file=sys.stderr)
