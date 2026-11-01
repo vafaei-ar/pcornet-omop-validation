@@ -957,6 +957,27 @@ No output should be published or uploaded before reviewing the private
 aggregate for expected scope, test-set denominators, correct signs,
 feature-rank changes, stability and statistical limitations.
 
+**Robustness first institutional pytest attempt (2026-11-01):**
+`pytest -q` reported **243 passed, one failed**, so the chained
+`&&` prevented any private stability analysis from starting.
+The failure was
+`test_full_private_stability_output_is_create_only_0600`, whose
+synthetic input JSON was a single placeholder object. The stability
+report legitimately needs full original feature ranks from the
+previously audited model aggregate, so that placeholder could not
+exercise the intended success path. The fixture was changed to
+reuse the schema-complete **synthetic** model report from the
+existing audit tests. A new focused synthetic test also executes
+actual small RF and XGBoost fits and permutation-importance scoring
+rather than only mocks, including invalid test-scope rejection.
+
+**The corrected tests and stability analysis have not yet run on the
+institutional host.** Do not claim the stability report exists,
+delete any previous model results, or bypass tests. Rerun
+`pytest -q && python -m pcornet_omop_validation.study.postfreeze_interpretability_stability`
+after fast-forwarding this branch. No private patient data have
+been exported from the failed attempt.
+
 **Private scientific interpretation report completed (institutional
 terminal, 2026-11-01):** The updated test suite returned **238 passed
 in 2.13s**. The approved local reviewer produced
