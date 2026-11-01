@@ -744,7 +744,7 @@ The complete raw DQD JSON and Achilles tables/logs are **private** until institu
 
 ## B. Random Forest / XGBoost model attribution
 
-**Input prerequisite, exporter implemented but NOT executed against institutional data:** four institutional local Parquet extracts with the **exact same six locked predictors**, a stable common patient key `patid`, `index_date` and the locked 90-day binary `outcome`. Only one row per patient. The extracts MUST be independently derived using the already completed Stage C/D/E definitions (including the provenance-aware target-date fallback overlay). Do not fill missing values or manufacture fallback records just to satisfy expected row counts.
+**Input prerequisite, now satisfied in the institutional environment on 2026-11-01:** four institutional local Parquet extracts with the **exact same six locked predictors**, a stable common patient key `patid`, `index_date` and the locked 90-day binary `outcome`. Only one row per patient. The extracts MUST be independently derived using the already completed Stage C/D/E definitions (including the provenance-aware target-date fallback overlay). Do not fill missing values or manufacture fallback records just to satisfy expected row counts.
 
 | Local private input | Expected 90-day eligible / events | Required relationship |
 | --- | ---: | --- |
@@ -936,6 +936,32 @@ or externally mirrored.** Their exact source/target content remains only
 in the institutional environment. No RF/XGBoost models or importance
 analyses have yet run.
 
+**Next local modeling gate (not executed yet):**
+
+```bash
+cd ~/works/repos/pcornet-omop-validation
+git pull --ff-only
+pytest -q && \
+python -m pcornet_omop_validation.study.postfreeze_model_interpretability \
+  --pcornet-full results/private_inputs/pcornet_full.parquet \
+  --pcornet-shared results/private_inputs/pcornet_shared.parquet \
+  --omop-frozen results/private_inputs/omop_frozen.parquet \
+  --omop-fallback results/private_inputs/omop_fallback.parquet \
+  --output results/postfreeze_interpretability/aggregate_results.json \
+  --max-eval 500 --permutation-repeats 20 \
+  --validate-only
+```
+
+**Do not upload the Parquet files or the protected aggregate JSON.**
+After a clean validation-only run, execute the identical command
+**without** `--validate-only`. The second command fits four populations
+x two algorithms x six/five-feature model variants. Permutation
+importance uses complete held-out evaluation sets; SHAP stays bounded.
+The private aggregate report contains descriptive comparisons and
+software versions, but is **not publication-cleared**. It must be
+reviewed for scientific, statistical, and institutional disclosure
+adequacy before code-generated figures or manuscript claims.
+
 **Post-extraction scientific and disclosure safeguards (new):**
 The original model engine measured its "primary" held-out AUROC
 permutation importance on a sample capped at 500 rows. The locked
@@ -964,7 +990,7 @@ executed on the protected extracts**. Run the new tests and
 `--validate-only` before any model fitting; preserve all protected
 files if either fails.
 
-**Private input exporter (explicit authorization required, not yet run):**
+**Original protected exporter instructions (historical, completed on 2026-11-01):**
 
 ```bash
 python -m pcornet_omop_validation.study.postfreeze_interpretability_extract \
