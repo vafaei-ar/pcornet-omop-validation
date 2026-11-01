@@ -56,6 +56,25 @@ def test_date_sensitive_feature_exclusion_is_exact():
     assert "prior_365d_ischemic_stroke_indicator" not in less
 
 
+
+
+
+def test_common_shap_background_uses_reproducible_random_training_sample():
+    frame = make_frame(range(600))
+    training = frame[frame.is_train]
+    expected = training.sample(n=200, random_state=m.SEED)
+    first = m.common_shap_background(frame)
+    repeated = m.common_shap_background(frame)
+    assert len(first) == 200
+    assert first.index.equals(expected.index)
+    assert first.index.equals(repeated.index)
+    assert set(first.index).issubset(set(training.index))
+    assert not first.index.equals(training.sort_index().head(200).index)
+    assert len(m.common_shap_background(frame, limit=30)) == 30
+    with pytest.raises(ValueError, match="positive"):
+        m.common_shap_background(frame, limit=0)
+
+
 def test_models_expose_probability_and_positive_shap_shape():
     pytest.importorskip("sklearn")
     pytest.importorskip("xgboost")
