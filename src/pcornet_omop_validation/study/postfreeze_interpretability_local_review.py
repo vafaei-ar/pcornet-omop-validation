@@ -218,7 +218,9 @@ def _validate_destination(path: Path) -> None:
         raise a.AuditBlocked("unsafe local review directory")
 
 
-def write_review(report: dict, path: Path = LOCAL_REVIEW) -> None:
+def write_review(report: dict, path: Path | None = None) -> None:
+    if path is None:
+        path = LOCAL_REVIEW
     _validate_destination(path)
     text = build_review(report)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
