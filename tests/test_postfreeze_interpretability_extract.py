@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import pytest
+import hashlib
+import json
+from types import SimpleNamespace
 import stat
 from pathlib import Path
 
@@ -101,3 +104,69 @@ def test_private_population_rejects_null_and_duplicate_identifiers(monkeypatch):
     null_date.loc[1, "index_date"] = None
     with pytest.raises(RuntimeError, match="index date"):
         extractor._prepare_population(null_date, "pcornet_full")
+
+
+
+def _fake_locked_local_inputs(tmp_path, monkeypatch):
+    study = tmp_path / "study.json"
+    d0 = tmp_path / "d0.json"
+    stage_d = tmp_path / "stage_d.json"
+    for item in (study, d0, stage_d):
+        item.write_text("{}", encoding="utf-8")
+    for attr, value in (
+        ("STUDY_PATH", study), ("D0_PATH", d0),
+        ("STAGE_D_PATH", stage_d),
+    ):
+        monkeypatch.setattr(extractor.original_stage_e, attr, value)
+    preflight_dir = (
+        tmp_path / "publication_analysis" / "stage_e_statistical_model"
+    )
+    preflight_dir.mkdir(parents=True)
+    preflight = preflight_dir / "stage_e_statistical_model_preflight.json"
+    preflight.write_text(json.dumps({
+        "status": "stage_e_statistical_model_preflight_ready",
+        "outcome_query_performed": False,
+        "model_fit_performed": False,
+        "study_definition_sha256": hashlib.sha256(study.read_bytes()).hexdigest(),
+        "inherited_d0_definition_sha256": hashlib.sha256(d0.read_bytes()).hexdigest(),
+        "inherited_stage_d_definition_sha256": hashlib.sha256(stage_d.read_bytes()).hexdigest(),
+    }), encoding="utf-8")
+    fallback = tmp_path / "fallback-complete.json"
+    fallback.write_text(json.dumps({
+        "status": "stage_c_encounter_date_fallback_sensitivity_complete",
+        "frozen_etl_sha": extractor.FROZEN_SHA,
+    }), encoding="utf-8")
+    monkeypatch.setattr(extractor.stage_d_fallback, "STAGE_C_RESULT_PATH", fallback)
+    monkeypatch.setattr(
+        extractor, "load_etl_config",
+        lambda c: SimpleNamespace(
+            raw={"etl": {"cdm_version": "5.4.2"}},
+            audit_dir=tmp_path / "audit",
+        ),
+    )
+    monkeypatch.setattr(extractor.importlib.metadata, "version", lambda _: "synthetic")
+    return preflight
+
+
+def test_preflight_only_uses_locked_local_evidence_no_sql_or_writes(
+    tmp_path, monkeypatch,
+):
+    path = tmp_path / "results" / "private_inputs"
+    (tmp_path / "results").mkdir()
+    monkeypatch.setattr(extractor, "PRIVATE_ROOT", tmp_path / "results")
+    preflight = _fake_locked_local_inputs(tmp_path, monkeypatch)
+    result = extractor.preflight_private_export(
+        "config/etl_A.yaml", str(path)
+    )
+    assert result["status"] == "PRIVATE RF XGBOOST PREFLIGHT PASS"
+    assert result["database_queries_performed"] is False
+    assert result["private_files_created"] is False
+    assert not path.exists()
+    payload = json.loads(preflight.read_text(encoding="utf-8"))
+    payload["study_definition_sha256"] = "invalid"
+    preflight.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="hash mismatch"):
+        extractor.preflight_private_export(
+            "config/etl_A.yaml", str(path)
+        )
+    assert not path.exists()
