@@ -317,6 +317,39 @@ def attribution(model, features: list[str], test: pd.DataFrame,
     }
 
 
+def importance_difference(left: dict, right: dict) -> dict:
+    """Descriptive right-minus-left importance/rank contrasts, never causal."""
+    feature_names = list(left["features"])
+    if set(feature_names) != set(right["features"]):
+        raise ValueError("Feature sets differ between importance results")
+    out: dict[str, dict] = {}
+    for feature in feature_names:
+        l, r = left["features"][feature], right["features"][feature]
+        out[feature] = {
+            "permutation_auroc_decrease_difference": float(
+                r["permutation_auroc_decrease_mean"] -
+                l["permutation_auroc_decrease_mean"]
+            ),
+            "mean_absolute_shap_probability_difference": float(
+                r["mean_absolute_shap_probability"] -
+                l["mean_absolute_shap_probability"]
+            ),
+            "permutation_rank_left": left["permutation_rank"].index(feature) + 1,
+            "permutation_rank_right": right["permutation_rank"].index(feature) + 1,
+            "shap_rank_left": left["shap_rank"].index(feature) + 1,
+            "shap_rank_right": right["shap_rank"].index(feature) + 1,
+        }
+    return {
+        "left_permutation_evaluation_n": left["permutation_evaluation_n"],
+        "right_permutation_evaluation_n": right["permutation_evaluation_n"],
+        "feature_differences": out,
+        "interpretation": (
+            "Descriptive differences only. They mix model fitting, source "
+            "representation, population and correlated feature effects."
+        ),
+    }
+
+
 def common_shap_background(shared: pd.DataFrame, limit: int = 200) -> pd.DataFrame:
     """Common source training background sampled by locked fixed random seed."""
     if limit < 1:
@@ -401,6 +434,30 @@ def analyze(populations: dict[str, pd.DataFrame], max_eval: int = 500,
                     ),
                 }
                 print(f"completed {sensitivity}/{model_name}/{group}", flush=True)
+            group_out = output["models"][sensitivity][model_name]
+            output.setdefault("feature_importance_comparisons", {}).setdefault(
+                sensitivity, {}
+            )[model_name] = {}
+            for label, (left_name, right_name) in output["comparisons"].items():
+                # Contrasts on separately eligible native test cohorts are the
+                # direct end-to-end question. Common tests isolate evaluation
+                # population differences but models are still fitted separately.
+                scope = (
+                    "native_test" if label in (
+                        "end_to_end", "selection_within_pcornet",
+                        "representation_fallback",
+                    ) else "common_shared_test"
+                )
+                suffix = scope + "_importance"
+                output["feature_importance_comparisons"][sensitivity][model_name][label] = {
+                    "left": left_name,
+                    "right": right_name,
+                    "evaluation_scope": scope,
+                    **importance_difference(
+                        group_out[left_name][suffix],
+                        group_out[right_name][suffix],
+                    ),
+                }
     return output
 
 
