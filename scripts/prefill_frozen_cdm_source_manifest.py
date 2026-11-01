@@ -189,7 +189,7 @@ def fill_from_verified(manifest: dict, vocabulary: str) -> dict:
             # missing; case differences and surrounding spaces are harmless.
             if existing is None or (type(existing) is str and not existing.strip()):
                 fields[field] = proposed
-            elif type(existing) is not str or "\\x00" in existing:
+            elif type(existing) is not str or "\x00" in existing:
                 raise PreparationBlocked("INVALID_SOURCE_DESCRIPTION")
             else:
                 description = existing.strip()
