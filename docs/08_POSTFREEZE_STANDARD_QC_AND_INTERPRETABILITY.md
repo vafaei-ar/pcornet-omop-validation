@@ -978,6 +978,43 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**Existing frozen backup read-only inventory (institutional terminal,
+2026-11-01):** After the completed 245-test robustness analysis, the
+operator inventoried `/var/opt/mssql/backup` without creating or
+moving any media. The directory contained **one**
+`OMOP_VALIDATED_A_copyonly_*.bak` candidate with a reported combined
+size of **23.03 GiB**. Running
+`sudo -u mssql test -r /var/opt/mssql/backup` reported
+`SQL Server backup directory readable: PASS`. This evidence agrees
+with the previously completed SQL Server backup-history and
+`RESTORE VERIFYONLY WITH CHECKSUM` check.
+
+**Limitation:** A readable **directory** does not prove that the
+specific `.bak` file is readable, nor that an off-machine encrypted
+copy exists or can be restored. The operator should perform a second
+read-only individual-file access check under the `mssql` login and
+inventory free disk space for a possible isolated restore. Do not
+copy, change permissions, create a new backup, mount storage or restore
+until an institution-approved encrypted destination, separate isolated
+SQL Server target and authorized operator workflow are established.
+Copy integrity should be checked with source/destination checksums
+inside the authorized environment. DQD remains blocked on the frozen
+`CDM_SOURCE`, and only the independently restored, clearly labeled
+copy may receive factual provenance metadata for QC.
+
+```bash
+# Existing backup file readability (not just directory access)
+sudo -u mssql find /var/opt/mssql/backup \
+  -maxdepth 1 -type f -name 'OMOP_VALIDATED_A_copyonly_*.bak' \
+  -readable -printf '%s\n' |
+awk '{ n++; gib += $1 / 1073741824 }
+     END { printf "Readable backup files: %d\n", n;
+           printf "Readable total: %.2f GiB\n", gib }'
+
+# Space inventory only, not proof that restore capacity is sufficient
+df -h /var/opt/mssql
+```
+
 **Robustness analysis completed on institutional host (2026-11-01):**
 The corrected full suite passed **245 tests in 2.32s** (zero failures),
 and the private runner reported
