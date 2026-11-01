@@ -14,6 +14,7 @@ import inspect
 import json
 import os
 import stat
+import numpy as np
 from pathlib import Path
 
 import pandas as pd
@@ -115,6 +116,12 @@ def _prepare_population(frame: pd.DataFrame, name: str) -> pd.DataFrame:
     subset["outcome"] = subset.outcome.astype(int)
     for feature in FEATURES:
         subset[feature] = pd.to_numeric(subset[feature], errors="raise")
+        nonmissing = subset[feature].dropna().to_numpy(dtype=float)
+        if not np.isfinite(nonmissing).all():
+            raise RuntimeError(f"{name}: non-finite feature value")
+        if feature in ("female_indicator", "prior_365d_ischemic_stroke_indicator"):
+            if not subset[feature].dropna().isin((0, 1)).all():
+                raise RuntimeError(f"{name}: invalid binary feature")
     if len(subset) != expected_n or int(subset.outcome.sum()) != expected_events:
         raise RuntimeError(f"{name}: source Stage D anchor mismatch")
     subset["is_train"] = subset.patid.map(original_stage_e._stable_train)
