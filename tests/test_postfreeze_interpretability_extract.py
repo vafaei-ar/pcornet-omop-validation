@@ -183,3 +183,84 @@ def test_preflight_only_uses_locked_local_evidence_no_sql_or_writes(
             "config/etl_A.yaml", str(path)
         )
     assert not path.exists()
+
+
+def test_restricted_export_uses_qc_login_for_both_locked_stages(
+    monkeypatch,
+):
+    import sys
+    from urllib.parse import unquote_plus
+    from scripts import inspect_postfreeze_achilles as qc
+
+    events = []
+    original_stage = extractor.original_stage_e.make_engine
+    original_fallback = extractor.stage_d_fallback.make_engine
+
+    class FakeConnection:
+        def close(self):
+            events.append("closed")
+    class FakePyodbc:
+        def connect(self, dsn, **kwargs):
+            assert "UID=ohdsi_postfreeze_qc" in dsn
+            assert kwargs["autocommit"] is True
+            events.append("qc_connected")
+            return FakeConnection()
+
+    monkeypatch.setitem(sys.modules, "pyodbc", FakePyodbc())
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic_only")
+    monkeypatch.setattr(qc, "verified_server_config", lambda _: {})
+    monkeypatch.setattr(
+        qc, "make_restricted_odbc_string",
+        lambda *_: "UID=ohdsi_postfreeze_qc;PWD={synthetic_only};",
+    )
+    monkeypatch.setattr(qc, "inspect_frozen", lambda conn: events.append("checked"))
+
+    def fake_engine(url, **kwargs):
+        assert "UID=ohdsi_postfreeze_qc" in unquote_plus(url)
+        assert "synthetic_only" in unquote_plus(url)
+        events.append("engine")
+        return object()
+
+    monkeypatch.setattr(extractor, "create_engine", fake_engine)
+    with extractor.restricted_stage_engines("config/etl_A.yaml"):
+        assert extractor.original_stage_e.make_engine is not original_stage
+        assert extractor.stage_d_fallback.make_engine is not original_fallback
+        extractor.original_stage_e.make_engine(None)
+        extractor.stage_d_fallback.make_engine(None)
+    assert events == ["qc_connected", "checked", "closed", "engine", "engine"]
+    assert extractor.original_stage_e.make_engine is original_stage
+    assert extractor.stage_d_fallback.make_engine is original_fallback
+
+
+def test_restricted_export_restores_origins_on_failure(monkeypatch):
+    import sys
+    from scripts import inspect_postfreeze_achilles as qc
+
+    original_stage = extractor.original_stage_e.make_engine
+    original_fallback = extractor.stage_d_fallback.make_engine
+    class Connection:
+        def close(self):
+            pass
+    class FakePyodbc:
+        def connect(self, *args, **kwargs):
+            return Connection()
+
+    monkeypatch.setitem(sys.modules, "pyodbc", FakePyodbc())
+    monkeypatch.setenv("OHDSI_QC_PASSWORD", "synthetic_only")
+    monkeypatch.setattr(qc, "verified_server_config", lambda _: {})
+    monkeypatch.setattr(qc, "make_restricted_odbc_string", lambda *_: "synthetic")
+    monkeypatch.setattr(qc, "inspect_frozen", lambda _: None)
+    with pytest.raises(RuntimeError, match="forced synthetic"):
+        with extractor.restricted_stage_engines("config/etl_A.yaml"):
+            raise RuntimeError("forced synthetic")
+    assert extractor.original_stage_e.make_engine is original_stage
+    assert extractor.stage_d_fallback.make_engine is original_fallback
+
+
+def test_restricted_export_requires_qc_password_before_sql(monkeypatch):
+    monkeypatch.delenv("OHDSI_QC_PASSWORD", raising=False)
+    from scripts import inspect_postfreeze_achilles as qc
+    monkeypatch.setattr(qc, "verified_server_config", lambda _: {})
+    with pytest.raises(RuntimeError, match="OHDSI_QC_PASSWORD"):
+        with extractor.restricted_stage_engines("config/etl_A.yaml"):
+            pytest.fail("should not yield without credential")
