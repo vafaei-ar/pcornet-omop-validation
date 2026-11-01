@@ -107,10 +107,16 @@ are robust to arbitrary SQL row order, without changing the 70/30 split.
 interpretability dependencies were installed. The new `--preflight-only`
 run blocked on the missing saved Stage E preflight JSON before any SQL or
 patient-data extraction. The Stage E preflight originally passed in
-September 2026; its artifact must be located and authenticated, or
-re-created via a separately recorded outcome-free metadata preflight,
-without changing the locked definition or frozen target. RF/XGBoost
-feature extraction and attribution remain **not executed**.
+September 2026. A subsequent local file inventory confirmed no copy
+of `stage_e_statistical_model_preflight.json` exists under the ignored
+`results/` tree, while the Stage C fallback result is present.
+`scripts/recover_postfreeze_stage_e_preflight.py` now provides an
+outcome-free, create-only recovery using the restricted QC account and
+clearly labels any regenerated metadata as a new execution. **The
+recovery code and new tests have not run on the institutional host.**
+Original frozen definitions, ETL data and publication conclusions remain
+locked. RF/XGBoost feature extraction and attribution remain **not
+executed**.
 Then run the exporter in the institutional environment only, fit the
 specified models, compare matched-test importance and sensitivity,
 review uncertainty/stability and disclosure, and update the manuscript
