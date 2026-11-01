@@ -169,6 +169,18 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Robustness gate update (2026-11-01):** The first local suite after
+adding stability checks yielded **243 passed, one failed**. The
+single failing test supplied a placeholder synthetic aggregate in
+place of the full attribution structure required by the reviewer.
+The chain stopped before the 80-refit analysis. The fixture was
+replaced with the existing complete synthetic aggregate, and an
+independent small RF/XGBoost permutation-fitting regression test
+was added. **Neither the corrected tests nor private stability
+analysis have yet run on the institutional host.** The original
+protected attribution and scientific-review outputs remain intact.
+Scientific robustness and disclosure clearance remain open.
+
 **Subsequent institutional review generation (2026-11-01):**
 The local reviewer passed **238 tests** and reported
 `RF XGBOOST PRIVATE SCIENTIFIC REVIEW: WRITTEN`. The report records
