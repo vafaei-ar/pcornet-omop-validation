@@ -978,6 +978,51 @@ delete any previous model results, or bypass tests. Rerun
 after fast-forwarding this branch. No private patient data have
 been exported from the failed attempt.
 
+**Successful read-only FILELISTONLY capacity inspection
+(institutional terminal, 2026-11-01):** After one
+`BLOCKED [SQL_CONNECT]` attempt, the same metadata-only
+inspector completed `FROZEN BACKUP FILELISTONLY CAPACITY: PASS`.
+It confirmed frozen database identity and healthy checksum-enabled
+backup history. The one existing COPY_ONLY backup contains **two
+logical database files**: **108.32 GiB data**, **55.01 GiB
+transaction log**, **0 GiB other**, for **163.33 GiB total
+logical allocation**. Its compressed backup media remains
+**23.03 GiB**. Filesystem headroom measured **810.53 GiB**
+on the institutional host. No restore, transfer, database table
+modification, or protected data export occurred during this
+read-only inspection. The first transient SQL connection failure
+did not persist on the subsequent authorized retry; the transcript
+does not establish its cause.
+
+This closes the **local backup metadata and capacity-inspection gate**.
+The current local free space exceeds the backup's nominal logical
+allocation, but an isolated full restore has not been demonstrated.
+Restore destination paths, SQL Server version/permissions, growth
+allowance, operational headroom, necessary backup decryption keys
+if any, and actual off-machine capacity must be checked for the
+**separate approved restore environment**, not inferred from
+local free space.
+
+**Next recovery gate, not yet executed:** Obtain an
+institution-approved encrypted *off-machine* backup destination
+and an isolated, separately authorized SQL Server target.
+A designated operator must verify capacity, restricted access
+and encryption, make a protected copy using the institution's
+approved workflow, compare the source and destination file
+checksums privately, then test restore into a new nonpublication
+database on the isolated target with independently approved
+data/log paths. Verify recovered clinical count anchors and
+CDM_SOURCE provenance state without exposing clinical rows.
+Do **not** transfer protected backup media to chat, public
+cloud services, RunRelay or GitHub; do not restore over or
+modify `OMOP_VALIDATED_A` on the publication server.
+Only a clearly labeled restored copy may be amended with
+factual `CDM_SOURCE` metadata for optional DQD.
+
+Scientific interpretation and disclosure approval for the
+private RF/XGBoost attribution reports remain separate
+open publication gates.
+
 **Second FILELISTONLY preflight stage diagnosed (institutional terminal,
 2026-11-01):** The full suite passed **262 tests in 2.55s**. The
 metadata-only inspection returned
