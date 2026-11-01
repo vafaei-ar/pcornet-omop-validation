@@ -169,6 +169,27 @@ denominators, AUROC permutation importance, SHAP/rank structure,
 contrast arithmetic and provenance passed the automated checks. No
 private output was uploaded or disclosed.
 
+**Institutional robustness execution (2026-11-01):** The corrected
+synthetic suite returned **245 passed in 2.32s**, followed by
+`RF XGBOOST PRIVATE STABILITY REVIEW: COMPLETE`. The restricted
+training-perturbation and predictor-diagnostic report was created
+locally. No protected scores, patient-level records or feature rankings
+were exported. The four-population, six-/five-feature RF/XGBoost
+analysis has now completed the computational, schema/arithmetic,
+interpretation-report-generation and descriptive robustness phases.
+It has **not** completed scientific effect-size interpretation,
+patient-level uncertainty or institutional disclosure clearance.
+Do not present attribution changes as significant or causal from the
+five perturbations or 20 shuffles.
+
+The next independent infrastructure gate is the existing 23 GiB
+COPY_ONLY backup's approved encrypted off-machine copy and a
+verified isolated restore. The frozen target must remain unchanged;
+the isolated restored copy is also the correct place to evaluate
+DQD after factual CDM_SOURCE provenance metadata are established.
+Protected backup transfer requires an operator-authorized target
+rather than a guessed destination.
+
 **Robustness gate update (2026-11-01):** The first local suite after
 adding stability checks yielded **243 passed, one failed**. The
 single failing test supplied a placeholder synthetic aggregate in
