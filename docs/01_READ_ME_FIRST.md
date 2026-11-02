@@ -6,6 +6,8 @@ The central question is not simply whether rows were copied correctly. It is:
 
 > **If the same study is run independently in PCORnet and in the transformed OMOP data, do we obtain the same cohort, variables, outcomes, estimates, and scientific conclusion? If not, where did divergence enter and why?**
 
+**Post-freeze DQD outcome (2026-11-01):** The corrected restricted DQD 2.9.1 assessment completed with 1,440 passed, 47 failed, 897 not applicable and no SQL errors. See [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md) for the confirmed observation-period type vocabulary issue, documented domain gaps and the future-version review plan. This assessment did not modify frozen clinical data.
+
 ## Recommended reading order
 
 Read the seven core study documents in order. For the separate post-freeze extension, read documents 08 and 09 after document 07:
