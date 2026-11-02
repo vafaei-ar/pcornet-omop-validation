@@ -1,5 +1,8 @@
 # 09 - Post-freeze QC evidence record and manuscript finalization gates
 
+**2026-11-01 status update (supersedes historical DQD-not-executed statements below):** The authorized single-row `CDM_SOURCE` metadata insert was completed. Corrected restricted DQD 2.9.1 execution on the unchanged frozen clinical tables returned **2,384 checks: 1,440 passed, 47 failed, 897 not applicable, 0 SQL errors**; the launcher exited 0, clinical counts remained unchanged, and 320 local tests passed. The earlier run's cohort-schema SQL errors were fixed by explicitly selecting `OMOP_VALIDATED_A.dbo`. The 18 failed checks at 100% include three known empty derived-domain checks and an observation-period type-validity check. Local vocabulary inspection showed four legacy `Obs Period Type` concepts with `standard_concept=NULL`, explaining that validity check. **Execution success is not a DQD-wide quality pass, and check percentages are not study-concordance estimates.** See [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md) for verified data-quality findings, privacy restrictions, source-code evidence, and a future-version review plan. The remaining sections preserve the earlier chronological decision record and their original dates.
+
+
 **Frozen-target metadata-only exception (2026-11-01):**
 The study owner approved inserting a factual, single-row
 `OMOP_VALIDATED_A.dbo.cdm_source` record to enable DQD, explicitly
