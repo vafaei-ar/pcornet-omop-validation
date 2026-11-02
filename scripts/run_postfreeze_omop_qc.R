@@ -76,7 +76,21 @@ connection_details <- DatabaseConnector::createConnectionDetails(
                          ";encrypt=true;trustServerCertificate=", tls_trust),
   pathToDriver = required_env("OHDSI_JDBC_DRIVER_PATH")
 )
-output_folder <- file.path("results", "postfreeze_standard_qc", tool)
+# Outputs are append-only run artifacts. The Python launcher chooses a safe
+# unique subdirectory and refuses to overwrite the first DQD run.
+output_subdir <- required_env("OHDSI_QC_OUTPUT_SUBDIR")
+if (tool == "dqd") {
+  if (!grepl("^dqd(_[A-Za-z0-9][A-Za-z0-9_-]{0,63})?$", output_subdir)) {
+    stop("Invalid DQD output subdirectory")
+  }
+} else if (output_subdir != "achilles") {
+  stop("Achilles output subdirectory must remain unchanged")
+}
+output_folder <- file.path("results", "postfreeze_standard_qc", output_subdir)
+if (dir.exists(output_folder) &&
+    length(list.files(output_folder, all.files = TRUE, no.. = TRUE)) > 0L) {
+  stop("Refusing to overwrite a previous QC run")
+}
 dir.create(output_folder, recursive = TRUE, showWarnings = FALSE)
 # COUNT_BIG column aliases can be normalized differently across JDBC drivers.
 # Keep snapshot parsing identical for both pre- and post-analysis checks.
@@ -172,6 +186,7 @@ if (tool == "dqd") {
     connectionDetails = connection_details,
     cdmDatabaseSchema = cdm_schema,
     resultsDatabaseSchema = result_schema,
+    cohortDatabaseSchema = cdm_schema,  # COHORT and COHORT_DEFINITION live in the frozen CDM
     vocabDatabaseSchema = cdm_schema,
     cdmSourceName = "Frozen PCORnet-to-OMOP validation",
     cdmVersion = cdm_version,
@@ -207,11 +222,21 @@ validate_frozen_anchors(after)
 if (!identical(before, after)) {
   stop("FROZEN TARGET ROW COUNT CHANGED; investigate immediately before using outputs")
 }
+dqd_error_reports <- if (tool == "dqd") {
+  length(list.files(file.path(output_folder, "errors"),
+                    pattern = "\\\\.txt$", recursive = TRUE))
+} else {
+  NA_integer_
+}
 version <- if (tool == "dqd") "DataQualityDashboard" else "Achilles"
 manifest <- list(
   status = "postfreeze_standard_qc_execution_complete",
   analysis_role = "exploratory_standard_OMOP_target_only_QC",
   tool = tool,
+  dqd_cohort_database_schema = if (tool == "dqd") cdm_schema else NULL,
+  dqd_error_report_count = dqd_error_reports,
+  dqd_sql_errors_absent = if (tool == "dqd") dqd_error_reports == 0L else NULL,
+  output_run_subdirectory = output_subdir,
   tool_version = as.character(utils::packageVersion(version)),
   database_connector_version = as.character(utils::packageVersion("DatabaseConnector")),
   target_cdm_version = "5.4.2",
@@ -227,4 +252,8 @@ manifest <- list(
 )
 jsonlite::write_json(manifest, file.path(output_folder, "execution_manifest.json"),
                      auto_unbox = TRUE, pretty = TRUE)
+if (tool == "dqd" && dqd_error_reports > 0L) {
+  stop(sprintf("DQD completed with %d SQL error reports; outputs retained for review",
+               dqd_error_reports))
+}
 message("Complete: ", tool, "; results are LOCAL and must be disclosure-reviewed.")
