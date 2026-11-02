@@ -114,7 +114,7 @@ def test_existing_private_dqd_output_prevents_overwrite(tmp_path, monkeypatch):
     output = tmp_path / "dqd"
     output.mkdir()
     (output / "dqd_results.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(module, "planned_output", lambda tool: output)
+    monkeypatch.setattr(module, "planned_output", lambda tool, run_label="": output)
     with pytest.raises(ValueError, match="Previous QC output files"):
         module.check_new_output_location("dqd")
 
@@ -125,18 +125,19 @@ def test_unknown_tool_cannot_bypass_version_pin(tmp_path):
 
 
 def test_named_dqd_rerun_uses_new_directory_and_preserves_original(tmp_path, monkeypatch):
-    first = tmp_path / "dqd"
-    first.mkdir()
-    (first / "dqd_results.json").write_text("SYNTHETIC_ORIGINAL", encoding="utf-8")
     monkeypatch.setattr(module, "ROOT", tmp_path)
-    label = "cohort_schema_fix_v1"
     first_path = module.planned_output("dqd")
+    first_path.mkdir(parents=True)
+    (first_path / "dqd_results.json").write_text(
+        "SYNTHETIC_ORIGINAL", encoding="utf-8"
+    )
+    label = "cohort_schema_fix_v1"
     assert first_path.name == "dqd"
     new_path = module.planned_output("dqd", label)
     assert new_path.name == "dqd_cohort_schema_fix_v1"
     assert new_path != first_path
     module.check_new_output_location("dqd", label)
-    assert (first / "dqd_results.json").read_text() == "SYNTHETIC_ORIGINAL"
+    assert (first_path / "dqd_results.json").read_text() == "SYNTHETIC_ORIGINAL"
 
 
 @pytest.mark.parametrize("label", ["../dqd", "/tmp", " ", "bad.path", "a/b", "a" * 65])
