@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from pathlib import Path
 import sys
 import subprocess
@@ -57,7 +58,7 @@ def validate_target(config_path: str) -> dict[str, str]:
 
 
 def build_environment(
-    config: dict[str, str], driver_dir: str, tool: str
+    config: dict[str, str], driver_dir: str, tool: str, *, run_label: str = ""
 ) -> dict[str, str]:
     if tool not in PINNED_PACKAGES:
         raise ValueError("Unknown QC tool")
@@ -88,6 +89,7 @@ def build_environment(
         "OHDSI_SCRATCH_SCHEMA": f'{config["qc_database"]}.qc_scratch',
         "OHDSI_QC_EXPECTED_PACKAGE_VERSION": PINNED_PACKAGES[tool],
         "OHDSI_QC_CONFIRM": CONFIRMATION,
+        "OHDSI_QC_OUTPUT_SUBDIR": safe_output_subdir(tool, run_label),
         "R_LIBS_USER": os.environ.get(
             "R_LIBS_USER", str(ROOT / "results" / "ohdsi_r_lib")
         ),
@@ -95,14 +97,27 @@ def build_environment(
     return env
 
 
-def planned_output(tool: str) -> Path:
+def safe_output_subdir(tool: str, run_label: str = "") -> str:
+    """An explicit run label isolates DQD reruns; never accepts a file path."""
     if tool not in PINNED_PACKAGES:
         raise ValueError("Unknown QC tool")
-    return ROOT / "results" / "postfreeze_standard_qc" / tool
+    if not run_label:
+        return tool
+    if tool != "dqd":
+        raise ValueError("Only DQD supports a separate rerun label")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", run_label):
+        raise ValueError("Invalid DQD run label: use letters, digits, _ or -")
+    return "dqd_" + run_label
 
 
-def check_new_output_location(tool: str) -> None:
-    target = planned_output(tool)
+def planned_output(tool: str, run_label: str = "") -> Path:
+    return ROOT / "results" / "postfreeze_standard_qc" / safe_output_subdir(
+        tool, run_label
+    )
+
+
+def check_new_output_location(tool: str, run_label: str = "") -> None:
+    target = planned_output(tool, run_label)
     if target.is_symlink():
         raise ValueError("Output destination must not be a symlink")
     if target.exists() and (not target.is_dir() or any(target.iterdir())):
@@ -112,15 +127,21 @@ def check_new_output_location(tool: str) -> None:
         )
 
 
-def run_qc(config_path: str, driver_dir: str, tool: str, *, execute: bool) -> None:
+def run_qc(
+    config_path: str, driver_dir: str, tool: str, *, execute: bool,
+    run_label: str = ""
+) -> None:
     config = validate_target(config_path)
+    safe_output_subdir(tool, run_label)  # validate even during preview
     print("QC tool:", tool)
     print("Frozen database:", config["database"])
     print("Restricted SQL login:", QC_LOGIN)
     print("QC results schema:", f'{config["qc_database"]}.qc_results')
     print("QC scratch schema:", f'{config["qc_database"]}.qc_scratch')
     print("Expected installed R package version:", PINNED_PACKAGES[tool])
-    print("Local output folder:", planned_output(tool))
+    print("Local output folder:", planned_output(tool, run_label))
+    if tool == "dqd":
+        print("DQD cohort schema:", f'{config["database"]}.{config["schema"]}')
     print(
         "DQD database output disabled: writeToTable=FALSE"
         if tool == "dqd" else
@@ -129,8 +150,8 @@ def run_qc(config_path: str, driver_dir: str, tool: str, *, execute: bool) -> No
     if not execute:
         print("PREVIEW ONLY: no database connection or analysis performed.")
         return
-    check_new_output_location(tool)
-    env = build_environment(config, driver_dir, tool)
+    check_new_output_location(tool, run_label)
+    env = build_environment(config, driver_dir, tool, run_label=run_label)
     # Files from DQD/Achilles can contain sensitive aggregate counts.
     # Keep new output files private to this user's local account by default.
     os.umask(0o077)
@@ -157,9 +178,14 @@ def main() -> None:
     p.add_argument("--tool", choices=("dqd", "achilles"), default="dqd")
     p.add_argument("--execute", action="store_true",
                    help="Run the full permissions audit then one OHDSI tool")
+    p.add_argument("--run-label", default="",
+                   help="Optional safe label for a new, separate DQD run directory")
     a = p.parse_args()
     try:
-        run_qc(a.config, a.driver_dir, a.tool, execute=a.execute)
+        run_qc(
+            a.config, a.driver_dir, a.tool,
+            execute=a.execute, run_label=a.run_label
+        )
     except (ValueError, FileNotFoundError) as exc:
         print(f"QC LAUNCH BLOCKED: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
