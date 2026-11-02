@@ -224,7 +224,7 @@ if (!identical(before, after)) {
 }
 dqd_error_reports <- if (tool == "dqd") {
   length(list.files(file.path(output_folder, "errors"),
-                    pattern = "\\\\.txt$", recursive = TRUE))
+                    pattern = "\\.txt$", recursive = TRUE))
 } else {
   NA_integer_
 }
