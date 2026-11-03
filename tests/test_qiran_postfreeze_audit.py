@@ -3,7 +3,7 @@ import pytest
 from scripts import qiran_postfreeze_audit as qa
 
 def test_anchor_guard():
-    counts = dict(source_d0=9815, omop_d0=6001, shared_d0=6001, source_only_d0=3814, omop_only_d0=0)
+    counts = dict(source_d0=9815, omop_d0=6001, shared_d0=6001, source_only_d0=3814, omop_only_d0=0, exact_index_date_d0=6001)
     qa.validate_anchors(counts, {"omop_person_rows":27089})
     counts["source_only_d0"] = 3813
     with pytest.raises(RuntimeError, match="NOT reproduced"):
@@ -20,6 +20,14 @@ def test_d0_rules():
     assert "COALESCE(x.dx_date" in sql
     assert "etl_condition_occurrence_xwalk" in sql
     assert "#src_d0" in sql and "#omop_d0" in sql
+    # Inherited Stage C/D: first choose source D0 index stroke, then check
+    # whether that exact diagnosis and encounter were materialized in OMOP.
+    assert "FROM #src_d0 d" in sql
+    assert "FROM #d0_candidates d" not in sql
+    assert "co.condition_occurrence_id) rn" in sql
+    assert "SELECT * INTO #omop_d0 FROM chosen WHERE rn=1;" in sql
+    assert "FLOOR(DATEDIFF(day,birth_date,index_date)/365.0)>=18" not in sql.split(
+        "SELECT * INTO #omop_d0 FROM chosen")[1]
 
 def test_candidate_missingness_denominator():
     sql = qa.sql_candidate_missingness("src")
@@ -61,3 +69,10 @@ def test_snapshot_diagnostic_queries_are_aggregate_only():
     assert "insert into" not in source
     assert "update " not in source
     assert "delete from" not in source
+
+def test_index_date_concordance_is_hard_anchor():
+    counts = dict(source_d0=9815, omop_d0=6001, shared_d0=6001,
+                  source_only_d0=3814, omop_only_d0=0, exact_index_date_d0=6000)
+    with pytest.raises(RuntimeError, match="NOT reproduced"):
+        qa.validate_anchors(counts, {"omop_person_rows":27089})
+    assert "exact_index_date_d0" in qa.sql_anchors()
