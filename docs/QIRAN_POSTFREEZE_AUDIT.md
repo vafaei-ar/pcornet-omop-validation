@@ -40,6 +40,25 @@ The path `config/etl_A.yaml` is an example from the historical project; use the 
 
 After a successful run, a local reviewer must check source coverage, D0 anchors, subgroup and missingness denominators, small-cell risk, and the duplicate matching definition. Only **approved aggregate statistics** should be exported for manuscript integration.
 
+## Troubleshooting: frozen anchor mismatch
+
+If the script stops at `phase=reconstruct_locked_d0` with a frozen-anchor mismatch, **do not** change the expected values or rerun/rebuild the ETL. The audit may be connected to a different source/OMOP database snapshot or schema, even if the table names exist and the Python code is correct.
+
+Run this **read-only diagnostic** first, from the repository root with the same local ETL config:
+
+```bash
+git fetch origin
+git switch qiran-postfreeze-audit-20261102
+git pull --ff-only
+python scripts/qiran_postfreeze_audit.py --config config/etl.yaml --diagnose
+```
+
+The diagnostic prints the configured database name and source/target schema locally and compares only six total table counts with reference values where available. It does not calculate patient cohorts or write output files. **Redact the database name and any internal environment details** before sharing console output. Table totals do not contain patient identifiers, but institutional disclosure policies still apply.
+
+The publication snapshot should have 11,484,577 PCORnet DIAGNOSIS rows, 27,089 OMOP person rows, 1,510,957 OMOP visit_occurrence rows, and 7,315,572 OMOP condition_occurrence rows. A mismatch means this is not verified as the publication data snapshot. Identify the correct existing database and adjust only your local config to point to it. Do not infer that a particular run is equivalent merely because some totals match.
+
+Only after the table counts and the full D0 cohort anchors match should you run the four scientific audits. The script deliberately rejects an OMOP-only patient or any other phenotype mismatch, including a 1-patient difference.
+
 ## Suggested table design after verified execution
 
 - **Main Results Stage C**: One sentence comparing source-only with shared D0 patient groups on the most consequential standardized differences; one sentence summarizing which years/coding eras have higher missing-date rates among primary qualifying stroke diagnosis records. Avoid causal explanations without evidence.
