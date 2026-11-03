@@ -40,3 +40,24 @@ def test_small_count_suppression():
     screened = qa.suppress_partition(sample,"year_band")
     assert all(r["n"] is None for r in screened)
     assert all(r["suppressed"] for r in screened)
+
+def test_snapshot_reference_table_fingerprint():
+    counts = {
+        "source_diagnosis_rows": 11484577,
+        "omop_person_rows": 27089,
+        "omop_visit_rows": 1510957,
+        "omop_condition_rows": 7315572,
+    }
+    assert qa.snapshot_mismatches(counts) == {}
+    changed = counts | {"omop_person_rows": 75274, "source_diagnosis_rows": 10000}
+    mismatch = qa.snapshot_mismatches(changed)
+    assert mismatch["omop_person_rows"] == (27089, 75274)
+    assert mismatch["source_diagnosis_rows"] == (11484577, 10000)
+
+def test_snapshot_diagnostic_queries_are_aggregate_only():
+    import inspect
+    source = inspect.getsource(qa.snapshot_counts).lower()
+    assert "count_big(*)" in source
+    assert "insert into" not in source
+    assert "update " not in source
+    assert "delete from" not in source
