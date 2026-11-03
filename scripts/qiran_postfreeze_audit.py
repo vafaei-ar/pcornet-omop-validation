@@ -190,6 +190,8 @@ def sql_setup(source: str, target: str) -> str:
       WHERE rn=1 AND FLOOR(DATEDIFF(day,birth_date,index_date)/365.0)>=18;
     CREATE UNIQUE CLUSTERED INDEX IX_qiran_src ON #src_d0(patid);
 
+    -- Inherited Stage C/D: check the selected source index stroke episode only.
+    -- Searching all #d0_candidates changes the cohort by selecting a substitute episode.
     IF OBJECT_ID('tempdb..#omop_d0') IS NOT NULL DROP TABLE #omop_d0;
     ;WITH chosen AS (
       SELECT d.patid,p.person_id,v.visit_occurrence_id,
@@ -201,8 +203,8 @@ def sql_setup(source: str, target: str) -> str:
                       CAST(v.visit_end_date AS date)) index_date,
              ROW_NUMBER() OVER (PARTITION BY d.patid ORDER BY
                COALESCE(CAST(co.condition_start_date AS date),CAST(v.visit_start_date AS date),
-                        CAST(v.visit_end_date AS date)),v.visit_occurrence_id) rn
-      FROM #d0_candidates d
+                        CAST(v.visit_end_date AS date)),co.condition_occurrence_id) rn
+      FROM #src_d0 d
       JOIN [{target}].[person] p ON CONVERT(nvarchar(255),p.person_source_value)=d.patid
       JOIN [{target}].[etl_visit_occurrence_xwalk] vx
         ON CONVERT(nvarchar(255),vx.encounterid)=d.encounterid
@@ -215,8 +217,7 @@ def sql_setup(source: str, target: str) -> str:
         ON co.condition_occurrence_id=cx.condition_occurrence_id
         AND co.person_id=p.person_id AND co.visit_occurrence_id=v.visit_occurrence_id
     )
-    SELECT * INTO #omop_d0 FROM chosen
-      WHERE rn=1 AND FLOOR(DATEDIFF(day,birth_date,index_date)/365.0)>=18;
+    SELECT * INTO #omop_d0 FROM chosen WHERE rn=1;
     CREATE UNIQUE CLUSTERED INDEX IX_qiran_omop ON #omop_d0(patid);
 
     IF OBJECT_ID('tempdb..#qiran_src') IS NOT NULL DROP TABLE #qiran_src;
@@ -437,7 +438,10 @@ def sql_anchors() -> str:
            (SELECT COUNT_BIG(*) FROM #src_d0 s
              LEFT JOIN #omop_d0 o ON s.patid=o.patid WHERE o.patid IS NULL) source_only_d0,
            (SELECT COUNT_BIG(*) FROM #omop_d0 o
-             LEFT JOIN #src_d0 s ON o.patid=s.patid WHERE s.patid IS NULL) omop_only_d0
+             LEFT JOIN #src_d0 s ON o.patid=s.patid WHERE s.patid IS NULL) omop_only_d0,
+           (SELECT COUNT_BIG(*) FROM #src_d0 s
+             JOIN #omop_d0 o ON s.patid=o.patid
+             WHERE s.index_date=o.index_date) exact_index_date_d0
     """
 
 
@@ -510,7 +514,7 @@ def diagnose_snapshot(config: str) -> bool:
 def validate_anchors(anchor: dict[str, int], coverage: dict[str, int]) -> None:
     expected = {"source_d0": D0_SOURCE_N, "omop_d0": D0_OMOP_N,
                 "shared_d0": D0_OMOP_N, "source_only_d0": D0_SOURCE_ONLY_N,
-                "omop_only_d0": 0}
+                "omop_only_d0": 0, "exact_index_date_d0": D0_OMOP_N}
     mismatched = {k: (expected[k], anchor.get(k)) for k in expected if int(anchor.get(k, -1)) != expected[k]}
     if int(coverage.get("omop_person_rows", -1)) != FROZEN_OMOP_PERSON_N:
         mismatched["omop_person_rows"] = (FROZEN_OMOP_PERSON_N,coverage.get("omop_person_rows"))
