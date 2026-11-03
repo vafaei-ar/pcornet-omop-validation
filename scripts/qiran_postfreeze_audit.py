@@ -441,6 +441,72 @@ def sql_anchors() -> str:
     """
 
 
+# Publication anchors describe a specific institutional snapshot, not all data
+# that may exist under the same table names. Diagnostic mode never reconstructs
+# a patient cohort or writes a result file.
+PUBLICATION_TABLE_COUNTS = {
+    "source_diagnosis_rows": 11_484_577,
+    "omop_person_rows": FROZEN_OMOP_PERSON_N,
+    "omop_visit_rows": 1_510_957,
+    "omop_condition_rows": 7_315_572,
+}
+
+
+def snapshot_counts(con: Any, source: str, target: str) -> dict[str, int]:
+    """Read-only snapshot fingerprint using total table counts only."""
+    tables = {
+        "source_demographic_rows": (source, "PCORnet_DEMOGRAPHIC"),
+        "source_diagnosis_rows": (source, "PCORnet_DIAGNOSIS"),
+        "source_encounter_rows": (source, "PCORnet_ENCOUNTER"),
+        "omop_person_rows": (target, "person"),
+        "omop_visit_rows": (target, "visit_occurrence"),
+        "omop_condition_rows": (target, "condition_occurrence"),
+    }
+    counts: dict[str, int] = {}
+    for key, (schema, table) in tables.items():
+        if not table_exists(con, schema, table):
+            raise RuntimeError(f"Required table [{schema}].[{table}] not found")
+        counts[key] = scalar(con, f"SELECT COUNT_BIG(*) FROM [{schema}].[{table}]")
+    return counts
+
+
+def snapshot_mismatches(counts: dict[str, int]) -> dict[str, tuple[int, int | None]]:
+    return {
+        name: (expected, counts.get(name))
+        for name, expected in PUBLICATION_TABLE_COUNTS.items()
+        if counts.get(name) != expected
+    }
+
+
+def diagnose_snapshot(config: str) -> bool:
+    """Report local aggregate database counts. No cohort query or output file."""
+    cfg = load_etl_config(config)
+    source = schema_name(cfg.raw["sqlserver"].get("source_schema"))
+    target = schema_name(cfg.raw["sqlserver"].get("target_schema"))
+    engine = make_engine(cfg)
+    try:
+        with engine.connect() as con:
+            database_name = str(con.execute(text("SELECT DB_NAME()")).scalar_one())
+            counts = snapshot_counts(con, source, target)
+    finally:
+        engine.dispose()
+    print("mode=snapshot_diagnostics_only (no research output)")
+    print(f"database={database_name!r} source_schema={source!r} target_schema={target!r}")
+    mismatches = snapshot_mismatches(counts)
+    for name, observed in counts.items():
+        expected = PUBLICATION_TABLE_COUNTS.get(name)
+        if expected is None:
+            print(f"{name}: observed={observed:,}; publication_reference=not_specified")
+        else:
+            state = "MATCH" if observed == expected else "MISMATCH"
+            print(f"{name}: observed={observed:,}; publication_reference={expected:,}; {state}")
+    if mismatches:
+        print("diagnosis=snapshot_or_schema_mismatch; do not change anchors, rebuild ETL, or interpret this run")
+        return False
+    print("diagnosis=table_counts_match; rerun full cohort audit to verify D0 anchors")
+    return True
+
+
 def validate_anchors(anchor: dict[str, int], coverage: dict[str, int]) -> None:
     expected = {"source_d0": D0_SOURCE_N, "omop_d0": D0_OMOP_N,
                 "shared_d0": D0_OMOP_N, "source_only_d0": D0_SOURCE_ONLY_N,
@@ -449,7 +515,12 @@ def validate_anchors(anchor: dict[str, int], coverage: dict[str, int]) -> None:
     if int(coverage.get("omop_person_rows", -1)) != FROZEN_OMOP_PERSON_N:
         mismatched["omop_person_rows"] = (FROZEN_OMOP_PERSON_N,coverage.get("omop_person_rows"))
     if mismatched:
-        raise RuntimeError("Published frozen cohort/target anchors NOT reproduced; do not interpret outputs: " + str(mismatched))
+        raise RuntimeError(
+            "Published frozen cohort/target anchors NOT reproduced; do not interpret outputs: "
+            + str(mismatched)
+            + ". Run with --diagnose to check source and target snapshot table counts. "
+            + "Do not change frozen anchors or rebuild the ETL to force a match."
+        )
 
 
 def output_path(path: str) -> Path:
@@ -544,8 +615,13 @@ def main() -> None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',required=True,help='Local ETL config; never commit secrets')
     parser.add_argument('--output',default='results/postfreeze_qiran/qiran_selected_d0_audit.json')
+    parser.add_argument('--diagnose',action='store_true',
+                        help='Only compare aggregate database table counts with the frozen publication snapshot; do not produce a research output')
     args=parser.parse_args()
-    execute(args.config,args.output)
+    if args.diagnose:
+        diagnose_snapshot(args.config)
+    else:
+        execute(args.config,args.output)
 
 
 if __name__=='__main__':
