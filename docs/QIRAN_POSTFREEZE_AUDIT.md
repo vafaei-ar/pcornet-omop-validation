@@ -2,7 +2,7 @@
 
 ## Status
 
-**Code prepared and offline-tested. Not executed on institutional clinical data. No new findings have been generated.** This audit is a read-only, aggregate-only extension of the publication study. It **does not change the frozen ETL, D0/D1/D3 phenotype, or Stage D/E results**. No row-level data leave SQL Server.
+**The first institutional execution stopped at the frozen D0 anchor check, and no research output was written. The OMOP reconstruction was corrected to use the selected source index episode; full institutional re-execution is pending. No new scientific findings have been generated.** This audit is a read-only, aggregate-only extension of the publication study. It **does not change the frozen ETL, D0/D1/D3 phenotype, or Stage D/E results**. No row-level data leave SQL Server.
 
 Repository reference: `vafaei-ar/pcornet-omop-validation`.
 Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
@@ -11,6 +11,31 @@ Locked Stage E feature logic: `src/pcornet_omop_validation/study/stage_e_statist
 Frozen ETL route logic: `src/pcornet_omop_validation/etl/condition_occurrence.py`, `condition_canonical_routes.py` at the frozen SHA.
 
 This package was built outside the public repository to avoid sharing unreviewed code or results without author approval.
+
+## Correction after the first institutional run (2026-11-02)
+
+The first run against the publication-matching `OMOP_VALIDATED_A` table snapshot reproduced source D0 = 9,815 but gave OMOP D0 = 6,198 (shared = 6,197, source-only = 3,618, OMOP-only = 1). This **was a bug in this additional audit**, not evidence that the published Stage C results changed. The audit had scanned every source qualifying stroke encounter for an OMOP survivor, instead of checking whether the *selected source index diagnosis and encounter* survived into OMOP.
+
+The correction follows the existing original Stage C and Stage D SQL and the explicit Stage E anchor-fix wrapper:
+- construct the source D0 index episode first;
+- join OMOP to **`#src_d0`**, not to every `#d0_candidates` row;
+- choose a one-to-many target condition with the locked `condition_occurrence_id` tie-break;
+- preserve source adult eligibility rather than reselecting an adult target episode;
+- verify exact index-date agreement across all 6,001 expected shared D0 patients.
+
+The check still fails closed if any original D0 count or date anchor differs. Do not manually change the expected counts. Updated offline regression checks test the source-index join and exact date anchor. **The repaired SQL still needs execution against the institutional publication snapshot before interpreting any new results.**
+
+Rerun from the current draft PR branch using:
+
+```bash
+git pull --ff-only
+python -m pytest -q tests/test_qiran_postfreeze_audit.py
+python scripts/qiran_postfreeze_audit.py \
+  --config config/etl_A.yaml \
+  --output results/postfreeze_qiran/qiran_selected_d0_audit.json
+```
+
+Only share the resulting JSON after institutional disclosure review. A failed run should not create this JSON.
 
 ## Four analyses
 
@@ -76,4 +101,4 @@ Only after the table counts and the full D0 cohort anchors match should you run 
 
 ## Verification record
 
-Offline syntax compilation and six pytest tests passed locally. These check the frozen anchor guard, subcategory suppression behavior, SQL code construction, safe identifier/output paths, and record-vs-patient denominator separation. They **do not** establish successful database execution or scientific results.
+Initial offline syntax compilation and six pytest tests passed locally. Subsequent regression tests for the corrected source-index OMOP join and date-agreement guard were added; local targeted syntax/SQL guard checks passed, but the full updated test suite and corrected clinical-data query must still be rerun on the institutional environment. These check the frozen anchor guard, subcategory suppression behavior, SQL code construction, safe identifier/output paths, and record-vs-patient denominator separation. They **do not** establish successful database execution or scientific results.
