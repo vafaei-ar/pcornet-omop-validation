@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 
 FROZEN_SHA = "887e6f4d60a6b185e58b3c9fe8887472b49777e3"
@@ -81,7 +82,7 @@ def main():
     args = parser.parse_args()
     print(json.dumps(recover(json.loads(Path(args.input).read_text(encoding="utf-8"))),
                      indent=2, sort_keys=True))
-    print("Disclosure review required before sharing any printed aggregate results.")
+    print("Disclosure review required before sharing any printed aggregate results.", file=sys.stderr)
 
 
 if __name__ == "__main__":
