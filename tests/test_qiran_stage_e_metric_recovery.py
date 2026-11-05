@@ -1,7 +1,17 @@
 """Offline synthetic validation for the Stage E aggregate-only recovery tool."""
 import copy
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
 import pytest
-from scripts.qiran_stage_e_metric_recovery import recover
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "qiran_stage_e_metric_recovery.py"
+spec = importlib.util.spec_from_file_location("qiran_stage_e_metric_recovery", SCRIPT)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+recover = module.recover
 
 MODELS = ("logistic_regression", "ridge_logistic_regression", "hist_gradient_boosting")
 TERMS = ("intercept", "age_at_index_years", "female_indicator",
@@ -57,3 +67,16 @@ def test_reject_incoherent_confidence_interval():
     payload["association_reproducibility"]["fixed_cohort"]["intercept"]["source"]["ci95_lower"] = 1.20
     with pytest.raises(ValueError, match="outside"):
         recover(payload)
+
+
+def test_stdout_is_valid_json_and_warning_goes_to_stderr(tmp_path):
+    input_path = tmp_path / "synthetic_stage_e.json"
+    input_path.write_text(json.dumps(make_payload()), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--input", str(input_path)],
+        text=True, capture_output=True, check=True,
+    )
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "recovered_aggregate_pending_disclosure_review"
+    assert "Disclosure review required" in result.stderr
+    assert "Disclosure review required" not in result.stdout
