@@ -1,6 +1,13 @@
 """Offline tests for Qiran's post-freeze audit. No database required."""
+import importlib.util
+from pathlib import Path
+
 import pytest
-from scripts import qiran_postfreeze_audit as qa
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "qiran_postfreeze_audit.py"
+spec = importlib.util.spec_from_file_location("qiran_postfreeze_audit", SCRIPT)
+qa = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(qa)
 
 def test_anchor_guard():
     counts = dict(source_d0=9815, omop_d0=6001, shared_d0=6001, source_only_d0=3814, omop_only_d0=0, exact_index_date_d0=6001)
