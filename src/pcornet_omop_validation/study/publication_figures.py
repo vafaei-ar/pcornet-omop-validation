@@ -227,7 +227,7 @@ def figure1(data: dict) -> plt.Figure:
     widths = [0.19, 0.19, 0.20, 0.19]
     texts = [
         "Conventional checks\nhighly concordant\nroutes exact;\nattributes highly preserved",
-        "Independent base cohort (D0)\n" f"{stage_c['primary']['D0']['pcornet']:,} vs {stage_c['primary']['D0']['omop']:,}\n" f"Jaccard {stage_c['primary']['D0']['jaccard']:.3f}",
+        "Source-anchored D0 cohort\n" f"{stage_c['primary']['D0']['pcornet']:,} vs {stage_c['primary']['D0']['omop']:,}\n" f"Jaccard {stage_c['primary']['D0']['jaccard']:.3f}",
         "Mechanism localized\nmissing diagnosis date\nfallback vs exclusion",
         "Same diagnosis-date rule\n3 phenotypes: Jaccard 1.000\nindex dates 100% exact",
     ]
@@ -254,7 +254,7 @@ def figure1(data: dict) -> plt.Figure:
     ax.text(0.34, 0.59, f"90-day risk  {fixed_90['pcornet_risk_percent']:.1f}% = {fixed_90['omop_risk_percent']:.1f}%\n1,132/1,132 first-event dates exact", fontsize=10.9, fontweight="bold", va="center")
     ax.text(0.74, 0.59, "Representation preserved\nfor the same study anchors", fontsize=10.6, fontweight="bold", va="center", color=COLORS["green"])
     end_90 = stage_d["end_to_end"]["90_day"]
-    ax.text(0.05, 0.21, "INDEPENDENT end-to-end\nstudy in each CDM", fontsize=10.6, fontweight="bold", va="center", color=COLORS["omop"])
+    ax.text(0.05, 0.21, "SOURCE-ANCHORED end-to-end\ncomparison", fontsize=10.6, fontweight="bold", va="center", color=COLORS["omop"])
     ax.text(0.34, 0.21, f"90-day risk  {end_90['pcornet_risk_percent']:.1f}% → {end_90['omop_risk_percent']:.1f}%\nΔ +{end_90['risk_difference_pp']:.2f} pp   RR {end_90['rr']:.2f}", fontsize=10.9, fontweight="bold", va="center")
     ax.text(0.74, 0.21, f"Population changed\n{end_90['pcornet_eligible']:,} vs {end_90['omop_eligible']:,} eligible", fontsize=10.6, fontweight="bold", va="center", color=COLORS["omop"])
     return fig
@@ -605,7 +605,7 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "a", x=-0.29, y=1.08)
     ax.tick_params(axis="y", labelsize=10.4)
-    ax.set_title("Feature distributions shift with\nindependent cohort construction", loc="left", fontweight="bold", pad=10)
+    ax.set_title("Feature distributions differ with\nsource-anchored cohort retention", loc="left", fontweight="bold", pad=10)
     ax.text(0.103, 5.25, "0.10 reference", fontsize=8.8, color=COLORS["mid"])
     ax.legend(
         handles=[
