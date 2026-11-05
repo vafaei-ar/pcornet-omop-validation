@@ -1,0 +1,110 @@
+{
+  "study_definition": "postfreeze-omop-standard-qc-and-model-interpretability-v1",
+  "status": "proposed_postfreeze_protocol_not_executed",
+  "frozen_etl_sha": "887e6f4d60a6b185e58b3c9fe8887472b49777e3",
+  "baseline_repository_sha": "1c271c37a9d1a279f075a8edee439fe0cce7706f",
+  "primary_analyses_unchanged": true,
+  "qc": {
+    "purpose": "Run standard target-only OMOP characterization alongside the source-aware validation without treating DQD or Achilles as certification.",
+    "target_cdm": "OMOP CDM v5.4.2",
+    "ohdsi_cdm_version_parameter": "5.4",
+    "software": [
+      "OHDSI DataQualityDashboard",
+      "OHDSI Achilles"
+    ],
+    "dqd_levels": [
+      "TABLE",
+      "FIELD",
+      "CONCEPT"
+    ],
+    "dqd_severity": [
+      "fatal",
+      "convention",
+      "characterization"
+    ],
+    "thresholds": "Default v5.4 thresholds; record exact package version and threshold-file fingerprints before execution. No post-hoc threshold changes.",
+    "required_categories": [
+      "passed",
+      "failed",
+      "not_applicable",
+      "execution_error"
+    ],
+    "achilles_small_cell_suppression": 10,
+    "safety": "Frozen target read-only. Achilles writes only to a separately provisioned results and scratch schema; no source or OMOP target schema writes. DQD writeToTable=FALSE.",
+    "publication_rule": "Report raw run counts and reasons for failures, after aggregate disclosure review. Do not present passed percentage as certification or assume checks pass.",
+    "planned_comparison": "Target-only DQD outcomes versus source-based DX_DATE exclusions, diagnosis-selection mechanism, and concept-zero drug routing."
+  },
+  "interpretability": {
+    "aim": "Test whether observed model attributions change with end-to-end population selection or representation; feature importance is not a causal risk-factor effect.",
+    "endpoint": "Locked 90-day acute-care reutilization",
+    "features": [
+      "age_at_index_years",
+      "female_indicator",
+      "index_length_of_stay_days",
+      "prior_365d_acute_care_encounter_count",
+      "prior_365d_all_encounter_count",
+      "prior_365d_ischemic_stroke_indicator"
+    ],
+    "populations": [
+      {
+        "key": "pcornet_full",
+        "expected_n": 6508
+      },
+      {
+        "key": "pcornet_shared",
+        "expected_n": 3822,
+        "require_exact_subset_of": "pcornet_full"
+      },
+      {
+        "key": "omop_frozen",
+        "expected_n": 3822,
+        "match_index_and_outcome_to": "pcornet_shared"
+      },
+      {
+        "key": "omop_fallback",
+        "expected_n": 6508,
+        "match_index_and_outcome_to": "pcornet_full"
+      }
+    ],
+    "models": [
+      {
+        "key": "random_forest",
+        "class": "sklearn.ensemble.RandomForestClassifier",
+        "n_estimators": 300,
+        "min_samples_leaf": 10,
+        "max_features": "sqrt",
+        "class_weight": null,
+        "random_state": 20261029
+      },
+      {
+        "key": "xgboost",
+        "class": "xgboost.XGBClassifier",
+        "n_estimators": 300,
+        "max_depth": 3,
+        "learning_rate": 0.05,
+        "subsample": 1,
+        "colsample_bytree": 1,
+        "random_state": 20261029
+      }
+    ],
+    "split": "Reuse locked Stage E SHA-256 patient hash rule for 70/30 train/test. Check aligned identities, anchors, labels and split membership. Never write identifiers or row-level predictions to public output.",
+    "preprocessing": "Numeric training-median and binary training-mode imputation independently per training population; no test-leakage.",
+    "importance": {
+      "primary": "Held-out positive-class permutation importance for AUROC, 20 repeats, with a common matched test-patient comparison.",
+      "secondary": "SHAP interventional TreeExplainer with a common 200-row training-reference background sampled with fixed random seed; fixed matched test sample and positive-class explanation scale.",
+      "cautions": [
+        "Correlated prior-utilization features share importance unpredictably.",
+        "Attributions are model and reference distribution dependent.",
+        "SHAP differences are not causal importance or transportability evidence."
+      ]
+    },
+    "ascertainment_sensitivity": "Repeat models excluding prior_365d_ischemic_stroke_indicator, because it requires recorded DX_DATE in Stage E. If harmonized re-ascertainment is later implemented, report it as an additional independent sensitivity.",
+    "outputs": "Aggregate model performance, feature permutation means/SD, SHAP mean abs contributions, rank changes and anchors; no row-level patient data.",
+    "publication_rule": "Provisional until validated. Differences must be repeatable and interpretable under matched evaluation populations to justify main-text claim."
+  },
+  "disclosure": {
+    "protected_row_level_input_local_only": true,
+    "public_aggregate_outputs_only": true,
+    "no_model_results_exist_yet": true
+  }
+}

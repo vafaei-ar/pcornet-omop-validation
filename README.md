@@ -17,6 +17,8 @@ Collaborators and students should read the numbered documentation in order:
 5. [`docs/05_CODE_REVIEW_GUIDE.md`](docs/05_CODE_REVIEW_GUIDE.md)
 6. [`docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md`](docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md)
 7. [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md)
+8. [`docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`](docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md) (separate post-freeze QC branch)
+9. [`docs/09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`](docs/09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md) (QC evidence and manuscript release gates)
 
 Older development notes, lock records, and superseded manuscript fragments are retained under `docs/archive/` for provenance but are not required reading.
 
@@ -42,6 +44,9 @@ flowchart LR
 - Publication tables: one code-generated main/supplementary table pipeline
 - Generated `results/`: intentionally gitignored
 - Patient-level outputs and credentials: must not be committed
+- Post-freeze QC/interpretability development: `postfreeze/dqd-achilles-interpretability-20261029`, separate from `main`
+- Achilles completed with read-only ID-210 reconciliation; DQD has no completed checks because frozen `CDM_SOURCE` is empty. Other unpopulated OMOP domains limit database completeness claims.
+- Latest manuscript DOCX and final journal choice need reconciliation before submission; consult document 09.
 
 The key empirical finding is that conditional fidelity was extremely high when the same patients and index dates were held fixed, while end-to-end estimates differed because an upstream diagnosis-date eligibility policy changed cohort membership.
 

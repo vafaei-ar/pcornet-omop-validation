@@ -106,9 +106,19 @@ python -m pcornet_omop_validation.study.publication_figures \
   --only Figure3_outcome_estimands
 ```
 
-## Place Figures 2 and 3 into the tracked manuscript
+## Place Figures 2 and 3 into the verified current manuscript
 
-Only Figures 2 and 3 should be replaced in the reader-focused v1.3 manuscript. After generating the figures, use:
+**Version caution (2026-10-31):** This historical example uses the reader-focused
+v1.3 Word file. The post-freeze QC documentation identifies **v1.6.2** as a
+later manuscript. Do **not** apply figure placement to v1.3 unless its
+authoritative status has been independently confirmed. First locate the latest
+author-approved DOCX, reconcile intervening tracked edits and review comments,
+and adjust the `--manuscript` and `--output` arguments accordingly.
+See [document 09](09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md).
+
+Only Figures 2 and 3 are designated for automatic replacement in the
+reader-focused plan. The following invocation is a **historical v1.3 example**,
+not a final manuscript update command:
 
 ```bash
 python scripts/place_publication_figures.py \

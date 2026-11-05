@@ -1,0 +1,22 @@
+{
+  "cdm_source": {
+    "cdm_source_name": "",
+    "cdm_source_abbreviation": "",
+    "cdm_holder": "",
+    "source_description": "",
+    "source_documentation_reference": "",
+    "cdm_etl_reference": "",
+    "source_release_date": "",
+    "cdm_release_date": "",
+    "cdm_version": "v5.4",
+    "cdm_version_concept_id": 756265,
+    "vocabulary_version": ""
+  },
+  "evidence": {
+    "cdm_holder": "",
+    "source_release_date": "",
+    "cdm_release_date": "",
+    "cdm_version_concept_id": "",
+    "vocabulary_version": ""
+  }
+}
