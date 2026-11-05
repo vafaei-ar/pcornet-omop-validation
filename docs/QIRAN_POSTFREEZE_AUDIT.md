@@ -1,0 +1,104 @@
+# Qiran post-freeze analysis: selective loss, coding era, duplicates, person coverage
+
+## Status
+
+**Current status (internal):** The initial institutional execution failed the D0 anchor check, and the code was corrected to use the selected source index episode. A subsequent institutional aggregate report was provided for internal manuscript analysis and reproduced the expected D0 anchors. The restricted report is not committed here, and institutional disclosure authorization for public release is not established by this repository. The initial failure and correction remain documented below. This audit is a read-only, aggregate-only extension of the publication study. It **does not change the frozen ETL, D0/D1/D3 phenotype, or Stage D/E results**. No row-level data leave SQL Server.
+
+Repository reference: `vafaei-ar/pcornet-omop-validation`.
+Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
+Source definitions: `study_definitions/stage_c_stroke_d0_v1.json`, `src/pcornet_omop_validation/study/stroke_codes.py`.
+Locked Stage E feature logic: `src/pcornet_omop_validation/study/stage_e_statistical_model_reproducibility.py`.
+Frozen ETL route logic: `src/pcornet_omop_validation/etl/condition_occurrence.py`, `condition_canonical_routes.py` at the frozen SHA.
+
+This package was built outside the public repository to avoid sharing unreviewed code or results without author approval.
+
+## Correction after the first institutional run (2026-11-02)
+
+The first run against the publication-matching `OMOP_VALIDATED_A` table snapshot reproduced source D0 = 9,815 but gave OMOP D0 = 6,198 (shared = 6,197, source-only = 3,618, OMOP-only = 1). This **was a bug in this additional audit**, not evidence that the published Stage C results changed. The audit had scanned every source qualifying stroke encounter for an OMOP survivor, instead of checking whether the *selected source index diagnosis and encounter* survived into OMOP.
+
+The correction follows the existing original Stage C and Stage D SQL and the explicit Stage E anchor-fix wrapper:
+- construct the source D0 index episode first;
+- join OMOP to **`#src_d0`**, not to every `#d0_candidates` row;
+- choose a one-to-many target condition with the locked `condition_occurrence_id` tie-break;
+- preserve source adult eligibility rather than reselecting an adult target episode;
+- verify exact index-date agreement across all 6,001 expected shared D0 patients.
+
+The check still fails closed if any original D0 count or date anchor differs. Do not manually change the expected counts. Updated offline regression checks test the source-index join and exact date anchor. The later internal report reproduces the anchors, but operator verification and institutional disclosure review remain separate requirements.
+
+Rerun from the current draft PR branch using:
+
+```bash
+git pull --ff-only
+python -m pytest -q tests/test_qiran_postfreeze_audit.py
+python scripts/qiran_postfreeze_audit.py \
+  --config config/etl_A.yaml \
+  --output results/postfreeze_qiran/qiran_selected_d0_audit.json
+```
+
+Only share the resulting JSON after institutional disclosure review. A failed run should not create this JSON.
+
+## Four analyses
+
+1. **D0 source-only versus shared patients**: same locked source D0 index, two groups (source-only and shared). Report group size, sex, age, length of stay, 365-day prior all/acute encounter counts, source-only minus shared standardized mean differences, encounter type, and index date/year. This is a D0 comparison, **not** the 90-day outcome-eligible comparison.
+2. **Date-missingness and code era**: (a) all primary ischemic-stroke DIAGNOSIS records linked to qualifying EI/IP overnight encounters, with **admission-year denominator** and DX_DATE missing count, stratified by code-defined ICD-9-CM versus ICD-10-CM; (b) final D0 index patient-group year/era distributions. The record-level candidate sample and patient-level D0 sample must not be combined into one denominator. Code lists, not DX_TYPE, determine the locked stroke code-system category.
+3. **Cross-stream DIAGNOSIS + CONDITION exact overlap**: match eligible records by PATID, ENCOUNTERID, normalized source code, code system, and event date (DX_DATE vs COALESCE(ONSET_DATE, REPORT_DATE)); output counts of matching event keys/records only. These are *candidate overlaps*, not confirmed duplicate clinical assertions or OMOP defects. Missing-date DIAGNOSIS rows are not eligible for the frozen ETL and are not part of this match. Vocabulary one-to-many routes are also not duplicates by themselves.
+4. **Person coverage**: raw PCORnet DEMOGRAPHIC rows, distinct nonnull PATIDs, missing PATID/birth dates, OMOP person rows, and OMOP person links to the source. A source-row denominator is distinct from unique persons.
+
+## Safeguards
+
+- SQL reads source and frozen target tables and creates only session-local temporary `#` tables. It does not update, delete, truncate, or create permanent study/ETL tables.
+- It aborts before writing an output unless **D0 source = 9,815, OMOP = 6,001, shared = 6,001, source-only = 3,814, OMOP-only = 0**, and frozen OMOP person count is **27,089**. If these anchors fail, investigate the data snapshot and code version. Do **not** change the anchors to force success.
+- Writes only aggregate JSON, with file mode `0600`, under the repository's ignored `results/` directory. Refuses to overwrite a prior output. Never commit or upload that JSON before institutional disclosure review.
+- Performs preliminary suppression of small subgroup cells (<11), including complementary suppression of one additional cell when a partition contains exactly one small cell. **This does not replace institutional disclosure review** or prevent all differencing across multiple tables. Suppressed values and small count outputs must be screened further before release.
+- The originally documented offline-only testing status was superseded by a subsequent internal aggregate run. Do not equate an internal run with independent validation, permission to publish the output, or authorization to disclose subgroup counts.
+
+## Institutional execution (only when the approved execution path is available)
+
+With the project's normal virtual environment activated and an approved read-only SQL Server user credential, run the tracked `scripts/qiran_postfreeze_audit.py` from the project root:
+
+```bash
+python scripts/qiran_postfreeze_audit.py --config config/etl_A.yaml \
+  --output results/postfreeze_qiran/qiran_selected_d0_audit.json
+```
+
+The path `config/etl_A.yaml` is an example from the historical project; use the local active configuration if different. Do not paste credentials into commands, chat, notebooks, or version control.
+
+After a successful run, a local reviewer must check source coverage, D0 anchors, subgroup and missingness denominators, small-cell risk, and the duplicate matching definition. Only **approved aggregate statistics** should be exported for manuscript integration.
+
+## Troubleshooting: frozen anchor mismatch
+
+If the script stops at `phase=reconstruct_locked_d0` with a frozen-anchor mismatch, **do not** change the expected values or rerun/rebuild the ETL. The audit may be connected to a different source/OMOP database snapshot or schema, even if the table names exist and the Python code is correct.
+
+Run this **read-only diagnostic** first, from the repository root with the same local ETL config:
+
+```bash
+git fetch origin
+git switch qiran-postfreeze-audit-20261102
+git pull --ff-only
+python scripts/qiran_postfreeze_audit.py --config config/etl.yaml --diagnose
+```
+
+The diagnostic prints the configured database name and source/target schema locally and compares only six total table counts with reference values where available. It does not calculate patient cohorts or write output files. **Redact the database name and any internal environment details** before sharing console output. Table totals do not contain patient identifiers, but institutional disclosure policies still apply.
+
+The publication snapshot should have 11,484,577 PCORnet DIAGNOSIS rows, 27,089 OMOP person rows, 1,510,957 OMOP visit_occurrence rows, and 7,315,572 OMOP condition_occurrence rows. A mismatch means this is not verified as the publication data snapshot. Identify the correct existing database and adjust only your local config to point to it. Do not infer that a particular run is equivalent merely because some totals match.
+
+Only after the table counts and the full D0 cohort anchors match should you run the four scientific audits. The script deliberately rejects an OMOP-only patient or any other phenotype mismatch, including a 1-patient difference.
+
+## Suggested table design after verified execution
+
+- **Main Results Stage C**: One sentence comparing source-only with shared D0 patient groups on the most consequential standardized differences; one sentence summarizing which years/coding eras have higher missing-date rates among primary qualifying stroke diagnosis records. Avoid causal explanations without evidence.
+- **Supplement Table S21**: D0 source-only versus shared (n; age mean/SD; female proportion; length of stay; prior-year encounters; index-year bands; encounter type; source-only minus shared SMD). Specify D0 denominator.
+- **Supplement Table S22**: qualifying primary-stroke diagnosis *record-level* missing DX_DATE by admission-year band and ICD code era (n, missing n, proportion). Show D0 index patient distribution separately, not as the denominator for source record missingness.
+- **Additional supplementary results, if cleared:** source cross-stream exact-key overlap and its eligible-record denominator. Do not interpret matching keys as verified duplicates.
+- **Additional supplementary results, if cleared:** DEMOGRAPHIC source rows, distinct PATIDs, OMOP person rows, and linkage coverage. These should not be labeled S23 or S24: the current internal supplement reserves S23 for AUPRC and S24 for fixed-cohort associations.
+
+## Open interpretation gates
+
+- Internal aggregates show strong calendar-era structure in diagnosis-date missingness. The source-system cause and transportability to other institutions have not been established.
+- Internal descriptive comparisons show group differences, but coding era and admission year differ substantially between source-only and shared patients. Avoid severity or causal interpretations.
+- Does exact source-event overlap represent true duplicate clinical assertions? Follow-up verification is required before labeling it a defect.
+- The existing end-to-end risk differences remain descriptive, and no new confidence intervals have been generated. Their inferential target should be defined separately if added.
+
+## Verification record
+
+Initial offline syntax and targeted pytest checks passed during development. Subsequent internal aggregate output reproduced the frozen D0 anchors and informed the manuscript. The full updated test suite and operator-side SQL execution logs are not archived in this public repository. These checks do not substitute for disclosure authorization, clinical validation, or independent source-system investigation.
