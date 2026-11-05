@@ -2,7 +2,7 @@
 
 ## Status
 
-**The first institutional execution stopped at the frozen D0 anchor check, and no research output was written. The OMOP reconstruction was corrected to use the selected source index episode; full institutional re-execution is pending. No new scientific findings have been generated.** This audit is a read-only, aggregate-only extension of the publication study. It **does not change the frozen ETL, D0/D1/D3 phenotype, or Stage D/E results**. No row-level data leave SQL Server.
+**Current status (internal):** The initial institutional execution failed the D0 anchor check, and the code was corrected to use the selected source index episode. A subsequent institutional aggregate report was provided for internal manuscript analysis and reproduced the expected D0 anchors. The restricted report is not committed here, and institutional disclosure authorization for public release is not established by this repository. The initial failure and correction remain documented below. This audit is a read-only, aggregate-only extension of the publication study. It **does not change the frozen ETL, D0/D1/D3 phenotype, or Stage D/E results**. No row-level data leave SQL Server.
 
 Repository reference: `vafaei-ar/pcornet-omop-validation`.
 Frozen ETL SHA: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
@@ -23,7 +23,7 @@ The correction follows the existing original Stage C and Stage D SQL and the exp
 - preserve source adult eligibility rather than reselecting an adult target episode;
 - verify exact index-date agreement across all 6,001 expected shared D0 patients.
 
-The check still fails closed if any original D0 count or date anchor differs. Do not manually change the expected counts. Updated offline regression checks test the source-index join and exact date anchor. **The repaired SQL still needs execution against the institutional publication snapshot before interpreting any new results.**
+The check still fails closed if any original D0 count or date anchor differs. Do not manually change the expected counts. Updated offline regression checks test the source-index join and exact date anchor. The later internal report reproduces the anchors, but operator verification and institutional disclosure review remain separate requirements.
 
 Rerun from the current draft PR branch using:
 
@@ -50,11 +50,11 @@ Only share the resulting JSON after institutional disclosure review. A failed ru
 - It aborts before writing an output unless **D0 source = 9,815, OMOP = 6,001, shared = 6,001, source-only = 3,814, OMOP-only = 0**, and frozen OMOP person count is **27,089**. If these anchors fail, investigate the data snapshot and code version. Do **not** change the anchors to force success.
 - Writes only aggregate JSON, with file mode `0600`, under the repository's ignored `results/` directory. Refuses to overwrite a prior output. Never commit or upload that JSON before institutional disclosure review.
 - Performs preliminary suppression of small subgroup cells (<11), including complementary suppression of one additional cell when a partition contains exactly one small cell. **This does not replace institutional disclosure review** or prevent all differencing across multiple tables. Suppressed values and small count outputs must be screened further before release.
-- Only offline Python/SQL-construction tests have run. The SQL has **not yet been executed or performance-tested against SQL Server**.
+- The originally documented offline-only testing status was superseded by a subsequent internal aggregate run. Do not equate an internal run with independent validation, permission to publish the output, or authorization to disclose subgroup counts.
 
 ## Institutional execution (only when the approved execution path is available)
 
-Copy `qiran_postfreeze_audit.py` into the checked-out project repository's `scripts/` folder **locally**. With the project's normal virtual environment activated and a read-only SQL Server user credential, run from the project root:
+With the project's normal virtual environment activated and an approved read-only SQL Server user credential, run the tracked `scripts/qiran_postfreeze_audit.py` from the project root:
 
 ```bash
 python scripts/qiran_postfreeze_audit.py --config config/etl_A.yaml \
@@ -89,16 +89,16 @@ Only after the table counts and the full D0 cohort anchors match should you run 
 - **Main Results Stage C**: One sentence comparing source-only with shared D0 patient groups on the most consequential standardized differences; one sentence summarizing which years/coding eras have higher missing-date rates among primary qualifying stroke diagnosis records. Avoid causal explanations without evidence.
 - **Supplement Table S21**: D0 source-only versus shared (n; age mean/SD; female proportion; length of stay; prior-year encounters; index-year bands; encounter type; source-only minus shared SMD). Specify D0 denominator.
 - **Supplement Table S22**: qualifying primary-stroke diagnosis *record-level* missing DX_DATE by admission-year band and ICD code era (n, missing n, proportion). Show D0 index patient distribution separately, not as the denominator for source record missingness.
-- **Supplement Table S23 (verification)**: aggregate source cross-stream exact-key overlap, eligible-record and lineage context, and a clear statement that overlap does not prove duplication or ETL error.
-- **Supplement Table S24**: source DEMOGRAPHIC rows / unique PATIDs / target person / source-target linkage. Explain exclusions for missing demographics and birth date when confirmed.
+- **Additional supplementary results, if cleared:** source cross-stream exact-key overlap and its eligible-record denominator. Do not interpret matching keys as verified duplicates.
+- **Additional supplementary results, if cleared:** DEMOGRAPHIC source rows, distinct PATIDs, OMOP person rows, and linkage coverage. These should not be labeled S23 or S24: the current internal supplement reserves S23 for AUPRC and S24 for fixed-cohort associations.
 
 ## Open interpretation gates
 
-- Does the missing-date pattern actually vary with calendar/coding era? It is a hypothesis until this query runs.
-- Are there meaningful SMD differences in age, sex, length of stay, or utilization? Not known yet.
+- Internal aggregates show strong calendar-era structure in diagnosis-date missingness. The source-system cause and transportability to other institutions have not been established.
+- Internal descriptive comparisons show group differences, but coding era and admission year differ substantially between source-only and shared patients. Avoid severity or causal interpretations.
 - Does exact source-event overlap represent true duplicate clinical assertions? Follow-up verification is required before labeling it a defect.
 - The existing end-to-end risk differences remain descriptive, and no new confidence intervals have been generated. Their inferential target should be defined separately if added.
 
 ## Verification record
 
-Initial offline syntax compilation and six pytest tests passed locally. Subsequent regression tests for the corrected source-index OMOP join and date-agreement guard were added; local targeted syntax/SQL guard checks passed, but the full updated test suite and corrected clinical-data query must still be rerun on the institutional environment. These check the frozen anchor guard, subcategory suppression behavior, SQL code construction, safe identifier/output paths, and record-vs-patient denominator separation. They **do not** establish successful database execution or scientific results.
+Initial offline syntax and targeted pytest checks passed during development. Subsequent internal aggregate output reproduced the frozen D0 anchors and informed the manuscript. The full updated test suite and operator-side SQL execution logs are not archived in this public repository. These checks do not substitute for disclosure authorization, clinical validation, or independent source-system investigation.
