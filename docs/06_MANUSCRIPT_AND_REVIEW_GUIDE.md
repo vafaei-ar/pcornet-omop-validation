@@ -94,6 +94,22 @@ A researcher validating a CDM transformation should:
 
 ## Current manuscript source
 
+**Manuscript handoff gate (2026-10-31):** The tracked repository does not
+contain the active Word manuscript. Document 08 calls the latest working draft
+**v1.6.2** and records that Qiran commented on v0.2. Document 07 includes a
+**v1.3** tracked-Word figure-placement example. These are *different revision
+states*: first identify the current author-approved DOCX, then reconcile
+remaining reviewer comments and placement of Figures 2/3. Do not treat the
+v1.3 example or older Markdown fragments as an authoritative new base.
+
+The post-freeze QC audit is recorded separately in document 08. Its
+evidence/release gates are consolidated in
+[`09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`](09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md).
+The additional scientific limitation is **incomplete OMOP domain coverage**
+and an empty `CDM_SOURCE`. DQD did **not** complete and cannot be claimed
+as a validation success. Achilles did complete, with analysis 210 independently
+reconciled read-only. This does not replace any locked Stage A-E result.
+
 The older integrated manuscript fragments are retained in `docs/archive/` for provenance. They should not be reviewed as separate competing drafts.
 
 For new writing, use the numbered docs as the source of truth, especially:
@@ -102,4 +118,4 @@ For new writing, use the numbered docs as the source of truth, especially:
 - `03_RESULTS_THROUGH_STAGE_E.md` for numbers;
 - this file for framing and review questions.
 
-A single journal-targeted manuscript should be created only after journal selection so that word limits, table limits, and supplement structure can be handled once rather than maintaining several parallel drafts.
+Once the latest accessible Word file and target journal are verified, update **that single file** with granular tracked edits, preserved Zotero citations, and the code-generated displays. Do not maintain parallel manuscript drafts or start over from archived Markdown. Confirm current journal limits and submission requirements before final formatting.
