@@ -23,8 +23,8 @@ flowchart TD
     A[Same clinical source] --> B{Comparison type}
     B -->|Fixed cohort| C[Hold patient + index date + observability fixed]
     C --> D[Ask whether representation changes variables/outcomes/models]
-    B -->|End to end| E[Build study independently in each CDM]
-    E --> F[Ask whether complete study reaches same estimate]
+    B -->|Source-anchored end to end| E[Trace source-selected index episodes through OMOP lineage]
+    E --> F[Compare retained eligible populations and final estimates]
 ```
 
 ### Fixed-cohort analyses
@@ -33,9 +33,9 @@ Use the same patients and the same study anchor. These analyses isolate differen
 
 ### End-to-end analyses
 
-Allow PCORnet and OMOP to construct the cohort independently according to the locked study implementation. These analyses intentionally include upstream cohort-selection effects because that is what an investigator would experience when running a study independently in each CDM.
+Construct the source-defined cohort in PCORnet, then trace the selected source index diagnosis and linked encounter through the frozen OMOP lineage. Apply the documented representation-specific observability and outcome rules to compare final eligible populations and estimates. The primary OMOP cohort is therefore source anchored, not independently selected with an OMOP-native phenotype. These analyses include upstream cohort-selection effects but cannot establish fully independent cross-CDM phenotype portability.
 
-Both are necessary. A transformation can preserve every outcome for shared patients while still changing the final study result because different patients enter the analysis.
+Both are necessary. A transformation can preserve outcomes for shared patients while changing the final study result because not all source-selected episodes survive into the target population.
 
 ## Frozen ETL principles
 
