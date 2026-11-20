@@ -4,7 +4,7 @@ This repository contains an audited PCORnet-to-OMOP ETL and a staged validation 
 
 The main question is:
 
-> **If the same study is run independently in PCORnet and in the transformed OMOP data, do we obtain the same cohort, variables, outcomes, estimates, and scientific conclusion? If not, where did divergence enter and why?**
+> **When a PCORnet-defined study is traced through a frozen OMOP transformation, which source-selected episodes survive, which measurements remain reproducible for shared patients, and how do changed populations affect the final estimates?**
 
 ## Start here
 
@@ -17,7 +17,7 @@ Collaborators and students should read the numbered documentation in order:
 5. [`docs/05_CODE_REVIEW_GUIDE.md`](docs/05_CODE_REVIEW_GUIDE.md)
 6. [`docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md`](docs/06_MANUSCRIPT_AND_REVIEW_GUIDE.md)
 7. [`docs/07_PUBLICATION_FIGURES.md`](docs/07_PUBLICATION_FIGURES.md)
-8. [`docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`](docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md) (separate post-freeze QC branch)
+8. [`docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`](docs/08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md) (merged post-freeze QC record)
 9. [`docs/09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`](docs/09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md) (QC evidence and manuscript release gates)
 
 Older development notes, lock records, and superseded manuscript fragments are retained under `docs/archive/` for provenance but are not required reading.
@@ -44,11 +44,11 @@ flowchart LR
 - Publication tables: one code-generated main/supplementary table pipeline
 - Generated `results/`: intentionally gitignored
 - Patient-level outputs and credentials: must not be committed
-- Post-freeze QC/interpretability development: `postfreeze/dqd-achilles-interpretability-20261029`, separate from `main`
-- Achilles completed with read-only ID-210 reconciliation; DQD has no completed checks because frozen `CDM_SOURCE` is empty. Other unpopulated OMOP domains limit database completeness claims.
-- Latest manuscript DOCX and final journal choice need reconciliation before submission; consult document 09.
+- Post-freeze QC and interpretability code merged into `main` through PR #18. The frozen clinical ETL and original Stage A-E estimands remain unchanged.
+- Achilles 1.7.2 completed. The corrected DQD 2.9.1 run completed without SQL errors: 1,440 passed, 47 failed and 897 not applicable out of 2,384 checks (96.8% of applicable checks passed). This is target-side quality characterization, not source-to-target study concordance. See [document 12](docs/12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md).
+- Current author-shared Word working drafts (not tracked here): main manuscript v1.6.13 and supplement v0.8.10, sent for coauthor review. JAMIA formatting, institutional disclosure approval and final author sign-off remain separate gates.
 
-The key empirical finding is that conditional fidelity was extremely high when the same patients and index dates were held fixed, while end-to-end estimates differed because an upstream diagnosis-date eligibility policy changed cohort membership.
+The key empirical finding is that fixed-cohort representation fidelity was high, but the source-anchored D0 comparison retained 6,001 of 9,815 source patients (38.9% source-only loss) because diagnosis-date eligibility acted before downstream outcome measurement. The primary OMOP cohort was traced from source-selected index episodes, not constructed independently as an OMOP-native phenotype.
 
 ## Installation
 
@@ -104,11 +104,11 @@ pcornet-omop-tables
 - ETL implementation: `src/pcornet_omop_validation/etl/`
 - Study analyses: `src/pcornet_omop_validation/study/`
 - Locked scientific definitions: `study_definitions/`
-- Frozen publication aggregate input: `study_definitions/artifacts/publication_figure_data_v1.json`
+- Current publication aggregate input: `study_definitions/artifacts/publication_figure_data_v2.json` (original frozen v1 retained for provenance)
 - Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`
 - Canonical publication table code: `src/pcornet_omop_validation/study/publication_tables.py`
 - One-command publication rebuild: `scripts/rebuild_publication_assets.sh`
-- Current documentation: `docs/01_...` through `docs/07_...`
+- Current documentation: `docs/01_...` through `docs/12_...`, with dated post-freeze records in 08–12
 - Historical provenance: `docs/archive/`
 
 Each ETL/study code directory also contains a README explaining scientific conventions and how to review the modules.

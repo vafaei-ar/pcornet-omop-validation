@@ -4,7 +4,7 @@ This document tells collaborators what the current paper is arguing and where cr
 
 ## Working scientific question
 
-> **When the same study is implemented independently in PCORnet and in a transformed OMOP database, which parts of the scientific result are reproducible, where can divergence enter, and what mechanism explains any difference?**
+> **When a source-selected PCORnet study is traced through a frozen OMOP transformation, which parts remain reproducible for the same patients, and how does selective retention change the final estimates?**
 
 ## Proposed conceptual contribution
 
@@ -30,9 +30,9 @@ The key methodological point is that conditional fidelity and end-to-end reprodu
 3. The original source-faithful ischemic-stroke phenotypes had substantially smaller OMOP cohorts because the source phenotype could use encounter-date fallback for diagnoses lacking `DX_DATE`, while the frozen ETL explicitly required `DX_DATE`.
 4. When nonmissing diagnosis-date eligibility was imposed symmetrically, D0/D1/D3 phenotype membership and index dates were exactly reproduced.
 5. When the same patients and index dates were held fixed, 30/90-day acute-care outcomes were exactly reproduced.
-6. When each CDM built the study independently, 30/90-day risks differed because the analyzed populations differed upstream.
+6. Source-anchored end-to-end 30/90-day risks differed because the lineage-retained OMOP population was smaller than the source-defined population. The comparison was not an independent OMOP-native cohort construction.
 7. On the same fixed cohort, baseline features, logistic associations, and conventional logistic predictions were nearly identical.
-8. End-to-end model performance differed because the training/evaluation populations differed.
+8. Source-anchored end-to-end model performance differed because the training/evaluation populations differed. The calendar-era structure of missing diagnosis dates limits causal interpretation of these population contrasts.
 
 ## Strongest defensible conclusion
 
@@ -48,6 +48,8 @@ Do not write:
 - “The harmonized Stage C sensitivity replaces the original Stage C analysis.”
 - “The original recurrent endpoint required recurrent `PDX=P`.”
 - “The study proves general equivalence for other sites, phenotypes, outcomes, or ETL implementations.”
+- “The primary OMOP cohort was built independently of PCORnet source-selected index episodes.”
+- “The 24.8% versus 29.6% source-only/shared 90-day risk contrast establishes a causal effect of the ETL rather than a descriptive association across different admission periods.”
 
 ## What we want reviewers to challenge
 
@@ -94,28 +96,12 @@ A researcher validating a CDM transformation should:
 
 ## Current manuscript source
 
-**Manuscript handoff gate (2026-10-31):** The tracked repository does not
-contain the active Word manuscript. Document 08 calls the latest working draft
-**v1.6.2** and records that Qiran commented on v0.2. Document 07 includes a
-**v1.3** tracked-Word figure-placement example. These are *different revision
-states*: first identify the current author-approved DOCX, then reconcile
-remaining reviewer comments and placement of Figures 2/3. Do not treat the
-v1.3 example or older Markdown fragments as an authoritative new base.
+**Current coauthor handoff (2026-11-19):** The latest author-shared working drafts available to this review are main manuscript **v1.6.13** and supplementary material **v0.8.10**. The files were sent to Qiran for introduction/literature revision and are not tracked in this public GitHub repository. The separate source-anchored comparison, DQD summary and limitations in those Word files supersede the earlier v1.3 figure-placement example and v1.6.2 handoff discussions. These versions are not the final submitted manuscripts.
 
-The post-freeze QC audit is recorded separately in document 08. Its
-evidence/release gates are consolidated in
-[`09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`](09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md).
-The additional scientific limitation is **incomplete OMOP domain coverage**
-and an empty `CDM_SOURCE`. DQD did **not** complete and cannot be claimed
-as a validation success. Achilles did complete, with analysis 210 independently
-reconciled read-only. This does not replace any locked Stage A-E result.
+- The primary D0 comparison is **source-anchored**: 9,815 PCORnet source-selected episodes, of which 6,001 retained the selected diagnosis/episode through OMOP lineage. The 3,814 source-only patients represent 38.9% loss, not a de novo cross-CDM phenotype discrepancy.
+- For shared patients and index dates, 90-day outcomes were exact (1,132 events among 3,822 eligible in both representations). End-to-end risk and prediction contrasts combine population retention and representation-specific observability. Do not interpret the 24.8% source-only versus 29.6% shared outcome risk as an adjusted comparison. The groups span different calendar periods.
+- The diagnosis-date missingness pattern varied strongly by admission era. We identified the temporal pattern and a transformation-date policy consequence, **not** the upstream source-system cause. Incomplete pre-index lookback can also affect records early in 2010.
+- The post-freeze OHDSI DQD 2.9.1 run **completed**: 1,440 checks passed, 47 failed, 897 not applicable, zero SQL errors. The 96.8% applicable-check pass rate does not establish complete OMOP coverage or absence of selective source-event loss. Target-only DQD checks cannot directly count source records excluded before materialization. Some failed visit-concept and observation-period checks have unassessed relevance to the stroke analysis. See [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md).
+- DQD, Achilles and post-freeze interpretability code were merged into `main` through PR #18. Clinical ETL code and original Stages A-E estimands remain frozen at their publication versions.
 
-The older integrated manuscript fragments are retained in `docs/archive/` for provenance. They should not be reviewed as separate competing drafts.
-
-For new writing, use the numbered docs as the source of truth, especially:
-
-- `02_STUDY_DESIGN_AND_DECISIONS.md` for methods/interpretation;
-- `03_RESULTS_THROUGH_STAGE_E.md` for numbers;
-- this file for framing and review questions.
-
-Once the latest accessible Word file and target journal are verified, update **that single file** with granular tracked edits, preserved Zotero citations, and the code-generated displays. Do not maintain parallel manuscript drafts or start over from archived Markdown. Confirm current journal limits and submission requirements before final formatting.
+For collaborator revisions, work from the author-shared Word file, preserve granular tracked changes and live Zotero fields, and keep the code-generated publication figures. Do not re-create the manuscript from archived fragments. Complete institutional aggregate-disclosure clearance, coauthor approval, ethics metadata and target-journal formatting before public submission.

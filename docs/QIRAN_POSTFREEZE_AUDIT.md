@@ -25,7 +25,7 @@ The correction follows the existing original Stage C and Stage D SQL and the exp
 
 The check still fails closed if any original D0 count or date anchor differs. Do not manually change the expected counts. Updated offline regression checks test the source-index join and exact date anchor. The later internal report reproduces the anchors, but operator verification and institutional disclosure review remain separate requirements.
 
-Rerun from the current draft PR branch using:
+For an authorized institutional recheck, use the current `main` branch (PR #19 was merged) and rerun with the same frozen anchors:
 
 ```bash
 git pull --ff-only

@@ -1,5 +1,9 @@
 # 09 - Post-freeze QC evidence record and manuscript finalization gates
 
+**Current repository and coauthor status (2026-11-19):** Post-freeze QC/interpretability PR #18 was merged into `main`. The institutional operator reported **335 passing tests** on the merged `main` and a clean local worktree. The latest author-shared working files are main manuscript **v1.6.13** and supplementary material **v0.8.10**, sent for Qiran's coauthor review. These Word files are outside the public repository. The corrected DQD 2.9.1 run completed as reported below, while its 47 failed checks and incomplete domains remain real limitations. Do not interpret the merged code, pass-rate metric, or private model-attribution work as a new analysis of the frozen publication data. Institutional disclosure authorization and final journal/ethics checks remain separate gates.
+
+**Chronology notice:** The paragraphs and tables below retain earlier dated development decisions. Where they say DQD was pending, `CDM_SOURCE` was empty, a post-freeze PR was open, or the active manuscript was v1.6.2, those statements describe the *historical state*, not the current repository or coauthor handoff. Document 12 provides controlling DQD findings.
+
 **2026-11-01 status update (supersedes historical DQD-not-executed statements below):** The authorized single-row `CDM_SOURCE` metadata insert was completed. Corrected restricted DQD 2.9.1 execution on the unchanged frozen clinical tables returned **2,384 checks: 1,440 passed, 47 failed, 897 not applicable, 0 SQL errors**; the launcher exited 0, clinical counts remained unchanged, and 320 local tests passed. The earlier run's cohort-schema SQL errors were fixed by explicitly selecting `OMOP_VALIDATED_A.dbo`. The 18 failed checks at 100% include three known empty derived-domain checks and an observation-period type-validity check. Local vocabulary inspection showed four legacy `Obs Period Type` concepts with `standard_concept=NULL`, explaining that validity check. **Execution success is not a DQD-wide quality pass, and check percentages are not study-concordance estimates.** See [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md) for verified data-quality findings, privacy restrictions, source-code evidence, and a future-version review plan. The remaining sections preserve the earlier chronological decision record and their original dates.
 
 
@@ -13,16 +17,13 @@ prerequisite** for this particular operation. The new guarded
 [`11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md`](11_FROZEN_CDM_SOURCE_METADATA_AMENDMENT.md)
 documents a local private factual manifest, read-only target preflight,
 one-row transactional insert with before/after clinical anchors, and
-post-amendment DQD via the existing restricted QC principal. Preparation
-is committed but the institutional SQL amendment and DQD have **not
-executed**. This extension need not delay the conservative manuscript.
+post-amendment DQD via the existing restricted QC principal. At the time of this preparation note, the operation had not yet executed. The subsequent authorized metadata amendment and completed DQD run are confirmed by the 2026-11-01 status update above.
 
 
-_Last checked against the GitHub post-freeze branch: 2026-10-31._
+_Historical post-freeze development snapshot: 2026-10-31. Current merged-repository status is recorded at the top of this document._
 
 **Scope:** This document records the post-freeze QC work and converts it into
-publication decisions. It does **not** redefine the study, attest to a
-completed DQD run, or replace the canonical A-E results in
+publication decisions. It does **not** redefine the study or replace the canonical A-E results in
 [`03_RESULTS_THROUGH_STAGE_E.md`](03_RESULTS_THROUGH_STAGE_E.md).
 For commands, full safety evidence and chronological troubleshooting use
 [`08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`](08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md).
@@ -31,9 +32,7 @@ For commands, full safety evidence and chronological troubleshooting use
 
 - Frozen publication ETL: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`.
 - Publication baseline on `main`: `1c271c37a9d1a279f075a8edee439fe0cce7706f`.
-- The post-freeze QC extension is developed on
-  `postfreeze/dqd-achilles-interpretability-20261029`, **separately from
-  `main`**. It is not an amendment to the locked A-E results.
+- The post-freeze QC extension was developed on the historical `postfreeze/dqd-achilles-interpretability-20261029` branch and merged into `main` via PR #18 on 2026-11-19. This did not change the locked A-E estimands.
 - Stage A-E scientific definitions and their main quantitative findings are
   documented in `02_STUDY_DESIGN_AND_DECISIONS.md`,
   `03_RESULTS_THROUGH_STAGE_E.md`, and locked JSON definitions.
@@ -50,13 +49,13 @@ For commands, full safety evidence and chronological troubleshooting use
 | --- | --- | --- |
 | Can QC read the frozen target without writing clinical tables? | Dedicated restricted `ohdsi_postfreeze_qc` login, separate QC output database, JDBC/ODBC access and the comprehensive 75-table permissions audit passed on 2026-10-30. | The standard QC work was separated from ETL writes. This is not proof every possible query is safe or that the CDM is complete. |
 | Was a recoverable backup established? | Local 23.03 GiB compressed backup, SQL Server backup history and `RESTORE VERIFYONLY WITH CHECKSUM` passed; the frozen reference row-count anchors stayed unchanged. | Local backup verification passed. **Off-machine protected copy and isolated test restore are still pending.** |
-| Did DQD finish? | No. The frozen `CDM_SOURCE` table contains no rows; direct inspection confirmed the metadata deficiency. The DQD runner was blocked before delivering check results. | **No DQD pass rate, DQD failures or global quality certification may be reported.** |
+| Did DQD finish? | Yes, after the explicitly authorized factual `CDM_SOURCE` metadata-only insertion and cohort-schema correction. DQD 2.9.1 completed: 1,440 passed, 47 failed, 897 not applicable, zero SQL errors out of 2,384 checks. | **96.8% of the 1,487 applicable checks passed**, but the 47 failures and domain gaps must be reported. This is not a global quality certification or a measure of source-to-target cohort concordance. |
 | Did Achilles run? | Achilles 1.7.2 completed; 194 default analysis IDs executed and their performance records were retained. The persisted-results audit found 294 definition rows, 840,097 regular result rows and 44,802 distribution rows. No permanent scratch tables remained. | Completed descriptive target characterization, not independent validation of PCORnet-to-OMOP correspondence. |
 | Why were 54 default analysis outputs absent from the data-bearing results? | 50 corresponded to categories whose OMOP source domains were empty; 4 were IDs 207, 209, 210 and 814 on populated domains. Source-table presence was checked read-only. | Distinguish **empty input domains** from **suppressed count outputs**. Neither a missing Achilles row nor a successful run certifies quality. |
 | What do the four remaining missing IDs test? | Official Achilles 1.7.2 SQL: 207 invalid visit person reference, 209 invalid nonnull visit care-site reference, 210 visit start outside any observation period, 814 observation with all three value fields null. `smallCellCount=10` suppresses counts at or below that threshold. | Their missing data-bearing result rows are consistent with small-cell suppression. Never publish protected exact values without review. |
 | Was analysis 210 independently checked? | The four-ID private diagnostic ran and its file passed structural/permission checks. The overlap tool took the prior-result zero-exception shortcut and did **not** re-materialize a D0 cohort. On 2026-10-31 the restricted live SQL count for 210 matched that private prior result; frozen row-count anchors passed. | **Analysis 210 live count reconciliation is complete.** Do not claim an independently rerun D0 analysis or a recalculated outcome estimate. No further 210 script is warranted on the current unchanged snapshot. |
-| Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. `CDM_SOURCE` is also empty. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
-| Were changes tested? | Institutional `pytest -q` on 2026-10-31: **193 passed, 1 skipped**, and live analysis-210 reconciliation reported PASS. | This verifies the reported code-check baseline and the stated local diagnostic, not global CDM validity. |
+| Was clinical row coverage complete? | Eight target tables are empty: `visit_detail`, `payer_plan_period`, `condition_era`, `drug_era`, `care_site`, `location`, `provider` and `note`. The formerly empty `CDM_SOURCE` now contains the authorized factual metadata row. The original Phase 12 acceptance gate required only 11 populated target tables. | **Limited OMOP domain completeness** despite successful original study-specific acceptance checks. The design proposed `care_site`, `location` and `cdm_source` but the frozen implementation did not deliver them. Provider source input was absent. |
+| Were changes tested? | The 2026-10-31 institutional baseline recorded 193 passed and 1 skipped with separate analysis-210 reconciliation. After PR #18 merged, the operator reported **335 passed in 3.29 s** from the institutional virtual environment on `main`. | The latest report validates unit tests on the merged code. It does not independently establish SQL data quality, clinical validity, or statistical robustness. |
 | Were the planned post-freeze RF/XGBoost attribution analyses run? | The institutional terminal reports successful 16-model computation, including RF/XGBoost for four populations and both six/five-feature sets, with SHAP and 20-repeat held-out permutation importance. The private aggregate remains on the institutional machine; see document 08. | **Executed; private numerical audit PASSED (234 tests) and a protected scientific review was created (238 tests). Training-perturbation sensitivity and institutional disclosure remain open.** No numerical or directional attribution claim should enter the manuscript yet. |
 
 The protected exact-count and analysis-210 evidence lives locally under
@@ -67,15 +66,14 @@ review. Commit only sanitized statements and allowed aggregates.
 ### Scope distinction essential for peer review
 
 The completed **A-E study** tested a source-aware, study-specific
-transformation and scientific reproducibility. The unfinished **DQD**
-extension and the empty target domains do not undo the observed original
-fidelity results; they do limit any claim that the resulting database is a
-fully populated, DQD-certified OMOP implementation.
+transformation and scientific reproducibility. The subsequently completed **DQD**
+assessment and remaining failed checks/empty domains do not undo the original
+fidelity results. They limit any claim that the target is a fully populated, globally DQD-certified OMOP implementation.
 
 The primary result remains the one in document 03: the frozen diagnosis-date
 eligibility policy made source-faithful stroke cohorts diverge; fixed-index
-outcome comparisons were exact; and independently selected cohorts yielded
-different risks and model performance. Harmonized and provenance-aware
+outcome comparisons were exact; and the source-anchored end-to-end comparison of differently retained populations yielded
+different risks and model performance. This was not a separately constructed OMOP-native phenotype. Harmonized and provenance-aware
 date-fallback sensitivities are **post-freeze mechanism analyses**. They
 do not replace the original study's primary estimand.
 
@@ -338,19 +336,9 @@ choice, not a claim that the planned analysis was done.
 
 ## 3. Manuscript source and version audit
 
-**Unresolved handoff issue:** No current manuscript DOCX is tracked in this
-repository. Document 08 refers to a **latest v1.6.2** manuscript and to
-Qiran's comments on **v0.2**. Document 07's figure-placement example still
-targets **v1.3 JAMIA reader-focused**. Those references cannot all serve
-as the same final Word source. The old integrated Markdown fragments under
-`docs/archive/` are historical, not parallel active drafts.
+**Current coauthor handoff (2026-11-19):** The latest author-shared versions are main manuscript **v1.6.13** and supplement **v0.8.10**. The clean copies were sent to Qiran for revision of the literature-based Introduction. These are internal working files, not tracked repository artifacts or journal-submitted manuscripts. Earlier references to v1.6.2 and the v1.3 figure-placement example are historical and must not be treated as current authoring instructions. The manuscript includes source-anchored cohort labels, the corrected DQD interpretation and Stage E association/AUPRC reporting. These additions do not independently authorize disclosure of underlying institution-controlled aggregates.
 
-Before Word edits, **locate the actual latest author-approved v1.6.2 file**,
-confirm whether the target is JAMIA, and establish a single current source
-with a checksum/version and source of reviewer comments in a *safe*
-manuscript handoff record. Do not silently replace newer text with v1.3
-or regenerate the manuscript from an archived fragment. When revising Word,
-preserve real tracked changes, comments, figure references and Zotero fields.
+For Word updates after coauthor feedback, verify the exact author-returned version and preserve granular tracked changes, Zotero fields and code-generated publication figures. Reconcile captions, quantitative text and supplemental table numbers before journal formatting. The intended JAMIA submission needs journal word count, reference style, IRB/consent statements, final coauthor approval and disclosure authorization.
 
 **DQD restored-copy preparation (2026-11-01):** The study
 team authorized planning to populate factual `CDM_SOURCE` metadata
