@@ -4,7 +4,7 @@ This repository evaluates whether a study implemented in PCORnet remains scienti
 
 The central question is not simply whether rows were copied correctly. It is:
 
-> **If the same study is run independently in PCORnet and in the transformed OMOP data, do we obtain the same cohort, variables, outcomes, estimates, and scientific conclusion? If not, where did divergence enter and why?**
+> **When a PCORnet-defined study is traced through the frozen OMOP transformation, do source-selected episodes survive, and do the shared-patient analyses reproduce the same variables, outcomes and estimates?**
 
 **Post-freeze DQD outcome (2026-11-01):** The corrected restricted DQD 2.9.1 assessment completed with 1,440 passed, 47 failed, 897 not applicable and no SQL errors. See [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md) for the confirmed observation-period type vocabulary issue, documented domain gaps and the future-version review plan. This assessment did not modify frozen clinical data.
 
@@ -19,7 +19,7 @@ Read the seven core study documents in order. For the separate post-freeze exten
 5. **`05_CODE_REVIEW_GUIDE.md`** — how to read the ETL and study code, including the files where scientific choices are implemented.
 6. **`06_MANUSCRIPT_AND_REVIEW_GUIDE.md`** — current manuscript framing, reviewer questions, limitations, and what feedback is most useful.
 7. **`07_PUBLICATION_FIGURES.md`** — reproducible publication figures, Nature-oriented artwork standards, and figure-generation commands.
-8. **`08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`** — separate post-freeze Achilles/DQD diagnostics and pending interpretability extension.
+8. **`08_POSTFREEZE_STANDARD_QC_AND_INTERPRETABILITY.md`** — dated post-freeze Achilles/DQD and interpretability development record, now merged into `main`.
 9. **`09_QC_CLOSEOUT_AND_MANUSCRIPT_FINALIZATION.md`** — verified QC evidence, unresolved limitations, and manuscript completion gates.
 
 Historical development notes, interim lock records, and superseded manuscript fragments are retained under `docs/archive/`. They are provenance, not required reading.
@@ -37,14 +37,14 @@ flowchart LR
     F --> G[Stage E\nstatistical/model reproducibility]
 
     H[Fixed-patient comparisons] --> I[Does representation itself change results?]
-    J[End-to-end comparisons] --> K[Does the complete study change after conversion?]
+    J[Source-anchored end-to-end comparisons] --> K[Does source episode retention change the study population and estimate?]
 ```
 
 ## The key result
 
 When the **same patients, index dates, and follow-up** were compared, mapped clinical information and downstream analyses were preserved extremely well: fixed-index 30/90-day acute-care outcomes were exact, conventional logistic-regression associations were nearly identical, and logistic predicted probabilities correlated at approximately 0.999994.
 
-However, when each CDM was allowed to construct the study population independently, the final risks and model performance differed. The dominant reason was an upstream eligibility interaction: the PCORnet stroke phenotype could use encounter-date fallback when `DX_DATE` was missing, whereas the frozen ETL required a diagnosis date and excluded those diagnoses.
+However, the source-anchored comparison traced PCORnet-selected stroke episodes through ETL lineage. It found 9,815 source D0 patients and 6,001 lineage-retained OMOP patients (3,814 source-only, 38.9%). This was not an independent OMOP-native cohort construction. The main eligibility interaction was that the PCORnet stroke phenotype could use encounter-date fallback when `DX_DATE` was missing, while the frozen ETL required a recorded diagnosis date. Different calendar periods and observability also limit interpretation of the end-to-end outcome contrast.
 
 A post-freeze harmonized sensitivity imposed the same nonmissing-`DX_DATE` requirement on both sides. Under that symmetric eligibility rule, D0, D1, and D3 phenotype membership and index dates were reproduced exactly.
 
@@ -68,5 +68,5 @@ Please focus feedback on:
 - Canonical branch: `main`
 - Frozen publication ETL commit: `887e6f4d60a6b185e58b3c9fe8887472b49777e3`
 - OMOP target: CDM v5.4.2
-- Current repository history includes completed Stages A–E.
+- Current `main` includes completed Stages A–E and the post-freeze QC/interpretability code merged through PR #18. The latest author-shared Word drafts remain outside the public repository.
 - Generated `results/` and rendered `figures/generated/` are intentionally gitignored; committed documentation and figure-data artifacts contain disclosure-reviewed aggregate summaries rather than patient-level outputs.
