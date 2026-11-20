@@ -1,5 +1,7 @@
 # Post-freeze standard OMOP QC and interpretability extension (partially executed)
 
+**Repository status (2026-11-19):** This post-freeze QC/interpretability development branch was merged through PR #18. The current public code is on `main`. All historical instructions to switch to the deleted development branch or claim DQD was not completed are superseded. The completed DQD evidence remains in [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md). The original frozen clinical ETL and Stage A-E findings were not rerun by the Git merge.
+
 **2026-11-01 DQD outcome update (controls over earlier pending/blocked status notes below):** The authorized `CDM_SOURCE` metadata amendment completed and a corrected, restricted DQD 2.9.1 run executed on the frozen CDM. It processed 2,384 checks (1,440 pass; 47 fail; 897 not applicable) with zero SQL error reports; the protected clinical count anchors passed. Earlier `COHORT`/`COHORT_DEFINITION` errors were caused by the default wrong cohort schema and resolved by explicitly supplying `OMOP_VALIDATED_A.dbo`. The DQD 100% `OBSERVATION_PERIOD.PERIOD_TYPE_CONCEPT_ID` validity failure is explained by legacy type concepts whose `standard_concept` flag is NULL. The full evidence, 18 full-violation fields, privacy boundaries, and prospective ETL review are recorded in [document 12](12_POSTFREEZE_DQD_FINDINGS_AND_OBSERVATION_PERIOD_TYPE.md). The older material below is retained as an execution-history record and does not override these latest facts.
 
 
