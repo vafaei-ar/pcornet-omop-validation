@@ -87,7 +87,7 @@ For the 90-day endpoint, all 1,132 both-positive patients had exactly matching f
 | 90 day | 6,508 / 1,798 / 27.628% | 3,822 / 1,132 / 29.618% | +1.990 | 1.072 | Not met |
 | 30 day | 7,277 / 1,178 / 16.188% | 4,374 / 753 / 17.215% | +1.027 | 1.063 | Not met |
 
-The fixed-index and end-to-end results answer different questions. The fixed-index analysis shows that the outcome was preserved for the same patients. The end-to-end analysis shows that the final study estimate changed because the independently selected cohorts differed upstream.
+The fixed-index and end-to-end results answer different questions. The fixed-index analysis shows that the outcome was preserved for the same patients. The source-anchored end-to-end analysis shows that the final study estimate changed because the lineage-retained OMOP population differed from the source-selected population upstream. This is not an independent OMOP-native cohort replication.
 
 ### Exploratory recurrent stroke
 
