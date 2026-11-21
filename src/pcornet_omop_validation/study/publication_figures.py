@@ -303,7 +303,7 @@ def figure2(data: dict) -> plt.Figure:
         yticks=y,
         yticklabels=[labels[key] for key in keys],
         xlabel="Patients",
-        xlim=(4500, 10350),
+        xlim=(4000, 10350),  # Leave room for the 4,710 label at the left edge.
         ylim=(-0.30, 2.45),
     )
     clean(ax)
