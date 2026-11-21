@@ -303,8 +303,8 @@ def figure2(data: dict) -> plt.Figure:
         yticks=y,
         yticklabels=[labels[key] for key in keys],
         xlabel="Patients",
-        xlim=(4500, 10350),
-        ylim=(-0.30, 2.45),
+        xlim=(3400, 11000),  # Preserve clear margin for D3 and D0 numeric labels.
+        ylim=(-0.38, 2.45),
     )
     clean(ax)
     panel(ax, "a", x=-0.17, y=1.10)
@@ -314,16 +314,6 @@ def figure2(data: dict) -> plt.Figure:
     ax.scatter(7350, 2.25, s=50, color=COLORS["omop"])
     ax.text(7470, 2.25, "OMOP", va="center", fontsize=9.7)
     d0 = primary["D0"]
-    ax.text(
-        7200,
-        1.62,
-        f"D0: {d0['source_only']:,} source-only ({100*d0['source_only']/d0['pcornet']:.1f}%)",
-        fontsize=9.1,
-        color=COLORS["omop"],
-        fontweight="bold",
-        va="center",
-        ha="center",
-    )
 
     ax = fig.add_subplot(gs[0, 1])
     for yi, key in zip(y, keys):
@@ -339,16 +329,16 @@ def figure2(data: dict) -> plt.Figure:
         yticklabels=[labels[key] for key in keys],
         xlabel="Patient Jaccard",
         xlim=(0.57, 1.03),
-        ylim=(-0.35, 2.40),
+        ylim=(-0.60, 2.40),
     )
     clean(ax)
     panel(ax, "b", x=-0.19, y=1.10)
     ax.set_title("Opposite date policies both restore exact agreement", loc="left", fontweight="bold", pad=12)
     ax.text(
         0.58,
-        -0.27,
-        "○ primary     ▲ recorded-date     ■ encounter-date fallback",
-        fontsize=8.8,
+        -0.46,
+        "○ primary      ▲ recorded      ■ fallback",
+        fontsize=8.3,
         color=COLORS["mid"],
         va="center",
     )
@@ -371,7 +361,7 @@ def figure2(data: dict) -> plt.Figure:
         (0.31, 0.80),
         0.38,
         0.13,
-        "Selected stroke diagnosis has no recorded DX_DATE\nD0 source-only: n=3,814",
+        "Stroke diagnosis lacks recorded DX_DATE\nD0 source-only: n=3,814",
         face=COLORS["gray_fill"],
         fs=10.0,
         bold=True,
@@ -494,7 +484,7 @@ def figure3(data: dict) -> plt.Figure:
         ],
     )
     ax.set_ylabel("90-day acute-care risk (%)")
-    ax.set_title("Selective loss shifts the retained cohort toward higher observed risk", loc="left", fontweight="bold", pad=12)
+    ax.set_title("Source-only patients have lower\nobserved 90-day risk", loc="left", fontweight="bold", pad=12)
     clean(ax)
     panel(ax, "b", x=-0.16, y=1.08)
     for bar, value in zip(bars, risks):
@@ -507,15 +497,6 @@ def figure3(data: dict) -> plt.Figure:
             fontsize=10.0,
             fontweight="bold",
         )
-    ax.text(
-        0.5,
-        8.7,
-        f"source-only − shared = {complement['source_only_minus_shared_risk_difference_pp']:.2f} pp",
-        ha="center",
-        va="center",
-        fontsize=9.5,
-        fontweight="bold",
-    )
 
     ax = fig.add_subplot(gs[1, :])
     yy = np.array([1, 0])
@@ -548,24 +529,24 @@ def figure3(data: dict) -> plt.Figure:
         yticks=yy,
         yticklabels=["30 days", "90 days"],
         xlabel="OMOP − PCORnet risk difference (percentage points)",
-        xlim=(-0.62, 2.16),
-        ylim=(-0.40, 1.40),
+        xlim=(-0.65, 2.40),
+        ylim=(-0.40, 1.82),
     )
     clean(ax)
     panel(ax, "c", x=-0.055, y=1.08)
-    ax.set_title("Changing the date policy eliminates the end-to-end risk difference", loc="left", fontweight="bold", pad=12)
+    ax.set_title("Date-policy sensitivity restores outcome agreement", loc="left", fontweight="bold", pad=12)
     ax.legend(
         handles=[
             plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="Primary end-to-end"),
             plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Encounter-date fallback"),
         ],
-        loc="center left",
-        bbox_to_anchor=(0.48, 0.56),
+        loc="upper center",
+        bbox_to_anchor=(0.56, 0.96),
         frameon=False,
-        ncol=1,
+        ncol=2,
         handletextpad=0.35,
     )
-    ax.text(-0.50, -0.28, "±0.5 pp empirical reproducibility tolerance", fontsize=8.9, color=COLORS["mid"], va="top")
+    fig.text(0.51, 0.03, "Shaded band: empirical reproducibility tolerance of ±0.5 percentage points", ha="center", fontsize=8.9, color=COLORS["mid"])
     return fig
 
 
@@ -586,7 +567,7 @@ def figure4(data: dict) -> plt.Figure:
         right=0.985,
         top=0.92,
         bottom=0.16,
-        hspace=0.40,
+        hspace=0.57,
         wspace=0.30,
     )
 
@@ -633,17 +614,16 @@ def figure4(data: dict) -> plt.Figure:
     clean(ax)
     panel(ax, "b", x=-0.21, y=1.08)
     ax.tick_params(axis="y", labelsize=10.2)
-    ax.set_title("Population restriction reproduces\nthe AUROC shift within PCORnet", loc="left", fontweight="bold", pad=10)
-    ax.text(0.637, 2.28, "full PCORnet", ha="right", va="center", fontsize=8.8, color=COLORS["pcornet"], fontweight="bold")
-    ax.text(0.592, 1.72, "shared/fixed PCORnet", ha="left", va="center", fontsize=8.8, color=COLORS["pcornet"])
+    ax.set_title("Restricting to shared patients\nchanges PCORnet AUROC", loc="left", fontweight="bold", pad=10)
+    ax.legend(handles=[plt.Line2D([], [], marker="o", color=COLORS["pcornet"], ls="None", label="Full PCORnet"), plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="Shared/fixed PCORnet")], loc="upper center", bbox_to_anchor=(0.5, -0.27), frameon=False, ncol=2, fontsize=8.5, handletextpad=0.3)
 
     ax = fig.add_subplot(gs[1, 1])
-    ax.set(xlim=(0, 1), ylim=(-0.45, 2.68))
+    ax.set(xlim=(0, 1), ylim=(-0.4, 3.8))
     ax.axis("off")
     panel(ax, "c", x=-0.21, y=1.08)
-    ax.text(0, 2.64, "Individual prediction agreement vs end-to-end error", fontsize=11.0, fontweight="bold", va="top")
-    ax.text(0.48, 2.22, "Fixed prediction MAD", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["pcornet"])
-    ax.text(0.96, 2.22, "End-to-end Brier Δ", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["omop"])
+    ax.text(0, 3.65, "Prediction agreement vs model error", fontsize=10.6, fontweight="bold", va="top")
+    ax.text(0.48, 2.85, "Fixed prediction MAD", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["pcornet"])
+    ax.text(0.96, 2.85, "End-to-end Brier Δ", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["omop"])
     mad = [stage_e["models"][model]["fixed_probability_mad"] for model in models]
     brier_diff = [stage_e["models"][model]["end_omop_brier"] - stage_e["models"][model]["end_pcornet_brier"] for model in models]
     for yi, label, mad_value, brier_value in zip(model_y, model_labels, mad, brier_diff):
