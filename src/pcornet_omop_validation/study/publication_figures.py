@@ -303,8 +303,8 @@ def figure2(data: dict) -> plt.Figure:
         yticks=y,
         yticklabels=[labels[key] for key in keys],
         xlabel="Patients",
-        xlim=(4000, 10350),  # Leave room for the 4,710 label at the left edge.
-        ylim=(-0.30, 2.45),
+        xlim=(3400, 11000),  # Preserve clear margin for D3 and D0 numeric labels.
+        ylim=(-0.38, 2.45),
     )
     clean(ax)
     panel(ax, "a", x=-0.17, y=1.10)
@@ -529,8 +529,8 @@ def figure3(data: dict) -> plt.Figure:
         yticks=yy,
         yticklabels=["30 days", "90 days"],
         xlabel="OMOP − PCORnet risk difference (percentage points)",
-        xlim=(-0.62, 2.16),
-        ylim=(-0.40, 1.40),
+        xlim=(-0.65, 2.40),
+        ylim=(-0.40, 1.82),
     )
     clean(ax)
     panel(ax, "c", x=-0.055, y=1.08)
@@ -540,13 +540,13 @@ def figure3(data: dict) -> plt.Figure:
             plt.Line2D([], [], marker="o", color=COLORS["omop"], ls="None", label="Primary end-to-end"),
             plt.Line2D([], [], marker="^", color=COLORS["green"], ls="None", label="Encounter-date fallback"),
         ],
-        loc="center left",
-        bbox_to_anchor=(0.48, 0.56),
+        loc="upper center",
+        bbox_to_anchor=(0.56, 0.96),
         frameon=False,
-        ncol=1,
+        ncol=2,
         handletextpad=0.35,
     )
-    ax.text(-0.50, -0.28, "±0.5 pp empirical reproducibility tolerance", fontsize=8.9, color=COLORS["mid"], va="top")
+    fig.text(0.51, 0.03, "Shaded band: empirical reproducibility tolerance of ±0.5 percentage points", ha="center", fontsize=8.9, color=COLORS["mid"])
     return fig
 
 
@@ -567,7 +567,7 @@ def figure4(data: dict) -> plt.Figure:
         right=0.985,
         top=0.92,
         bottom=0.16,
-        hspace=0.40,
+        hspace=0.57,
         wspace=0.30,
     )
 
@@ -615,16 +615,15 @@ def figure4(data: dict) -> plt.Figure:
     panel(ax, "b", x=-0.21, y=1.08)
     ax.tick_params(axis="y", labelsize=10.2)
     ax.set_title("Restricting to shared patients\nchanges PCORnet AUROC", loc="left", fontweight="bold", pad=10)
-    ax.text(0.637, 2.28, "full PCORnet", ha="right", va="center", fontsize=8.8, color=COLORS["pcornet"], fontweight="bold")
-    ax.text(0.592, 1.72, "shared/fixed PCORnet", ha="left", va="center", fontsize=8.8, color=COLORS["pcornet"])
+    ax.legend(handles=[plt.Line2D([], [], marker="o", color=COLORS["pcornet"], ls="None", label="Full PCORnet"), plt.Line2D([], [], marker="o", mfc="white", mec=COLORS["pcornet"], ls="None", label="Shared/fixed PCORnet")], loc="upper center", bbox_to_anchor=(0.5, -0.27), frameon=False, ncol=2, fontsize=8.5, handletextpad=0.3)
 
     ax = fig.add_subplot(gs[1, 1])
-    ax.set(xlim=(0, 1), ylim=(-0.45, 2.98))
+    ax.set(xlim=(0, 1), ylim=(-0.4, 3.8))
     ax.axis("off")
     panel(ax, "c", x=-0.21, y=1.08)
-    ax.text(0, 2.92, "Prediction agreement vs model error", fontsize=10.6, fontweight="bold", va="top")
-    ax.text(0.48, 2.46, "Fixed prediction MAD", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["pcornet"])
-    ax.text(0.96, 2.46, "End-to-end Brier Δ", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["omop"])
+    ax.text(0, 3.65, "Prediction agreement vs model error", fontsize=10.6, fontweight="bold", va="top")
+    ax.text(0.48, 2.85, "Fixed prediction MAD", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["pcornet"])
+    ax.text(0.96, 2.85, "End-to-end Brier Δ", ha="right", fontsize=9.2, fontweight="bold", color=COLORS["omop"])
     mad = [stage_e["models"][model]["fixed_probability_mad"] for model in models]
     brier_diff = [stage_e["models"][model]["end_omop_brier"] - stage_e["models"][model]["end_pcornet_brier"] for model in models]
     for yi, label, mad_value, brier_value in zip(model_y, model_labels, mad, brier_diff):
