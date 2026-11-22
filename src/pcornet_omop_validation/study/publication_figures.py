@@ -20,6 +20,15 @@ import numpy as np
 from matplotlib import font_manager
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
+# The manuscript-specific correction builders use the same public aggregate inputs.
+from .publication_figure_paper2026 import (
+    DEFAULT_S4,
+    figure2 as figure2_reader,
+    figure_s2 as extended2_corrected,
+    figure_s4 as extended4_attribution,
+    read_s4,
+)
+
 DEFAULT_DATA = Path("study_definitions/artifacts/publication_figure_data_v2.json")
 
 COLORS = {
@@ -45,6 +54,7 @@ EXTENDED_NAMES = (
     "ExtendedDataFigure1_semantic_fidelity",
     "ExtendedDataFigure2_additional_reproducibility",
     "ExtendedDataFigure3_calibration",
+    "ExtendedDataFigure4_predictor_importance",
 )
 FIGURE_NAMES = MAIN_NAMES + EXTENDED_NAMES
 
@@ -806,7 +816,16 @@ def extended3(data: dict) -> plt.Figure:
     return fig
 
 
-BUILDERS = {MAIN_NAMES[0]: figure1, MAIN_NAMES[1]: figure2, MAIN_NAMES[2]: figure3, MAIN_NAMES[3]: figure4, EXTENDED_NAMES[0]: extended1, EXTENDED_NAMES[1]: extended2, EXTENDED_NAMES[2]: extended3}
+BUILDERS = {
+    MAIN_NAMES[0]: figure1,
+    MAIN_NAMES[1]: figure2_reader,
+    MAIN_NAMES[2]: figure3,
+    MAIN_NAMES[3]: figure4,
+    EXTENDED_NAMES[0]: extended1,
+    EXTENDED_NAMES[1]: extended2_corrected,
+    EXTENDED_NAMES[2]: extended3,
+    EXTENDED_NAMES[3]: lambda data: extended4_attribution(read_s4(DEFAULT_S4)),
+}
 
 
 def sha256_file(path: Path) -> str:
