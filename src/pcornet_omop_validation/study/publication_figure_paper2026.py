@@ -223,6 +223,7 @@ def figure_s4(rows):
             ax.scatter(rows[(contrast,"xgboost",feature)],yy-.11,s=48,
                        color=ORANGE,marker="D",zorder=4)
         ax.set_xlim(-.011,.0072);ax.set_ylim(-.6,5.6)
+        ax.set_xticks([-.010, -.005, 0.0, .005])
         ax.set_yticks(y, [f[1] for f in FEATURES] if i%2==0 else [""]*6)
         ax.grid(axis="x",alpha=.15)
         ax.set_title(f"{chr(97+i)}  {heading}\n{subtitle}",fontsize=10,
