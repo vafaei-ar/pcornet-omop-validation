@@ -858,7 +858,7 @@ def save_figure(fig: plt.Figure, stem: Path, formats: tuple[str, ...], dpi: int)
 
 def write_manifest(output_dir: Path, data_path: Path, font_name: str, files: list[Path]) -> Path:
     figure_data = json.loads(data_path.read_text(encoding="utf-8"))
-    payload = {"status": "publication_figures_complete", "figure_data_version": figure_data["version"], "frozen_etl_sha": figure_data["frozen_etl_sha"], "data_sha256": sha256_file(data_path), "script_git_sha": git_sha(), "matplotlib_version": matplotlib.__version__, "font_used": font_name, "aggregate_only": True, "figure_names": list(FIGURE_NAMES), "files": [{"path": path.name, "sha256": sha256_file(path), "bytes": path.stat().st_size} for path in files]}
+    payload = {"status": "publication_figures_complete", "figure_data_version": figure_data["version"], "frozen_etl_sha": figure_data["frozen_etl_sha"], "data_sha256": sha256_file(data_path), "s4_aggregate_sha256": sha256_file(DEFAULT_S4) if DEFAULT_S4.exists() else None, "script_git_sha": git_sha(), "matplotlib_version": matplotlib.__version__, "font_used": font_name, "aggregate_only": True, "figure_names": list(FIGURE_NAMES), "files": [{"path": path.name, "sha256": sha256_file(path), "bytes": path.stat().st_size} for path in files]}
     path = output_dir / "publication_figures_manifest.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
