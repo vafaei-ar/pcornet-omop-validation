@@ -4,13 +4,15 @@ This document defines the **single current publication-asset pipeline** for the 
 
 The rule is simple:
 
-> **All manuscript figures are generated from code in `publication_figures.py` using disclosure-reviewed aggregate publication artifacts. No figure should be manually edited after export.**
+> **All manuscript figures are generated through the canonical `publication_figures.py` entry point, using the aggregate-only builders in `publication_figure_paper2026.py` where needed. No figure should be manually edited after export.**
 
 ## Scientific source of truth
 
 The current figure input is:
 
 `study_definitions/artifacts/publication_figure_data_v2.json`
+
+The new Supplementary Figure S4 also reads `study_definitions/artifacts/publication_s4_permutation_delta_v1.csv`, which contains 48 aggregate model/feature differences, no patient-level records. Each difference is verified as right minus left of its source importance values.
 
 Version 2 retains the frozen publication aggregates and adds disclosure-reviewed aggregate results from the post-freeze mechanism analyses: the encounter-date fallback sensitivity and the Stage D source-only complement audit. It contains no patient identifiers, row-level predictions, or protected health information.
 
@@ -36,18 +38,15 @@ The publication assets follow the final reader-focused plan rather than the temp
 - **Figure 2 is the primary mechanism figure.** It keeps the source-faithful phenotype-size comparison, shows that both the recorded-date restriction and the encounter-date fallback restore exact D0/D1/D3 membership/index dates, and closes the D0 accounting (6,001 unchanged episodes + 196 later dated reselections + 1 age-boundary patient = 6,198 under the recorded-date sensitivity; 3,618 source-only patients had no dated alternative).
 - **Figure 3 is the primary outcome figure.** It shows exact fixed-patient/index outcome representation, the lower 90-day risk in the source-only complement, the primary end-to-end drift, and restoration to 0.00 percentage-point difference under the encounter-date fallback sensitivity.
 - **Figure 4 remains supporting evidence** but now makes the Stage E interpretation more explicit: feature-distribution shifts are described without clinical-severity language, and the AUROC shift is shown to be reproduced within PCORnet when the population is restricted to the shared/fixed cohort.
-- **Extended Data Figures 1–3 are preserved** in their previously approved three-panel/two-panel designs and remain consistent with the supplementary legends.
+- **Extended Data Figures 1 and 3 are preserved** in their previously approved three-panel/two-panel designs and remain consistent with the supplementary legends.
 - The canonical table generator produces **Main Tables 1–3 and Supplementary Tables S1–S18**, including the transition audit, fallback sensitivity, selective-loss audit, and CDM/vocabulary provenance tables.
 
 This freeze implements the manuscript's central scientific hierarchy: the Stage C/D mechanism is primary; Stage A/B supports it; Stage E demonstrates downstream propagation without becoming a second primary story.
 
 ## Canonical figure code
 
-There is one publication figure module:
+The canonical publication-figure entry point is `src/pcornet_omop_validation/study/publication_figures.py`. Figure 2 and Supplementary Figures S2 and S4 use the aggregate-only Python builders in `publication_figure_paper2026.py`. All eight figures remain in the same canonical command and manifest:
 
-`src/pcornet_omop_validation/study/publication_figures.py`
-
-It contains the current builders for all seven figures:
 
 1. `Figure1_reproducibility_breakpoint`
 2. `Figure2_phenotype_mechanism`
@@ -56,6 +55,7 @@ It contains the current builders for all seven figures:
 5. `ExtendedDataFigure1_semantic_fidelity`
 6. `ExtendedDataFigure2_additional_reproducibility`
 7. `ExtendedDataFigure3_calibration`
+8. `ExtendedDataFigure4_predictor_importance` (Supplementary Figure S4)
 
 The current main figures use reader-facing clinical/scientific terminology rather than requiring readers to decode raw database column names. Exact schema identifiers remain in the ETL/analysis code and technical provenance records.
 
@@ -183,9 +183,11 @@ The manifest records:
 
 **Extended Data Figure 1:** mapped semantic agreement and mapping/coverage limitations are shown separately so unresolved or unmapped records are not misclassified as mapped-event disagreement.
 
-**Extended Data Figure 2:** panels a and b use restricted ranges to make near-exact agreement visible. Panel c retains the recurrent-stroke sensitivity as a secondary analysis and identifies PCORnet and OMOP explicitly.
+**Extended Data Figure 2:** panel a plots the OMOP/PCORnet adjusted odds-ratio ratio minus 1, with zero indicating exact agreement. Panels a and b use restricted ranges to make near-exact agreement visible. Panel c retains the recurrent-stroke sensitivity as a secondary analysis and identifies PCORnet and OMOP explicitly.
 
 **Extended Data Figure 3:** calibration slope and intercept are descriptive reproducibility results; no calibration-equivalence margin was prespecified.
+
+**Extended Data Figure 4 (Supplementary Figure S4):** the four matched/unmatched model-attribution comparisons use identical AUROC-difference scales. Values are directly computed from the committed 48-row aggregate table and are descriptive, not causal or inferential.
 
 ## Publication tables
 
@@ -201,4 +203,4 @@ Expected **repository-generated** output is Main Tables 1–3 plus Supplementary
 
 ## Do not create parallel figure pipelines
 
-If a figure needs revision, modify `publication_figures.py`, regenerate the figure, and inspect the new output. Do **not** create `v2`, `v3`, `final`, `jamia`, or other parallel plotting modules/directories for incremental revisions. Git history already provides version provenance.
+If a figure needs revision, update the canonical entry point or its imported aggregate-only builder, regenerate the figure, and inspect the new output. The module `publication_figure_paper2026.py` is now called by the canonical entry point for Figure 2, S2 and S4. Avoid alternate publication pipelines. Git history already provides version provenance.
