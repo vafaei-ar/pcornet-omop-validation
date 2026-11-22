@@ -74,7 +74,7 @@ For a clean reproducibility check of all current figures and tables, run:
 bash scripts/rebuild_publication_assets.sh
 ```
 
-This removes obsolete local `jamia*` output directories from earlier development iterations, validates the frozen aggregate input, generates all seven current figures, and regenerates all current main/supplementary tables into one canonical location:
+This removes obsolete local `jamia*` output directories from earlier development iterations, validates the frozen aggregate input, generates all eight current figures, and regenerates all current main/supplementary tables into one canonical location:
 
 - `results/publication_assets/figures/`
 - `results/publication_assets/tables/`
@@ -105,7 +105,7 @@ pcornet-omop-tables
 - Study analyses: `src/pcornet_omop_validation/study/`
 - Locked scientific definitions: `study_definitions/`
 - Current publication aggregate input: `study_definitions/artifacts/publication_figure_data_v2.json` (original frozen v1 retained for provenance)
-- Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`
+- Canonical publication figure code: `src/pcornet_omop_validation/study/publication_figures.py`, with aggregate-only Figure 2/S2/S4 builders in `publication_figure_paper2026.py`
 - Canonical publication table code: `src/pcornet_omop_validation/study/publication_tables.py`
 - One-command publication rebuild: `scripts/rebuild_publication_assets.sh`
 - Current documentation: `docs/01_...` through `docs/12_...`, with dated post-freeze records in 08–12
