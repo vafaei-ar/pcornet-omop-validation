@@ -83,5 +83,5 @@ def figure4_reader(data):
         c.text(.49,yi,'<0.001' if mad<.001 else f'{mad:.3f}',transform=c.transAxes,fontsize=9,color=BLUE,ha='center',va='center')
         c.text(.89,yi,f'{bd:+.3f}',transform=c.transAxes,fontsize=9,color=ORANGE,ha='center',va='center')
         c.plot([.025,.985],[yi-.10,yi-.10],transform=c.transAxes,lw=.6,color='#E4E4E4')
-    c.text(.025,.055,'Brier difference = OMOP minus PCORnet; different\nheld-out populations in the end-to-end analysis.',transform=c.transAxes,fontsize=8.3,color=GRAY,va='top')
+    c.text(.025,.055,'Brier difference = OMOP minus PCORnet.\nEnd-to-end comparison uses different held-out populations.',transform=c.transAxes,fontsize=8.3,color=GRAY,va='top')
     return fig
