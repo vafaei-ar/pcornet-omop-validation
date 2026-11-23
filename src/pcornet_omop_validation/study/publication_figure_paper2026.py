@@ -116,10 +116,10 @@ def figure2(data: dict):
                arrowprops={"arrowstyle":"->", "color":GRAY, "lw":1.2})
     c.annotate("", xy=(.73,.48), xytext=(.60,.68), xycoords="axes fraction",
                arrowprops={"arrowstyle":"->", "color":GRAY, "lw":1.2})
-    _box(c,.04,.19,.46,.28,
+    _box(c,.03,.19,.42,.28,
          "Recorded-date restriction in both data models\nD0: 6,198 patients in each\nD0/D1/D3 membership and index dates identical",
          "#EAF6F2", GREEN)
-    _box(c,.52,.19,.45,.28,
+    _box(c,.55,.19,.42,.28,
          "Encounter-admission-date fallback in OMOP\nD0: 9,815 patients in each\nD0/D1/D3 membership and index dates identical",
          "#EAF6F2", GREEN)
     c.text(.5,.04,"Only the tested diagnosis-date policy changed in each sensitivity analysis.",
