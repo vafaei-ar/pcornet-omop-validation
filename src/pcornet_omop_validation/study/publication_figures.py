@@ -20,6 +20,17 @@ import numpy as np
 from matplotlib import font_manager
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
+# The manuscript-specific correction builders use the same public aggregate inputs.
+from .publication_figures_1_4_reader import figure1_reader, figure4_reader
+
+from .publication_figure_paper2026 import (
+    DEFAULT_S4,
+    figure2 as figure2_reader,
+    figure_s2 as extended2_corrected,
+    figure_s4 as extended4_attribution,
+    read_s4,
+)
+
 DEFAULT_DATA = Path("study_definitions/artifacts/publication_figure_data_v2.json")
 
 COLORS = {
@@ -45,6 +56,7 @@ EXTENDED_NAMES = (
     "ExtendedDataFigure1_semantic_fidelity",
     "ExtendedDataFigure2_additional_reproducibility",
     "ExtendedDataFigure3_calibration",
+    "ExtendedDataFigure4_predictor_importance",
 )
 FIGURE_NAMES = MAIN_NAMES + EXTENDED_NAMES
 
@@ -806,7 +818,16 @@ def extended3(data: dict) -> plt.Figure:
     return fig
 
 
-BUILDERS = {MAIN_NAMES[0]: figure1, MAIN_NAMES[1]: figure2, MAIN_NAMES[2]: figure3, MAIN_NAMES[3]: figure4, EXTENDED_NAMES[0]: extended1, EXTENDED_NAMES[1]: extended2, EXTENDED_NAMES[2]: extended3}
+BUILDERS = {
+    MAIN_NAMES[0]: figure1_reader,
+    MAIN_NAMES[1]: figure2_reader,
+    MAIN_NAMES[2]: figure3,
+    MAIN_NAMES[3]: figure4_reader,
+    EXTENDED_NAMES[0]: extended1,
+    EXTENDED_NAMES[1]: extended2_corrected,
+    EXTENDED_NAMES[2]: extended3,
+    EXTENDED_NAMES[3]: lambda data: extended4_attribution(read_s4(DEFAULT_S4)),
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -839,7 +860,7 @@ def save_figure(fig: plt.Figure, stem: Path, formats: tuple[str, ...], dpi: int)
 
 def write_manifest(output_dir: Path, data_path: Path, font_name: str, files: list[Path]) -> Path:
     figure_data = json.loads(data_path.read_text(encoding="utf-8"))
-    payload = {"status": "publication_figures_complete", "figure_data_version": figure_data["version"], "frozen_etl_sha": figure_data["frozen_etl_sha"], "data_sha256": sha256_file(data_path), "script_git_sha": git_sha(), "matplotlib_version": matplotlib.__version__, "font_used": font_name, "aggregate_only": True, "figure_names": list(FIGURE_NAMES), "files": [{"path": path.name, "sha256": sha256_file(path), "bytes": path.stat().st_size} for path in files]}
+    payload = {"status": "publication_figures_complete", "figure_data_version": figure_data["version"], "frozen_etl_sha": figure_data["frozen_etl_sha"], "data_sha256": sha256_file(data_path), "s4_aggregate_sha256": sha256_file(DEFAULT_S4) if DEFAULT_S4.exists() else None, "script_git_sha": git_sha(), "matplotlib_version": matplotlib.__version__, "font_used": font_name, "aggregate_only": True, "figure_names": list(FIGURE_NAMES), "files": [{"path": path.name, "sha256": sha256_file(path), "bytes": path.stat().st_size} for path in files]}
     path = output_dir / "publication_figures_manifest.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
