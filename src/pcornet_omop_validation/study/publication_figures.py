@@ -21,6 +21,8 @@ from matplotlib import font_manager
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 # The manuscript-specific correction builders use the same public aggregate inputs.
+from .publication_figures_1_4_reader import figure1_reader, figure4_reader
+
 from .publication_figure_paper2026 import (
     DEFAULT_S4,
     figure2 as figure2_reader,
@@ -817,10 +819,10 @@ def extended3(data: dict) -> plt.Figure:
 
 
 BUILDERS = {
-    MAIN_NAMES[0]: figure1,
+    MAIN_NAMES[0]: figure1_reader,
     MAIN_NAMES[1]: figure2_reader,
     MAIN_NAMES[2]: figure3,
-    MAIN_NAMES[3]: figure4,
+    MAIN_NAMES[3]: figure4_reader,
     EXTENDED_NAMES[0]: extended1,
     EXTENDED_NAMES[1]: extended2_corrected,
     EXTENDED_NAMES[2]: extended3,
